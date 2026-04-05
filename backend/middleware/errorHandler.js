@@ -1,5 +1,5 @@
 const logger = require('../utils/logger');
-const { query } = require('../config/db');
+const { query } = require('../db/db');
 
 // ── Global error handler ───────────────────────────────────────
 const errorHandler = (err, req, res, next) => {

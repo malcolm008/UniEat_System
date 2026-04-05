@@ -1,4 +1,4 @@
-const { query, withTransaction } = require('../config/db');
+const { query, withTransaction } = require('../db/db');
 const { success, created, notFound, error, paginate } = require('../utils/response');
 const logger = require('../utils/logger');
 

@@ -1,4 +1,4 @@
-const { query } = require('../config/db');
+const { query } = require('../db/db');
 const bcrypt = require('bcryptjs');
 const { success, notFound, error, paginate, created } = require('../utils/response');
 

@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { query } = require('../config/db');
+const { query } = require('../db/db');
 const { unauthorized, forbidden } = require('../utils/response');
 
 // ── Verify JWT ─────────────────────────────────────────────────

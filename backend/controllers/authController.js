@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { query } = require('../config/db');
+const { query } = require('../db/db');
 const { success, error, unauthorized, created } = require('../utils/response');
 const logger = require('../utils/logger');
 

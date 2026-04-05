@@ -1,4 +1,4 @@
-const { query } = require('../config/db');
+const { query } = require('../db/db');
 const { success } = require('../utils/response');
 
 const getSalesReport = async (req, res, next) => {

@@ -1,4 +1,4 @@
-const { query, withTransaction } = require('../config/db');
+const { query, withTransaction } = require('../db/db');
 const { success, created, notFound, error } = require('../utils/response');
 const QRCode = require('qrcode');
 const crypto = require('crypto');
