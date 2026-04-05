@@ -165,5 +165,316 @@
     function OrdersMgmtPage() { const [filter, setFilter] = useState('all'); const [orders] = useState(SAMPLE_ORDERS.map(o=>({...o}))); const filtered = filter==='all'?orders:orders.filter(o=>o.status===filter); return ( <div style={{padding:22,overflowY:'auto'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:18}}><div><div style={{fontWeight:800,fontSize:20}}>All Orders</div><div style={{fontSize:12}}>{orders.length} orders today</div></div><div style={{display:'flex',gap:6}}>{['all','pending','served'].map(f=>(<button key={f} onClick={()=>setFilter(f)} style={{padding:'6px 14px',borderRadius:8,background:filter===f?'#1C1A17':'#fff',color:filter===f?'#F5F0E8':'var(--cr)'}}>{f}</button>))}</div></div><div className="order-table" style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse'}}><thead><tr style={{background:'var(--tag)'}}>{['Order ID','Student','Items','Total','Method','Time','Status'].map(h=><th key={h} style={{padding:'10px 14px',fontSize:10,textAlign:'left'}}>{h}</th>)}</tr></thead><tbody>{filtered.map(o=>(<tr key={o.id}><td data-label="Order ID" style={{padding:'12px 14px'}}>{o.id}</td><td data-label="Student">{o.student}</td><td data-label="Items" style={{fontSize:11}}>{o.items.map(it=>`${it.qty}× ${it.name}`).join(', ')}</td><td data-label="Total">TZS {fmt(o.total)}</td><td data-label="Method"><Badge color={o.paid==='mpesa'?'sage':'blue'}>{o.paid}</Badge></td><td data-label="Time">{o.time}</td><td data-label="Status"><Badge color={o.status==='served'?'sage':'amber'}>{o.status}</Badge></td></tr>))}</tbody></table></div></div> ); }
     function ReportsPage() { return ( <div style={{padding:24,overflowY:'auto'}}><div style={{fontWeight:800,fontSize:20}}>Reports</div><div className="admin-dashboard-stats" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}><StatCard label="This month" value="TZS 2.4M" sub="89 hours" color="rust" icon="📅"/><StatCard label="Total orders" value="1,247" color="amber" icon="📋"/><StatCard label="Top payer" value="M-Pesa" color="sage" icon="📱"/></div><div className="admin-grid-2col" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Daily revenue</div><MiniBarChart data={SALES_DATA}/></div><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Category breakdown</div>{[{label:'Lunch',pct:38},{label:'Dinner',pct:29},{label:'Breakfast',pct:18}].map(c=>(<div key={c.label} style={{display:'flex',gap:8,marginBottom:8}}><span style={{width:70}}>{c.label}</span><div style={{flex:1,height:6,background:'#EDE8DF'}}><div style={{width:c.pct+'%',height:'100%',background:'#C4522A'}}/></div><span>{c.pct}%</span></div>))}</div></div></div> ); }
     function LoginScreen({onLogin}) { const [role, setRole] = useState('student'); const [id, setId] = useState(''); const [pass, setPass] = useState(''); const [loading, setLoading] = useState(false); const [err, setErr] = useState(''); const creds = { student:{id:'CS/2022/042',pass:'student123',name:'John M.',initials:'JM'}, staff:{id:'STAFF001',pass:'staff123',name:'Mary K.',initials:'MK'}, admin:{id:'ADMIN001',pass:'admin123',name:'Dr. Osei',initials:'DO'}, }; const handleLogin = () => { const c = creds[role]; if(id===c.id && pass===c.pass) { setLoading(true); setTimeout(()=>onLogin({role,name:c.name,initials:c.initials,id}),1000); } else { setErr('Incorrect credentials.'); } }; return ( <div style={{minHeight:'100vh',background:'#1C1A17',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}><div style={{width:'100%',maxWidth:400}}><div style={{textAlign:'center',marginBottom:32}}><div style={{fontFamily:'Syne',fontWeight:800,fontSize:32,color:'#F5F0E8'}}>UniEat</div><div style={{fontSize:12,color:'#4A4030'}}>University Canteen System</div></div><div style={{display:'flex',background:'#2D2520',borderRadius:12,padding:4,marginBottom:20,gap:3}}>{[['student','Student'],['staff','Staff'],['admin','Admin']].map(([r,l])=>(<button key={r} onClick={()=>{setRole(r);setErr('');}} style={{flex:1,padding:'8px',borderRadius:9,background:role===r?'#C4522A':'transparent',color:role===r?'#fff':'#6A6050'}}>{l}</button>))}</div><div style={{background:'#2D2520',borderRadius:16,padding:22}}><div style={{marginBottom:12}}><div style={{fontSize:10,color:'#6A6050',marginBottom:6}}>{role==='student'?'University ID':'Staff ID'}</div><input value={id} onChange={e=>setId(e.target.value)} placeholder={creds[role].id} style={{width:'100%',padding:'11px 14px',background:'#1C1A17',border:'1.5px solid #3A3530',borderRadius:10,color:'#F5F0E8'}}/></div><div style={{marginBottom:16}}><div style={{fontSize:10,color:'#6A6050',marginBottom:6}}>Password</div><input value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleLogin()} type="password" placeholder="••••••••" style={{width:'100%',padding:'11px 14px',background:'#1C1A17',border:'1.5px solid #3A3530',borderRadius:10,color:'#F5F0E8'}}/></div>{err && <div style={{fontSize:11,color:'#E8693D',marginBottom:12}}>{err}</div>}<button onClick={handleLogin} style={{width:'100%',background:loading?'#3A3530':'#C4522A',color:'#fff',borderRadius:10,padding:14,fontWeight:700}}>Sign in →</button><div style={{fontSize:10,color:'#4A4030',marginTop:14,textAlign:'center'}}>Demo: {creds[role].id} / {creds[role].pass}</div></div>{role==='student' && (<button onClick={()=>onLogin({role:'student',name:'Guest',initials:'GU',id:'GUEST'})} style={{width:'100%',marginTop:10,padding:'11px',borderRadius:12,border:'1px solid #3A3530',background:'transparent',color:'#6A6050'}}>Guest mode</button>)}</div></div> ); }
+    function SettingsPage({user, onUpdateUser}) {
+        const { showToast } = userContext(AppCtx);
+        const [formData, setFormData] = useState({
+            name: user.name || '',
+            currentPassword: '',
+            newPassword: '',
+            confirmPassword: ''
+        });
+        const [isLoading, setIsLoading] = useState(false);
+        const [showPasswordForm, setShowPasswordForm] = useState(false);
+
+        const handleInputChange = (e) => {
+            const { name, value } = e.target;
+            setFormData(prev => ({ ...prev, [name]: value }));
+        };
+
+        const handleInputChange = (e) => {
+            const { name, value } = e.target;
+            setFormData(prev => ({ ...prev, [name]: value }));
+        };
+
+        const handleUpdateProfile = async (e) => {
+            e.preventDefault();
+            setIsLoading(true);
+
+            setTimeout(() => {
+                if (formData.name.trim() === '') {
+                    showToast('Name cannot be empty', 'error');
+                    setIsLoading(false);
+                    return;
+                }
+
+                const updatedUser = { ...user, name: formData.name };
+                onUpdateUser(updatedUser);
+                localStorage.setItem('user', JSON.stringify(updatedUser));
+                showToast('Profile updated successfully!', 'success');
+                setIsLoading(false);
+            }, 1000);
+        };
+
+        const handleChangePassword = async (e) => {
+            e.preventDefault();
+
+            if (formData.newPassword !== formData.confirmPassword) {
+                showToast('New passwords do not match', 'error');
+                return;
+            }
+
+            if (formData.newPassword.length < 6) {
+                showToast('Password must be at least 6 characters', 'error');
+                return;
+            }
+
+            setIsLoading(true);
+
+            setTimeout(() => {
+                showToast('Password changed successfully!', 'success');
+                setFormData(prev => ({
+                    ...prev,
+                    currentPassword: '',
+                    newPassword: '',
+                    confirmPassword: ''
+                }));
+                setShowPasswordForm(false);
+                setIsLoading(false);
+            }, 1000);
+        };
+
+        return (
+            <div style={{ padding: 24, maxWidth: 600, margin: '0 auto', animation: 'fadeIn .25s ease' }}>
+                <div style={{ marginBottom: 24 }}>
+                    <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 28, marginBottom: 4 }}>
+                        Settings
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                        Manage your account preferences
+                    </div>
+                </div>
+
+                <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 16, padding: 24, marginBottom: 20 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}>
+                        <div style={{
+                            width: 48, height: 48, borderRadius: '50%',
+                            background: user.role === 'admin' ? '#185FA5' : user.role === 'staff' ? '#4A6741' : '#C4522A',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 20, fontWeight: 700, color: '#fff'
+                        }}>
+                            {user.initials}
+                        </div>
+                        <div>
+                            <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 18 }}>{user.name}</div>
+                            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                                {user.role === 'student' ? `Student ID: ${user.id}` : `${user.role === 'staff' ? 'Staff' : 'Admin'} ID: ${user.id}`}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Profile Information */}
+                    <form onSubmit={handleUpdateProfile}>
+                        <div style={{ marginBottom: 20 }}>
+                            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                Display Name
+                            </label>
+                            <input
+                                type="text"
+                                name="name"
+                                value={formData.name}
+                                onChange={handleInputChange}
+                                style={{
+                                    width: '100%', padding: '10px 14px',
+                                    border: '1.5px solid var(--border)', borderRadius: 10,
+                                    fontSize: 14, background: '#fff'
+                                }}
+                                placeholder="Your full name"
+                            />
+                        </div>
+
+                        <Btn type="submit" variant="rust" fullWidth disabled={isLoading}>
+                            {isLoading ? 'Saving...' : 'Update Profile'}
+                        </Btn>
+                    </form>
+                </div>
+
+                {/* Password Change Section */}
+                <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                        <div>
+                            <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 16 }}>Security</div>
+                            <div style={{ fontSize: 12, color: 'var(--muted)' }}>Change your password</div>
+                        </div>
+                        {!showPasswordForm && (
+                            <Btn small variant="ghost" onClick={() => setShowPasswordForm(true)}>
+                                Change Password
+                            </Btn>
+                        )}
+                    </div>
+
+                    {showPasswordForm && (
+                        <form onSubmit={handleChangePassword}>
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                    Current Password
+                                </label>
+                                <input
+                                    type="password"
+                                    name="currentPassword"
+                                    value={formData.currentPassword}
+                                    onChange={handleInputChange}
+                                    style={{
+                                        width: '100%', padding: '10px 14px',
+                                        border: '1.5px solid var(--border)', borderRadius: 10,
+                                        fontSize: 14, background: '#fff'
+                                    }}
+                                    required
+                                />
+                            </div>
+
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                    New Password
+                                </label>
+                                <input
+                                    type="password"
+                                    name="newPassword"
+                                    value={formData.newPassword}
+                                    onChange={handleInputChange}
+                                    style={{
+                                        width: '100%', padding: '10px 14px',
+                                        border: '1.5px solid var(--border)', borderRadius: 10,
+                                        fontSize: 14, background: '#fff'
+                                    }}
+                                    required
+                                    minLength={6}
+                                />
+                            </div>
+
+                            <div style={{ marginBottom: 20 }}>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                    Confirm New Password
+                                </label>
+                                <input
+                                    type="password"
+                                    name="confirmPassword"
+                                    value={formData.confirmPassword}
+                                    onChange={handleInputChange}
+                                    style={{
+                                        width: '100%', padding: '10px 14px',
+                                        border: '1.5px solid var(--border)', borderRadius: 10,
+                                        fontSize: 14, background: '#fff'
+                                    }}
+                                    required
+                                />
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 12 }}>
+                                <Btn type="button" variant="ghost" onClick={() => {
+                                    setShowPasswordForm(false);
+                                    setFormData(prev => ({
+                                        ...prev,
+                                        currentPassword: '',
+                                        newPassword: '',
+                                        confirmPassword: ''
+                                    }));
+                                }}>
+                                    Cancel
+                                </Btn>
+                                <Btn type="submit" variant="rust" disabled={isLoading}>
+                                    {isLoading ? 'Changing...' : 'Change Password'}
+                                </Btn>
+                            </div>
+                        </form>
+                    )}
+                </div>
+
+                {/* Account Info */}
+                <div style={{ marginTop: 20, padding: 16, background: 'var(--tag)', borderRadius: 12 }}>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>
+                        Account created: Demo Mode • Last login: Today
+                    </div>
+                </div>
+            </div>
+        );
+    }
+    function UserMenu({ user, onLogout, onSettings }) {
+        const [isOpen, setIsOpen] = useState(false);
+        const menuRef = useRef(null);
+
+        useEffect(() => {
+            const handleClickOutside = (event) => {
+                if (menuRef.current && !menuRef.current.contains(event.target)) {
+                    setIsOpen(false);
+                }
+            };
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => document.removeEventListener('mousedown', handleClickOutside);
+        }, []);
+
+        return (
+            <div style={{ position: 'relative' }} ref={menuRef}>
+                <button
+                    onClick={() => setIsOpen(!isOpen)}
+                    style={{
+                        display: 'flex', alignItems: 'center', gap: 7, padding: '3px 10px',
+                        border: '1px solid #3A3530', borderRadius: 20, fontSize: 11, fontWeight: 500,
+                        background: 'transparent', color: '#F5F0E8', cursor: 'pointer'
+                    }}
+                >
+                    <div style={{
+                        width: 24, height: 24, borderRadius: '50%',
+                        background: user.role === 'admin' ? '#185FA5' : user.role === 'staff' ? '#4A6741' : '#C4522A',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 9, fontWeight: 700, color: '#fff'
+                    }}>
+                        {user.initials}
+                    </div>
+                    <span style={{ display: 'inline-block' }}>{user.name}</span>
+                    <span style={{ fontSize: 10 }}>{isOpen ? '▲' : '▼'}</span>
+                </button>
+
+                {isOpen && (
+                    <div style={{
+                        position: 'absolute', top: '100%', right: 0, marginTop: 8,
+                        background: '#2D2520', borderRadius: 12, minWidth: 200,
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.2)', zIndex: 300,
+                        overflow: 'hidden', animation: 'fadeUp .2s ease'
+                    }}>
+                        <div style={{ padding: '12px 16px', borderBottom: '1px solid #3A3530' }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F0E8' }}>{user.name}</div>
+                            <div style={{ fontSize: 10, color: '#6A6050', marginTop: 2 }}>
+                                {user.role === 'student' ? 'Student' : user.role === 'staff' ? 'Staff Member' : 'Administrator'}
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => {
+                                setIsOpen(false);
+                                onSettings();
+                            }}
+                            style={{
+                                width: '100%', padding: '10px 16px', textAlign: 'left',
+                                background: 'transparent', color: '#F5F0E8', fontSize: 13,
+                                display: 'flex', alignItems: 'center', gap: 10,
+                                transition: 'background .15s', cursor: 'pointer'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#3A3530'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                            <span>⚙️</span> Settings
+                        </button>
+
+                        <button
+                            onClick={() => {
+                                setIsOpen(false);
+                                onLogout();
+                            }}
+                            style={{
+                                width: '100%', padding: '10px 16px', textAlign: 'left',
+                                background: 'transparent', color: '#E8693D', fontSize: 13,
+                                display: 'flex', alignItems: 'center', gap: 10,
+                                borderTop: '1px solid #3A3530', cursor: 'pointer'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#3A3530'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                            <span>🚪</span> Sign Out
+                        </button>
+                    </div>
+                )}
+            </div>
+        );
+    }
     function App() { const [user, setUser] = useState(null); const [page, setPage] = useState(''); const [cart, setCart] = useState({}); const [toast, showToast] = useToast(); const handleLogin = (u) => { setUser(u); setPage(u.role==='student'?'menu':u.role==='staff'?'scanner':'dashboard'); }; const handleLogout = () => { setUser(null); setPage(''); setCart({}); }; if (!user) return (<AppCtx.Provider value={{showToast}}><LoginScreen onLogin={handleLogin}/><Toast toast={toast}/></AppCtx.Provider>); const renderPage = () => { if (user.role==='student') { if (page==='menu') return <MenuPage cart={cart} setCart={setCart} setPage={setPage}/>; if (page==='orders') return <OrdersPage/>; } if (user.role==='staff') { if (page==='scanner') return <ScannerPage/>; if (page==='queue') return <QueuePage/>; } if (user.role==='admin') { if (page==='dashboard') return <DashboardPage/>; if (page==='menu-mgmt') return <MenuMgmtPage/>; if (page==='orders-mgmt') return <OrdersMgmtPage/>; if (page==='reports') return <ReportsPage/>; } return <div>404</div>; }; return ( <AppCtx.Provider value={{showToast}}><div style={{height:'100vh',display:'flex',flexDirection:'column',overflow:'hidden'}}><TopBar page={page} setPage={setPage} user={user} cart={cart}/><div style={{flex:1,overflow:'auto'}}>{renderPage()}</div><button onClick={handleLogout} style={{position:'fixed',bottom:20,right:20,background:'#1C1A17',color:'#6A6050',border:'1px solid #3A3530',borderRadius:8,padding:'7px 13px',fontSize:11,zIndex:999}}>Sign out</button></div><Toast toast={toast}/></AppCtx.Provider> ); }
     ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
