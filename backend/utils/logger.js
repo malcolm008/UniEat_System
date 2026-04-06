@@ -3,7 +3,7 @@ const path = require('path');
 
 const logger = createLogger({
     level: process.env.LOG_LEVEL || 'info',
-    format: format.combine(format.timestamp({format: 'YYYY-MM-DD HH:mm:ss'}), format.errors.({ stack: true }), format.json()),
+    format: format.combine(format.timestamp({format: 'YYYY-MM-DD HH:mm:ss'}), format.errors({ stack: true }), format.json()),
     transports: [
         new transports.Console({
             format: format.combine(

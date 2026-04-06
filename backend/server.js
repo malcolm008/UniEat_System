@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 5000;
 
 app.use(helmet());
 app.use(cors({
-    origin: (proccess.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(','),
+    origin: (process.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(','),
     credentials: true,
 }));
 app.use(rateLimit({
