@@ -40,7 +40,7 @@
         .slide-right{animation:slideRight .25s ease}
         .slide-left{animation:slideLeft .25s ease}
 
-        /* ===== RESPONSIVE LAYOUT TWEAKS (no functional changes) ===== */
+        /* ===== RESPONSIVE LAYOUT ===== */
         @media (max-width: 800px) {
           .menu-layout { grid-template-columns: 1fr !important; }
           .cart-sidebar { position: fixed; bottom: 0; left: 0; right: 0; height: auto; max-height: 65vh; border-radius: 20px 20px 0 0; box-shadow: 0 -4px 20px rgba(0,0,0,0.08); z-index: 300; border-left: none !important; top: auto !important; transform: translateY(0); transition: transform 0.2s; }
@@ -49,10 +49,13 @@
           .staff-scanner-layout { grid-template-columns: 1fr !important; }
           .admin-dashboard-stats { grid-template-columns: repeat(2,1fr) !important; }
           .admin-grid-2col { grid-template-columns: 1fr !important; }
-          .topbar-nav { gap: 4px; flex-wrap: wrap; }
-          .topbar-nav button { font-size: 11px; padding: 4px 8px; }
-          .topbar-user { gap: 6px; }
+          .menu-layout { flex-direction: column; }
+          .menu-left { width: 100%; max-height: 55vh; overflow-y: auto; }
+          .cart-sidebar { position: fixed; bottom: 0; left: 0; right: 0; height: auto; max-height: 60vh; border-radius: 20px 20px 0 0; border-left: none !important; z-index: 300; background: #FAFAF7; border-top: 1px solid var(--border); top: auto !important; transition: transform 0.25s ease; transform: translateY(0); }
+          .cart-sidebar.hide-cart { transform: translateY(100%); pointer-events: none; }
+          .cart-handle { display: block; width: 40px; height: 4px; background: var(--border); border-radius: 4px; margin: 8px auto 0; cursor: pointer; }
         }
+
         @media (max-width: 560px) {
           .menu-grid { grid-template-columns: 1fr !important; }
           .admin-dashboard-stats { grid-template-columns: 1fr !important; }
@@ -65,27 +68,20 @@
           .dashboard-header { flex-direction: column; align-items: flex-start; gap: 10px; }
           .stat-card-value { font-size: 20px; }
         }
-        .cart-toggle { display: none; position: fixed; bottom: 20px; right: 20px; background: #C4522A; color: white; border-radius: 40px; padding: 10px 18px; font-weight: bold; z-index: 250; box-shadow: 0 6px 14px rgba(0,0,0,0.2); align-items: center; gap: 8px; border: none; font-size: 14px; }
-        .menu-layout { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-        @media (max-width: 800px) {
-          .menu-layout { flex-direction: column; }
-          .menu-left { width: 100%; max-height: 55vh; overflow-y: auto; }
-          .cart-sidebar { position: fixed; bottom: 0; left: 0; right: 0; height: auto; max-height: 60vh; border-radius: 20px 20px 0 0; border-left: none !important; z-index: 300; background: #FAFAF7; border-top: 1px solid var(--border); top: auto !important; transition: transform 0.25s ease; transform: translateY(0); }
-          .cart-sidebar.hide-cart { transform: translateY(100%); pointer-events: none; }
-          .cart-handle { display: block; width: 40px; height: 4px; background: var(--border); border-radius: 4px; margin: 8px auto 0; cursor: pointer; }
-        }
-        .cart-handle { display: none; }
+
+        /* Top Bar Responsive - Clean version */
         @media (max-width: 640px) {
-          .topbar-nav button span:last-child {
-            display: none;
+          header {
+            padding: 8px 12px !important;
+            gap: 8px !important;
           }
           .topbar-nav button {
             padding: 6px 8px !important;
             font-size: 11px !important;
           }
-          header {
-            padding: 8px 12px !important;
-            gap: 6px !important;
+          /* Hide text labels, show only icons on very small screens */
+          .topbar-nav button span:last-child {
+            display: none;
           }
         }
 
@@ -93,20 +89,40 @@
           header {
             flex-direction: column;
             align-items: stretch !important;
-            gap: 8px !important;
+            overflow: visible !important;
           }
-          .topbar-user-info span:first-of-type {
-            display: none;
-          }
-          nav {
+          .topbar-nav {
             overflow-x: auto;
             flex-wrap: nowrap !important;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
           }
-          nav::-webkit-scrollbar {
+          .topbar-nav::-webkit-scrollbar {
             display: none;
           }
+          /* Keep dropdown menu as dropdown, not bottom sheet */
+            .user-dropdown,
+            div[style*="position: absolute"][style*="top: 100%"] {
+                right: 10px !important;
+                left: auto !important;
+                min-width: 200px !important;
+            }
+        }
+
+        .cart-toggle { display: none; position: fixed; bottom: 20px; right: 20px; background: #C4522A; color: white; border-radius: 40px; padding: 10px 18px; font-weight: bold; z-index: 250; box-shadow: 0 6px 14px rgba(0,0,0,0.2); align-items: center; gap: 8px; border: none; font-size: 14px; }
+        .menu-layout { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+        .cart-handle { display: none; }
+        [style*="position: absolute"][style*="z-index: 9999"] {
+            z-index: 9999 !important;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(100%);
+            }
+            to {
+                transform: translateY(0);
+            }
         }
     </style>
 </head>

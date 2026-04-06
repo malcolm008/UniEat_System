@@ -81,7 +81,6 @@
       }, []);
       return time;
     }
-
     function Toast({toast}) { if (!toast) return null; const colors = {default:{bg:'#1C1A17',col:'#F5F0E8'},success:{bg:'#0F6E56',col:'#fff'},error:{bg:'#A32D2D',col:'#fff'}}; const {bg,col} = colors[toast.type] || colors.default; return ( <div style={{position:'fixed',bottom:28,left:'50%',transform:'translateX(-50%)',background:bg,color:col,padding:'11px 22px',borderRadius:30,fontSize:13,fontWeight:500,zIndex:9999,whiteSpace:'nowrap',boxShadow:'0 4px 20px rgba(0,0,0,.2)',animation:'fadeUp .3s cubic-bezier(.34,1.56,.64,1)'}}>{toast.msg}</div> ); }
     function Modal({open, onClose, children, maxW=480, center=false}) { if (!open) return null; return ( <div onClick={e=>{ if(e.target===e.currentTarget) onClose(); }} style={{position:'fixed',inset:0,background:'rgba(28,26,23,.58)',display:'flex',alignItems:center?'center':'flex-end',justifyContent:'center',zIndex:500,backdropFilter:'blur(3px)'}}><div style={{background:'#FAFAF7',borderRadius:center?16:'20px 20px 0 0',padding:'24px 22px 32px',width:'100%',maxWidth:maxW,maxHeight:'90vh',overflowY:'auto',animation:'fadeUp .28s cubic-bezier(.34,1.56,.64,1)'}}>{!center && <div style={{width:40,height:4,background:'var(--border)',borderRadius:2,margin:'0 auto 20px'}}/>}{children}</div></div> ); }
     function Btn({children,onClick,variant='primary',fullWidth,disabled,small,style:sx={}}) { const base = {display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7,borderRadius:10,fontFamily:'Syne,sans-serif',fontWeight:700,cursor:'pointer',transition:'background .18s,transform .1s,opacity .15s',border:'none',width:fullWidth?'100%':'auto',opacity:disabled?.55:1,pointerEvents:disabled?'none':'auto',fontSize:small?12:14,padding:small?'7px 14px':'12px 18px',...sx}; const variants = {primary:{background:'#1C1A17',color:'#F5F0E8'},rust:{background:'#C4522A',color:'#fff'},sage:{background:'#4A6741',color:'#fff'},ghost:{background:'transparent',color:'#1C1A17',border:'1px solid #E2D9CC'},danger:{background:'#A32D2D',color:'#fff'},amber:{background:'#D4831A',color:'#fff'}}; const [hover,setHover] = useState(false); const hoverBg = {primary:'#C4522A',rust:'#A03D1E',sage:'#3A5131',ghost:'#EDE8DF',danger:'#7A1F1F',amber:'#B06B10'}; return (<button onClick={onClick} style={{...base,...variants[variant],background:hover?hoverBg[variant]:variants[variant].background}} onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)} onMouseDown={e=>e.currentTarget.style.transform='scale(.97)'} onMouseUp={e=>e.currentTarget.style.transform='scale(1)'}>{children}</button>); }
@@ -90,52 +89,50 @@
     function StatCard({label,value,sub,color='default',icon}) { const bg = {default:'#fff',rust:'#FDF5F2',sage:'#EAF0E8',amber:'#FEF3DC',blue:'#E6F1FB'}; const col = {default:'var(--cr)',rust:'#C4522A',sage:'#4A6741',amber:'#854F0B',blue:'#185FA5'}; return ( <div style={{background:bg[color],border:'1px solid var(--border)',borderRadius:12,padding:'14px 16px',animation:'card-enter .3s ease'}}><div style={{fontSize:11,color:'var(--muted)',fontWeight:500,letterSpacing:.5,textTransform:'uppercase',marginBottom:6,display:'flex',alignItems:'center',gap:5}}>{icon && <span style={{fontSize:14}}>{icon}</span>}{label}</div><div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:24,color:col[color]}}>{value}</div>{sub && <div style={{fontSize:11,color:'var(--muted)',marginTop:3}}>{sub}</div>}</div> ); }
     function QRCanvas({refCode, size=180}) { const ref = useRef(); useEffect(() => { const canvas = ref.current; if(!canvas) return; const ctx = canvas.getContext('2d'); const mod = 25, cell = (size-20)/mod, offset = 10; ctx.fillStyle = '#fff'; ctx.fillRect(0,0,size,size); ctx.fillStyle = '#1C1A17'; let seed = refCode.split('').reduce((a,c)=>a+c.charCodeAt(0),0); const rand = () => { seed=(seed*1664525+1013904223)&0xFFFFFFFF; return (seed>>>0)/0xFFFFFFFF; }; for(let r=0;r<mod;r++) for(let c=0;c<mod;c++) if(rand()>.5) ctx.fillRect(offset+c*cell,offset+r*cell,cell-1,cell-1); const finder = (x,y) => { ctx.fillStyle='#fff'; ctx.fillRect(offset+x*cell,offset+y*cell,7*cell,7*cell); ctx.fillStyle='#1C1A17'; ctx.fillRect(offset+x*cell,offset+y*cell,7*cell,7*cell); ctx.fillStyle='#fff'; ctx.fillRect(offset+(x+1)*cell,offset+(y+1)*cell,5*cell,5*cell); ctx.fillStyle='#1C1A17'; ctx.fillRect(offset+(x+2)*cell,offset+(y+2)*cell,3*cell,3*cell); }; finder(0,0); finder(mod-7,0); finder(0,mod-7); }, [refCode, size]); return <canvas ref={ref} width={size} height={size} style={{borderRadius:8,display:'block'}}/>; }
     function MiniBarChart({data}) { const max = Math.max(...data.map(d=>d.sales)); return ( <div style={{display:'flex',alignItems:'flex-end',gap:6,height:80,padding:'0 4px'}}>{data.map((d,i) => (<div key={d.day} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4}}><div style={{width:'100%',background:i===4?'#C4522A':'#E2D9CC',borderRadius:'4px 4px 0 0',height:Math.round((d.sales/max)*70),transition:'height .4s ease'}}/><span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>{d.day}</span></div>))}</div> ); }
+    function TopBar({page, setPage, user, cart, onLogout, onSettings}) {
+        const time = useClock();
+        const cartCount = Object.values(cart).reduce((s,i)=>s+i.qty,0);
+        const navItems = user.role === 'student'
+            ? [{key:'menu',label:'Menu',icon:'🍽️'},{key:'orders',label:'My Orders',icon:'📋'}]
+            : user.role === 'staff'
+            ? [{key:'scanner',label:'Scanner',icon:'📷'},{key:'queue',label:'Queue',icon:'📋'}]
+            : [{key:'dashboard',label:'Dashboard',icon:'📊'},{key:'menu-mgmt',label:'Menu',icon:'🍽️'},{key:'orders-mgmt',label:'Orders',icon:'📋'},{key:'reports',label:'Reports',icon:'📈'}];
 
-    function TopBar({page, setPage, user, cart}) { const time = useClock(); const cartCount = Object.values(cart).reduce((s,i)=>s+i.qty,0); const navItems = user.role === 'student' ? [{key:'menu',label:'Menu',icon:'🍽️'},{key:'orders',label:'My Orders',icon:'📋'}] : user.role === 'staff' ? [{key:'scanner',label:'Scanner',icon:'📷'},{key:'queue',label:'Queue',icon:'📋'}] : [{key:'dashboard',label:'Dashboard',icon:'📊'},{key:'menu-mgmt',label:'Menu',icon:'🍽️'},{key:'orders-mgmt',label:'Orders',icon:'📋'},{key:'reports',label:'Reports',icon:'📈'}]; return ( <header style={{
-  background:'#1C1A17',color:'#F5F0E8',
-  padding:'0 12px',height:'auto',minHeight:52,
-  display:'flex',alignItems:'center',justifyContent:'space-between',
-  position:'sticky',top:0,zIndex:200,flexShrink:0,
-  gap:8,flexWrap:'wrap'
-}}>
-  <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',flex:1}}>
-    <div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:18,letterSpacing:-.5,display:'flex',alignItems:'center',gap:7,flexShrink:0}}>
-      <div style={{width:7,height:7,borderRadius:'50%',background:'#E8693D'}}/>
-      UniEat
-    </div>
-    <nav style={{display:'flex',gap:2,flexWrap:'wrap',flexShrink:1}}>
-      {navItems.map(n => (
-        <button key={n.key} onClick={()=>setPage(n.key)} style={{
-          padding:'6px 10px',borderRadius:8,fontSize:12,fontWeight:500,
-          background:page===n.key?'rgba(255,255,255,.1)':'transparent',
-          color:page===n.key?'#F5F0E8':'#6A6050',
-          transition:'background .15s,color .15s',display:'flex',alignItems:'center',gap:5,
-          whiteSpace:'nowrap'
-        }}>
-          <span style={{fontSize:13}}>{n.icon}</span>
-          <span style={{display:'inline-block'}}>{n.label}</span>
-        </button>
-      ))}
-    </nav>
-  </div>
-  <div style={{display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
-    <span style={{fontSize:11,color:'#4A4030',display:window.innerWidth<=560?'none':'inline'}}>{time}</span>
-    <div style={{
-      display:'flex',alignItems:'center',gap:7,padding:'3px 10px',
-      border:'1px solid #3A3530',borderRadius:20,fontSize:11,fontWeight:500
-    }}>
-      <div style={{
-        width:24,height:24,borderRadius:'50%',
-        background:user.role==='admin'?'#185FA5':user.role==='staff'?'#4A6741':'#C4522A',
-        display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:'#fff'
-      }}>{user.initials}</div>
-      <span style={{display:'inline-block'}}>{user.name}</span>
-      <span style={{fontSize:9,color:'#4A4030',background:'#2A2820',padding:'2px 6px',borderRadius:4,textTransform:'uppercase',letterSpacing:.5}}>{user.role}</span>
-    </div>
-  </div>
-</header> ); }
-
-    /* === CART SIDEBAR with mobile toggle === */
+        return (
+            <header style={{
+                background:'#1C1A17',color:'#F5F0E8',
+                padding:'0 12px',height:'auto',minHeight:52,
+                display:'flex',alignItems:'center',justifyContent:'space-between',
+                position:'sticky',top:0,zIndex:200,flexShrink:0,
+                gap:8,flexWrap:'wrap',overflow:'visible'
+            }}>
+                <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',flex:1}}>
+                    <div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:18,letterSpacing:-.5,display:'flex',alignItems:'center',gap:7,flexShrink:0}}>
+                        <div style={{width:7,height:7,borderRadius:'50%',background:'#E8693D'}}/>
+                        UniEat
+                    </div>
+                    <nav style={{display:'flex',gap:2,flexWrap:'wrap',flexShrink:1}}>
+                        {navItems.map(n => (
+                            <button key={n.key} onClick={()=>setPage(n.key)} style={{
+                                padding:'6px 10px',borderRadius:8,fontSize:12,fontWeight:500,
+                                background:page===n.key?'rgba(255,255,255,.1)':'transparent',
+                                color:page===n.key?'#F5F0E8':'#6A6050',
+                                transition:'background .15s,color .15s',display:'flex',alignItems:'center',gap:5,
+                                whiteSpace:'nowrap'
+                            }}>
+                                <span style={{fontSize:13}}>{n.icon}</span>
+                                <span style={{display:'inline-block'}}>{n.label}</span>
+                            </button>
+                        ))}
+                    </nav>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
+                    <span style={{fontSize:11,color:'#4A4030',display:window.innerWidth<=560?'none':'inline'}}>{time}</span>
+                    <UserMenu user={user} onLogout={onLogout} onSettings={onSettings} />
+                </div>
+            </header>
+        );
+    }
     function CartSidebar({cart, setCart, setPage, isOpen, onToggle}) {
       const {showToast} = useContext(AppCtx);
       const [payMethod, setPayMethod] = useState('mpesa');
@@ -153,7 +150,6 @@
       const startCheckout = () => { const digits = phone.replace(/\D/g,''); if(digits.length<9){showToast('⚠ Enter your phone number','error');return;} if(isEmpty)return; setPayState('processing'); let c=25; setCountdown(25); const t=setInterval(()=>{c--;setCountdown(c);if(c<=0)clearInterval(t);},1000); setTimeout(()=>{clearInterval(t);setQrRef(genRef());setPayState('success');},3000); };
       const payColors = {mpesa:'#00A651',tigo:'#003087',halo:'#E31837'}; const payLabels = {mpesa:'M-Pesa',tigo:'Tigo Pesa',halo:'HaloPesa'};
       return ( <div className={`cart-sidebar ${!isOpen ? 'hide-cart' : ''}`} style={{background:'#FAFAF7',borderLeft:'1px solid var(--border)',display:'flex',flexDirection:'column',height:'100%',overflowY:'auto',position:'relative'}}><div className="cart-handle" onClick={onToggle} style={{display:'none'}}/><div style={{padding:'14px 16px 12px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}><span style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:14}}>Your order</span><span style={{background:isEmpty?'#EDE8DF':'#C4522A',color:isEmpty?'var(--muted)':'#fff',borderRadius:10,padding:'2px 8px',fontSize:10,fontWeight:600}}>{itemCount} item{itemCount!==1?'s':''}</span><button onClick={onToggle} className="close-cart-mobile" style={{display:'none',background:'none',fontSize:20,color:'var(--muted)'}}>✕</button></div>{isEmpty ? ( <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,padding:24,textAlign:'center'}}><div style={{fontSize:38,opacity:.2}}>🍽️</div><div style={{fontSize:12,color:'var(--muted)',lineHeight:1.6}}>Add meals from the menu<br/>to get started</div></div> ) : ( <> <div style={{flex:1,padding:'12px 14px',display:'flex',flexDirection:'column',gap:10,overflowY:'auto'}}>{cartIds.map(k => { const it = cart[k]; return ( <div key={k} style={{display:'flex',alignItems:'center',gap:8,animation:'slideLeft .2s ease'}}><span style={{fontSize:24,flexShrink:0}}>{it.emoji}</span><div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{it.name}</div><div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>{fmt(it.price*it.qty)} TZS</div></div><div style={{display:'flex',alignItems:'center',gap:5,flexShrink:0}}><button onClick={()=>changeQty(k,-1)} style={{width:22,height:22,borderRadius:'50%',border:'1px solid var(--border)',background:'#fff',fontSize:13,display:'flex',alignItems:'center',justifyContent:'center'}}>−</button><span style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:13,minWidth:16,textAlign:'center'}}>{it.qty}</span><button onClick={()=>changeQty(k,1)} style={{width:22,height:22,borderRadius:'50%',border:'1px solid var(--border)',background:'#fff',fontSize:13,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button></div></div> ); })}</div><div style={{borderTop:'1px solid var(--border)',padding:'12px 14px',flexShrink:0}}><div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--muted)',marginBottom:4}}><span>Subtotal</span><span>TZS {fmt(subtotal)}</span></div><div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--muted)'}}><span>Service (2%)</span><span>TZS {fmt(service)}</span></div><div style={{display:'flex',justifyContent:'space-between',fontFamily:'Syne,sans-serif',fontSize:15,fontWeight:700,marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}><span>Total</span><span>TZS {fmt(total)}</span></div></div><div style={{padding:'10px 14px',borderTop:'1px solid var(--border)',flexShrink:0}}><div style={{fontSize:9,fontWeight:600,letterSpacing:1.2,textTransform:'uppercase',color:'var(--muted)',marginBottom:8}}>Pay with</div><div style={{display:'flex',flexDirection:'column',gap:5,marginBottom:9}}>{['mpesa','tigo','halo'].map(m => (<div key={m} onClick={()=>setPayMethod(m)} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',border:`1.5px solid ${payMethod===m?'#C4522A':'var(--border)'}`,borderRadius:8,cursor:'pointer',background:payMethod===m?'#FDF5F2':'#fff'}}><div style={{width:34,height:20,borderRadius:4,background:payColors[m],display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:800,color:'#fff'}}>{payLabels[m]}</div><span style={{fontSize:12,fontWeight:500,flex:1}}>{payLabels[m]}</span><div style={{width:14,height:14,borderRadius:'50%',border:`1.5px solid ${payMethod===m?'#C4522A':'var(--border)'}`,background:payMethod===m?'#C4522A':'transparent',display:'flex',alignItems:'center',justifyContent:'center'}}>{payMethod===m && <div style={{width:5,height:5,borderRadius:'50%',background:'#fff'}}/>}</div></div>))}</div><div style={{display:'flex',border:`1.5px solid ${phone?'#C4522A':'var(--border)'}`,borderRadius:8,overflow:'hidden',background:'#fff'}}><div style={{padding:'8px 10px',fontSize:11,fontWeight:500,color:'var(--muted)',background:'var(--tag)',borderRight:'1px solid var(--border)'}}>🇹🇿 +255</div><input value={phone} onChange={e=>setPhone(e.target.value)} type="tel" maxLength={9} placeholder="7XX XXX XXX" style={{flex:1,padding:'8px 10px',fontSize:12}}/></div></div><div style={{padding:'10px 14px 16px',flexShrink:0}}><button onClick={startCheckout} style={{width:'100%',background:'#1C1A17',color:'#F5F0E8',border:'none',borderRadius:10,padding:'13px 14px',fontFamily:'Syne,sans-serif',fontSize:13,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'space-between'}}><span>Pay now</span><span style={{background:'rgba(255,255,255,.12)',padding:'3px 9px',borderRadius:6,fontSize:12}}>TZS {fmt(total)}</span></button></div></> )}{payState && ( <div style={{position:'fixed',inset:0,background:'rgba(28,26,23,.6)',display:'flex',alignItems:'flex-end',justifyContent:'center',zIndex:600,backdropFilter:'blur(3px)'}}><div style={{background:'#FAFAF7',borderRadius:'20px 20px 0 0',padding:'24px 22px 36px',width:'100%',maxWidth:440,animation:'fadeUp .28s cubic-bezier(.34,1.56,.64,1)'}}><div style={{width:40,height:4,background:'var(--border)',borderRadius:2,margin:'0 auto 22px'}}/>{payState==='processing' ? (<div style={{textAlign:'center'}}><div style={{width:40,height:40,border:'3px solid var(--border)',borderTopColor:'#C4522A',borderRadius:'50%',margin:'0 auto 16px',animation:'spin .7s linear infinite'}}/><div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:18,marginBottom:5}}>Awaiting payment</div><div style={{fontSize:12,color:'var(--muted)',lineHeight:1.7}}>Check your phone for the<br/>{payLabels[payMethod]} STK push</div><div style={{fontSize:10,color:'var(--muted)',opacity:.5,marginTop:12,animation:'pulse 1s ease infinite'}}>Expires in {countdown}s</div></div>) : (<div style={{textAlign:'center'}}><div style={{width:54,height:54,borderRadius:'50%',background:'#4A6741',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 12px',fontSize:24,color:'#fff'}}>✓</div><div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:19,marginBottom:3}}>Payment confirmed!</div><div style={{fontSize:12,color:'var(--muted)',marginBottom:14}}>Show this QR code at the counter</div><div style={{width:180,height:180,background:'#fff',border:'2px solid var(--border)',borderRadius:12,margin:'0 auto 10px',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}><QRCanvas refCode={qrRef} size={180}/></div><div style={{fontFamily:'Syne,sans-serif',fontSize:12,fontWeight:700,letterSpacing:2,color:'var(--muted)',marginBottom:4}}>{qrRef}</div><div style={{fontSize:10,color:'var(--muted)',lineHeight:1.7,maxWidth:240,margin:'0 auto 18px'}}>Show to canteen staff to receive your order.<br/>Valid 30 minutes · one use only.</div><button onClick={()=>{setPayState(null);setCart({});setPhone('');}} style={{background:'#EDE8DF',border:'none',borderRadius:9,padding:'11px 26px',fontFamily:'Syne,sans-serif',fontSize:13,fontWeight:600,cursor:'pointer',color:'#1C1A17'}}>Done — new order</button></div>)}</div></div> )}</div> ); }
-
     function MenuPage({cart, setCart, setPage}) { const {showToast} = useContext(AppCtx); const [cat, setCat] = useState('all'); const [modalMeal, setModalMeal] = useState(null); const [modalQty, setModalQty] = useState(1); const [search, setSearch] = useState(''); const [cartOpen, setCartOpen] = useState(true); const addToCart = useCallback((item, qty) => { setCart(prev => { const next = {...prev}; next[item.id] = next[item.id] ? {...next[item.id], qty: next[item.id].qty+qty} : {...item, qty}; return next; }); showToast(`✓ ${item.name.split(' ')[0]} added`, 'success'); if(window.innerWidth<=800) setCartOpen(true); }, [setCart, showToast]); const allItems = [...MEALS, ...DRINKS]; const filtered = useMemo(() => { let items = cat==='all' ? MEALS : cat==='drinks' ? DRINKS : MEALS.filter(m=>m.cat===cat); if (search.trim()) items = [...MEALS,...DRINKS].filter(m=>m.name.toLowerCase().includes(search.toLowerCase())||m.desc.toLowerCase().includes(search.toLowerCase())); return items; }, [cat, search]); const showDrinks = (cat==='all' || cat==='drinks') && !search; const showMeals = cat!=='drinks' || !!search; const mealItems = search ? filtered.filter(m=>m.cat!=='drinks') : (cat==='drinks'?[]:filtered); const drinkItems = search ? filtered.filter(m=>m.cat==='drinks') : DRINKS; const cartCount = Object.values(cart).reduce((s,i)=>s+i.qty,0); return ( <div className="menu-layout" style={{display:'flex',flex:1,minHeight:0,overflow:'hidden'}}><div className="menu-left" style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}><div style={{background:'#2D2520',padding:'20px 20px 16px',flexShrink:0}}><div style={{fontSize:9,letterSpacing:2.5,textTransform:'uppercase',color:'#F0A030',fontWeight:600,marginBottom:3}}>Today's canteen</div><div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:22,color:'#F5F0E8',lineHeight:1.1,marginBottom:2}}>What are you having today?</div><div style={{fontSize:11,color:'#6A6050',marginBottom:14}}>Fresh meals served 07:00 – 20:00</div><div style={{display:'flex',gap:5}}><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search meals & drinks…" style={{flex:1,background:'rgba(255,255,255,.07)',border:'1px solid rgba(255,255,255,.1)',borderRadius:8,padding:'8px 12px',fontSize:12,color:'#F5F0E8'}}/>{search && <button onClick={()=>setSearch('')} style={{background:'rgba(255,255,255,.07)',border:'1px solid rgba(255,255,255,.1)',borderRadius:8,padding:'8px 12px',color:'#9A9080'}}>✕</button>}</div></div>{!search && (<div style={{background:'#FAFAF7',borderBottom:'1px solid var(--border)',flexShrink:0,overflowX:'auto'}}><div style={{display:'flex',padding:'0 16px',gap:2}}>{CATS.map(c => { const count = c.key==='all'?MEALS.length+DRINKS.length:c.key==='drinks'?DRINKS.length:MEALS.filter(m=>m.cat===c.key).length; return (<button key={c.key} onClick={()=>setCat(c.key)} style={{padding:'11px 10px',fontSize:11,fontWeight:500,whiteSpace:'nowrap',color:cat===c.key?'#C4522A':'var(--muted)',borderBottom:`2px solid ${cat===c.key?'#C4522A':'transparent'}`}}>{c.label}<span style={{background:cat===c.key?'#F5E8E2':'#EDE8DF',color:cat===c.key?'#C4522A':'var(--muted)',borderRadius:10,padding:'1px 6px',fontSize:9,marginLeft:5}}>{count}</span></button>);})}</div></div>)}<div style={{overflowY:'auto',padding:18,flex:1}}>{search && filtered.length===0 && (<div style={{textAlign:'center',padding:'60px 20px',color:'var(--muted)'}}><div style={{fontSize:36,marginBottom:12}}>🔍</div><div style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:16,marginBottom:4}}>No results for "{search}"</div><div style={{fontSize:13}}>Try a different search term</div></div>)}{showMeals && mealItems.length>0 && (<><div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}><span style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:15}}>{search?'Meals':(cat==='all'?'All meals':cat.charAt(0).toUpperCase()+cat.slice(1))}</span><span style={{fontSize:11,color:'var(--muted)'}}>{mealItems.length} items</span></div><div className="menu-grid" style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(185px,1fr))',gap:11,marginBottom:22}}>{mealItems.map(m => <MealCard key={m.id} meal={m} onAdd={addToCart} onOpen={m=>{setModalMeal(m);setModalQty(1)}}/>)}</div></>)}{showDrinks && drinkItems.length>0 && (<><div style={{marginBottom:10}}><span style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:15}}>Drinks</span></div><div style={{display:'flex',flexWrap:'wrap',gap:8}}>{drinkItems.map(d => <DrinkChip key={d.id} drink={d} onAdd={addToCart}/>)}</div></>)}</div></div><CartSidebar cart={cart} setCart={setCart} setPage={setPage} isOpen={cartOpen} onToggle={()=>setCartOpen(!cartOpen)}/><button className="cart-toggle" onClick={()=>setCartOpen(true)} style={{display: window.innerWidth <= 800 ? 'flex' : 'none', position:'fixed', bottom:20, right:20, background:'#C4522A', color:'white', borderRadius:40, padding:'10px 18px', zIndex:250, boxShadow:'0 4px 12px rgba(0,0,0,0.2)', alignItems:'center', gap:8, border:'none', fontSize:13, fontWeight:'bold'}}>🛒 {cartCount}</button><Modal open={!!modalMeal} onClose={()=>setModalMeal(null)}>{modalMeal && <>...</>}</Modal></div> ); }
     function MealCard({meal, onAdd, onOpen}) { const [added, setAdded] = useState(false); const handleQuickAdd = e => { e.stopPropagation(); onAdd(meal, 1); setAdded(true); setTimeout(()=>setAdded(false), 800); }; return ( <div onClick={()=>meal.stock && onOpen(meal)} style={{background:meal.stock?'#fff':'#F8F6F2',border:`1px solid ${meal.stock?'#E2D9CC':'#EDE8DF'}`,borderRadius:14,overflow:'hidden',cursor:meal.stock?'pointer':'not-allowed',opacity:meal.stock?1:.6,transition:'transform .18s,box-shadow .18s'}}><div style={{height:110,background:CAT_COLORS[meal.cat]||'#EDE8DF',display:'flex',alignItems:'center',justifyContent:'center',fontSize:46,position:'relative'}}>{meal.emoji}{meal.badge && (<span style={{position:'absolute',top:8,left:8,background:meal.badge==='popular'?'#C4522A':meal.badge==='new'?'#D4831A':'#4A6741',color:'#fff',fontSize:8,fontWeight:700,padding:'2px 7px',borderRadius:5}}>{meal.badge}</span>)}{!meal.stock && <span style={{position:'absolute',top:8,right:8,background:'rgba(28,26,23,.65)',color:'#fff',fontSize:8,padding:'2px 7px',borderRadius:5}}>SOLD OUT</span>}</div><div style={{padding:'10px 12px 12px'}}><div style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:13,marginBottom:2}}>{meal.name}</div><div style={{fontSize:10.5,color:'var(--muted)',marginBottom:8,lineHeight:1.4}}>{meal.desc}</div><div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}><div style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:14}}>{fmt(meal.price)} <span style={{fontSize:9,fontWeight:400,color:'var(--muted)'}}>TZS</span></div>{meal.stock && (<button onClick={handleQuickAdd} style={{width:28,height:28,borderRadius:'50%',background:added?'#4A6741':'#1C1A17',color:'#fff',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center',animation:added?'pop .3s ease':'none'}}>{added?'✓':'+'}</button>)}</div></div></div> ); }
     function DrinkChip({drink, onAdd}) { const [added, setAdded] = useState(false); return ( <div style={{display:'flex',alignItems:'center',gap:9,background:'#fff',border:'1px solid var(--border)',borderRadius:50,padding:'7px 13px 7px 9px',cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.borderColor='#1C1A17'}><span style={{fontSize:20}}>{drink.emoji}</span><div><div style={{fontSize:12,fontWeight:500}}>{drink.name}</div><div style={{fontSize:10,color:'var(--muted)'}}>{fmt(drink.price)} TZS</div></div><button onClick={()=>{onAdd(drink,1);setAdded(true);setTimeout(()=>setAdded(false),700)}} style={{width:22,height:22,borderRadius:'50%',background:added?'#4A6741':'#1C1A17',color:'#fff',fontSize:13,display:'flex',alignItems:'center',justifyContent:'center'}}>{added?'✓':'+'}</button></div> ); }
@@ -166,7 +162,7 @@
     function ReportsPage() { return ( <div style={{padding:24,overflowY:'auto'}}><div style={{fontWeight:800,fontSize:20}}>Reports</div><div className="admin-dashboard-stats" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}><StatCard label="This month" value="TZS 2.4M" sub="89 hours" color="rust" icon="📅"/><StatCard label="Total orders" value="1,247" color="amber" icon="📋"/><StatCard label="Top payer" value="M-Pesa" color="sage" icon="📱"/></div><div className="admin-grid-2col" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Daily revenue</div><MiniBarChart data={SALES_DATA}/></div><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Category breakdown</div>{[{label:'Lunch',pct:38},{label:'Dinner',pct:29},{label:'Breakfast',pct:18}].map(c=>(<div key={c.label} style={{display:'flex',gap:8,marginBottom:8}}><span style={{width:70}}>{c.label}</span><div style={{flex:1,height:6,background:'#EDE8DF'}}><div style={{width:c.pct+'%',height:'100%',background:'#C4522A'}}/></div><span>{c.pct}%</span></div>))}</div></div></div> ); }
     function LoginScreen({onLogin}) { const [role, setRole] = useState('student'); const [id, setId] = useState(''); const [pass, setPass] = useState(''); const [loading, setLoading] = useState(false); const [err, setErr] = useState(''); const creds = { student:{id:'CS/2022/042',pass:'student123',name:'John M.',initials:'JM'}, staff:{id:'STAFF001',pass:'staff123',name:'Mary K.',initials:'MK'}, admin:{id:'ADMIN001',pass:'admin123',name:'Dr. Osei',initials:'DO'}, }; const handleLogin = () => { const c = creds[role]; if(id===c.id && pass===c.pass) { setLoading(true); setTimeout(()=>onLogin({role,name:c.name,initials:c.initials,id}),1000); } else { setErr('Incorrect credentials.'); } }; return ( <div style={{minHeight:'100vh',background:'#1C1A17',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}><div style={{width:'100%',maxWidth:400}}><div style={{textAlign:'center',marginBottom:32}}><div style={{fontFamily:'Syne',fontWeight:800,fontSize:32,color:'#F5F0E8'}}>UniEat</div><div style={{fontSize:12,color:'#4A4030'}}>University Canteen System</div></div><div style={{display:'flex',background:'#2D2520',borderRadius:12,padding:4,marginBottom:20,gap:3}}>{[['student','Student'],['staff','Staff'],['admin','Admin']].map(([r,l])=>(<button key={r} onClick={()=>{setRole(r);setErr('');}} style={{flex:1,padding:'8px',borderRadius:9,background:role===r?'#C4522A':'transparent',color:role===r?'#fff':'#6A6050'}}>{l}</button>))}</div><div style={{background:'#2D2520',borderRadius:16,padding:22}}><div style={{marginBottom:12}}><div style={{fontSize:10,color:'#6A6050',marginBottom:6}}>{role==='student'?'University ID':'Staff ID'}</div><input value={id} onChange={e=>setId(e.target.value)} placeholder={creds[role].id} style={{width:'100%',padding:'11px 14px',background:'#1C1A17',border:'1.5px solid #3A3530',borderRadius:10,color:'#F5F0E8'}}/></div><div style={{marginBottom:16}}><div style={{fontSize:10,color:'#6A6050',marginBottom:6}}>Password</div><input value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleLogin()} type="password" placeholder="••••••••" style={{width:'100%',padding:'11px 14px',background:'#1C1A17',border:'1.5px solid #3A3530',borderRadius:10,color:'#F5F0E8'}}/></div>{err && <div style={{fontSize:11,color:'#E8693D',marginBottom:12}}>{err}</div>}<button onClick={handleLogin} style={{width:'100%',background:loading?'#3A3530':'#C4522A',color:'#fff',borderRadius:10,padding:14,fontWeight:700}}>Sign in →</button><div style={{fontSize:10,color:'#4A4030',marginTop:14,textAlign:'center'}}>Demo: {creds[role].id} / {creds[role].pass}</div></div>{role==='student' && (<button onClick={()=>onLogin({role:'student',name:'Guest',initials:'GU',id:'GUEST'})} style={{width:'100%',marginTop:10,padding:'11px',borderRadius:12,border:'1px solid #3A3530',background:'transparent',color:'#6A6050'}}>Guest mode</button>)}</div></div> ); }
     function SettingsPage({user, onUpdateUser}) {
-        const { showToast } = userContext(AppCtx);
+        const { showToast } = useContext(AppCtx);
         const [formData, setFormData] = useState({
             name: user.name || '',
             currentPassword: '',
@@ -175,11 +171,6 @@
         });
         const [isLoading, setIsLoading] = useState(false);
         const [showPasswordForm, setShowPasswordForm] = useState(false);
-
-        const handleInputChange = (e) => {
-            const { name, value } = e.target;
-            setFormData(prev => ({ ...prev, [name]: value }));
-        };
 
         const handleInputChange = (e) => {
             const { name, value } = e.target;
@@ -391,6 +382,7 @@
     function UserMenu({ user, onLogout, onSettings }) {
         const [isOpen, setIsOpen] = useState(false);
         const menuRef = useRef(null);
+        const [isSmallScreen, setIsSmallScreen] = useState(window.innerWidth <= 480);
 
         useEffect(() => {
             const handleClickOutside = (event) => {
@@ -398,44 +390,112 @@
                     setIsOpen(false);
                 }
             };
+
+            const handleResize = () => {
+                setIsSmallScreen(window.innerWidth <= 480);
+                if (window.innerWidth <= 480) {
+                    setIsOpen(false); // Close menu on resize to avoid positioning issues
+                }
+            };
+
             document.addEventListener('mousedown', handleClickOutside);
-            return () => document.removeEventListener('mousedown', handleClickOutside);
+            window.addEventListener('resize', handleResize);
+
+            return () => {
+                document.removeEventListener('mousedown', handleClickOutside);
+                window.removeEventListener('resize', handleResize);
+            };
         }, []);
 
         return (
-            <div style={{ position: 'relative' }} ref={menuRef}>
+            <div style={{ position: 'relative', display: 'inline-block' }} ref={menuRef}>
                 <button
                     onClick={() => setIsOpen(!isOpen)}
                     style={{
-                        display: 'flex', alignItems: 'center', gap: 7, padding: '3px 10px',
-                        border: '1px solid #3A3530', borderRadius: 20, fontSize: 11, fontWeight: 500,
-                        background: 'transparent', color: '#F5F0E8', cursor: 'pointer'
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: isSmallScreen ? 4 : 7,
+                        padding: isSmallScreen ? '3px 8px' : '3px 10px',
+                        border: '1px solid #3A3530',
+                        borderRadius: 20,
+                        fontSize: isSmallScreen ? 10 : 11,
+                        fontWeight: 500,
+                        background: 'transparent',
+                        color: '#F5F0E8',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
                     }}
                 >
                     <div style={{
-                        width: 24, height: 24, borderRadius: '50%',
+                        width: isSmallScreen ? 20 : 24,
+                        height: isSmallScreen ? 20 : 24,
+                        borderRadius: '50%',
                         background: user.role === 'admin' ? '#185FA5' : user.role === 'staff' ? '#4A6741' : '#C4522A',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 9, fontWeight: 700, color: '#fff'
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: isSmallScreen ? 8 : 9,
+                        fontWeight: 700,
+                        color: '#fff'
                     }}>
                         {user.initials}
                     </div>
-                    <span style={{ display: 'inline-block' }}>{user.name}</span>
-                    <span style={{ fontSize: 10 }}>{isOpen ? '▲' : '▼'}</span>
+                    {!isSmallScreen && (
+                        <>
+                            <span style={{ display: 'inline-block' }}>{user.name}</span>
+                            <span style={{ fontSize: 10 }}>{isOpen ? '▲' : '▼'}</span>
+                        </>
+                    )}
+                    {isSmallScreen && (
+                        <span style={{ fontSize: 12 }}>☰</span>
+                    )}
                 </button>
 
                 {isOpen && (
                     <div style={{
-                        position: 'absolute', top: '100%', right: 0, marginTop: 8,
-                        background: '#2D2520', borderRadius: 12, minWidth: 200,
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.2)', zIndex: 300,
-                        overflow: 'hidden', animation: 'fadeUp .2s ease'
+                        position: 'fixed',
+                        top: 'auto',
+                        bottom: isSmallScreen ? 0 : 'auto',
+                        left: isSmallScreen ? 0 : 'auto',
+                        right: isSmallScreen ? 0 : 0,
+                        marginTop: isSmallScreen ? 0 : 8,
+                        background: '#2D2520',
+                        borderRadius: isSmallScreen ? '16px 16px 0 0' : '12px',
+                        minWidth: isSmallScreen ? '100%' : '200px',
+                        maxWidth: isSmallScreen ? '100%' : '280px',
+                        width: isSmallScreen ? '100%' : 'auto',
+                        boxShadow: isSmallScreen ? '0 -4px 20px rgba(0,0,0,0.3)' : '0 8px 24px rgba(0,0,0,0.2)',
+                        zIndex: 9999,
+                        overflow: 'hidden',
+                        animation: isSmallScreen ? 'slideUp 0.3s ease' : 'fadeUp 0.2s ease'
                     }}>
+                        {/* Drag handle for mobile */}
+                        {isSmallScreen && (
+                            <div
+                                style={{
+                                    width: 40,
+                                    height: 4,
+                                    background: '#4A4030',
+                                    borderRadius: 2,
+                                    margin: '12px auto 8px',
+                                    cursor: 'pointer'
+                                }}
+                                onClick={() => setIsOpen(false)}
+                            />
+                        )}
+
                         <div style={{ padding: '12px 16px', borderBottom: '1px solid #3A3530' }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F0E8' }}>{user.name}</div>
-                            <div style={{ fontSize: 10, color: '#6A6050', marginTop: 2 }}>
+                            <div style={{ fontSize: isSmallScreen ? 14 : 12, fontWeight: 600, color: '#F5F0E8' }}>
+                                {user.name}
+                            </div>
+                            <div style={{ fontSize: isSmallScreen ? 11 : 10, color: '#6A6050', marginTop: 2 }}>
                                 {user.role === 'student' ? 'Student' : user.role === 'staff' ? 'Staff Member' : 'Administrator'}
                             </div>
+                            {isSmallScreen && user.id && (
+                                <div style={{ fontSize: 10, color: '#4A4030', marginTop: 4 }}>
+                                    ID: {user.id}
+                                </div>
+                            )}
                         </div>
 
                         <button
@@ -444,15 +504,24 @@
                                 onSettings();
                             }}
                             style={{
-                                width: '100%', padding: '10px 16px', textAlign: 'left',
-                                background: 'transparent', color: '#F5F0E8', fontSize: 13,
-                                display: 'flex', alignItems: 'center', gap: 10,
-                                transition: 'background .15s', cursor: 'pointer'
+                                width: '100%',
+                                padding: isSmallScreen ? '14px 16px' : '10px 16px',
+                                textAlign: 'left',
+                                background: 'transparent',
+                                color: '#F5F0E8',
+                                fontSize: isSmallScreen ? 14 : 13,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 12,
+                                transition: 'background .15s',
+                                cursor: 'pointer',
+                                border: 'none'
                             }}
                             onMouseEnter={e => e.currentTarget.style.background = '#3A3530'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
-                            <span>⚙️</span> Settings
+                            <span style={{ fontSize: isSmallScreen ? 18 : 14 }}>⚙️</span>
+                            <span>Settings</span>
                         </button>
 
                         <button
@@ -461,20 +530,94 @@
                                 onLogout();
                             }}
                             style={{
-                                width: '100%', padding: '10px 16px', textAlign: 'left',
-                                background: 'transparent', color: '#E8693D', fontSize: 13,
-                                display: 'flex', alignItems: 'center', gap: 10,
-                                borderTop: '1px solid #3A3530', cursor: 'pointer'
+                                width: '100%',
+                                padding: isSmallScreen ? '14px 16px' : '10px 16px',
+                                textAlign: 'left',
+                                background: 'transparent',
+                                color: '#E8693D',
+                                fontSize: isSmallScreen ? 14 : 13,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 12,
+                                borderTop: '1px solid #3A3530',
+                                cursor: 'pointer'
                             }}
                             onMouseEnter={e => e.currentTarget.style.background = '#3A3530'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
-                            <span>🚪</span> Sign Out
+                            <span style={{ fontSize: isSmallScreen ? 18 : 14 }}>🚪</span>
+                            <span>Sign Out</span>
                         </button>
                     </div>
                 )}
             </div>
         );
     }
-    function App() { const [user, setUser] = useState(null); const [page, setPage] = useState(''); const [cart, setCart] = useState({}); const [toast, showToast] = useToast(); const handleLogin = (u) => { setUser(u); setPage(u.role==='student'?'menu':u.role==='staff'?'scanner':'dashboard'); }; const handleLogout = () => { setUser(null); setPage(''); setCart({}); }; if (!user) return (<AppCtx.Provider value={{showToast}}><LoginScreen onLogin={handleLogin}/><Toast toast={toast}/></AppCtx.Provider>); const renderPage = () => { if (user.role==='student') { if (page==='menu') return <MenuPage cart={cart} setCart={setCart} setPage={setPage}/>; if (page==='orders') return <OrdersPage/>; } if (user.role==='staff') { if (page==='scanner') return <ScannerPage/>; if (page==='queue') return <QueuePage/>; } if (user.role==='admin') { if (page==='dashboard') return <DashboardPage/>; if (page==='menu-mgmt') return <MenuMgmtPage/>; if (page==='orders-mgmt') return <OrdersMgmtPage/>; if (page==='reports') return <ReportsPage/>; } return <div>404</div>; }; return ( <AppCtx.Provider value={{showToast}}><div style={{height:'100vh',display:'flex',flexDirection:'column',overflow:'hidden'}}><TopBar page={page} setPage={setPage} user={user} cart={cart}/><div style={{flex:1,overflow:'auto'}}>{renderPage()}</div><button onClick={handleLogout} style={{position:'fixed',bottom:20,right:20,background:'#1C1A17',color:'#6A6050',border:'1px solid #3A3530',borderRadius:8,padding:'7px 13px',fontSize:11,zIndex:999}}>Sign out</button></div><Toast toast={toast}/></AppCtx.Provider> ); }
+    function App() {
+        const [user, setUser] = useState(null);
+        const [page, setPage] = useState('');
+        const [cart, setCart] = useState({});
+        const [toast, showToast] = useToast();
+
+        const handleLogin = (u) => {
+            setUser(u);
+            setPage(u.role==='student'?'menu':u.role==='staff'?'scanner':'dashboard');
+        };
+
+        const handleLogout = () => {
+            setUser(null);
+            setPage('');
+            setCart({});
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+        };
+
+        const handleUpdateUser = (updatedUser) => {
+            setUser(updatedUser);
+        };
+
+        const handleOpenSettings = () => {
+            setPage('settings');
+        };
+
+        if (!user) return (<AppCtx.Provider value={{showToast}}><LoginScreen onLogin={handleLogin}/><Toast toast={toast}/></AppCtx.Provider>);
+
+        const renderPage = () => {
+            if (user.role==='student') {
+                if (page==='menu') return <MenuPage cart={cart} setCart={setCart} setPage={setPage}/>;
+                if (page==='orders') return <OrdersPage/>;
+            }
+            if (user.role==='staff') {
+                if (page==='scanner') return <ScannerPage/>;
+                if (page==='queue') return <QueuePage/>;
+            }
+            if (user.role==='admin') {
+                if (page==='dashboard') return <DashboardPage/>;
+                if (page==='menu-mgmt') return <MenuMgmtPage/>;
+                if (page==='orders-mgmt') return <OrdersMgmtPage/>;
+                if (page==='reports') return <ReportsPage/>;
+            }
+            if (page==='settings') return <SettingsPage user={user} onUpdateUser={handleUpdateUser} />;
+            return <div>404</div>;
+        };
+
+        return (
+            <AppCtx.Provider value={{showToast}}>
+                <div style={{height:'100vh',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+                    <TopBar
+                        page={page}
+                        setPage={setPage}
+                        user={user}
+                        cart={cart}
+                        onLogout={handleLogout}
+                        onSettings={handleOpenSettings}
+                    />
+                    <div style={{flex:1,overflow:'auto'}}>
+                        {renderPage()}
+                    </div>
+                </div>
+                <Toast toast={toast}/>
+            </AppCtx.Provider>
+        );
+    }
     ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
