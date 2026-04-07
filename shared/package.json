@@ -1,0 +1,10 @@
+{
+  "name": "unieat-shared",
+  "version": "1.0.0",
+  "description": "Shared utilities for UniEat systems",
+  "main": "index.js",
+  "dependencies": {
+    "pg": "^8.11.3",
+    "winston": "^3.11.0"
+  }
+}
