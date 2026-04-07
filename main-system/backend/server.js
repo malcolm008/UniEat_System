@@ -4,18 +4,28 @@ const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
-const logger = require('./utils/logger');
-const {errorHandler, notFoundHandler} = require('./middleware/errorHandler');
-const {authRouter, menuRouter, orderRouter, paymentRouter, userRouter, reportRouter} = require('./routes/index');
+
+// Import from shared directory (adjust path as needed)
+const { logger, setSystem } = require('../../shared/utils/logger');
+const { success } = require('../../shared/utils/response');
+const { query } = require('../../shared/db/db');
+const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
+const { authenticate, checkSubscription } = require('../../shared/middleware/auth');
+const { authRouter, menuRouter, orderRouter, paymentRouter, userRouter, reportRouter } = require('./routes/index');
+
+// Set system name for logging
+setSystem('main-system');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Middleware
 app.use(helmet());
 app.use(cors({
     origin: (process.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(','),
     credentials: true,
 }));
+
 app.use(rateLimit({
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
     max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
@@ -25,37 +35,50 @@ app.use(rateLimit({
 }));
 
 app.use(express.json({limit: '2mb'}));
-app.use(express.json({extended: true}));
 
+// Logging
 if (process.env.NODE_ENV !== 'test') {
     app.use(morgan('dev', {stream: {write: msg => logger.info(msg.trim())}}));
 }
 
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'ok',
-        service: 'UniEat API',
-        version: '1.0.0',
-        env: process.env.NODE_ENV,
-        timestamp: new Date().toISOString(),
-    });
+// Health check
+app.get('/health', async (req, res) => {
+    try {
+        await query('SELECT 1');
+        success(res, {
+            status: 'ok',
+            service: 'UniEat Main API',
+            database: 'connected',
+            timestamp: new Date().toISOString()
+        });
+    } catch (err) {
+        success(res, {
+            status: 'degraded',
+            service: 'UniEat Main API',
+            database: 'disconnected',
+            timestamp: new Date().toISOString()
+        });
+    }
 });
 
+// Routes
 app.use('/api/auth', authRouter);
-app.use('/api/menu', menuRouter);
-app.use('/api/orders', orderRouter);
-app.use('/api/payments', paymentRouter);
-app.use('/api/users', userRouter);
-app.use('/api/reports', reportRouter);
+app.use('/api/menu', authenticate, checkSubscription, menuRouter);
+app.use('/api/orders', authenticate, checkSubscription, orderRouter);
+app.use('/api/payments', authenticate, checkSubscription, paymentRouter);
+app.use('/api/users', authenticate, checkSubscription, userRouter);
+app.use('/api/reports', authenticate, checkSubscription, reportRouter);
 
+// Error handling
 app.use(notFoundHandler);
 app.use(errorHandler);
 
+// Start server
 app.listen(PORT, () => {
-      logger.info(`   UniEat API running on http://localhost:${PORT}`);
-      logger.info(`   Environment : ${process.env.NODE_ENV}`);
-      logger.info(`   Database    : ${process.env.DB_NAME}@${process.env.DB_HOST}:${process.env.DB_PORT}`);
-      logger.info(`   Docs        : GET /health`);
+    logger.info(`   UniEat Main API running on http://localhost:${PORT}`);
+    logger.info(`   Environment : ${process.env.NODE_ENV}`);
+    logger.info(`   Database    : ${process.env.DB_NAME}@${process.env.DB_HOST}:${process.env.DB_PORT}`);
+    logger.info(`   Docs        : GET /health`);
 });
 
 module.exports = app;
