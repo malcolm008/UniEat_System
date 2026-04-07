@@ -92,14 +92,33 @@ function LoginScreen({ onLogin }) {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!email || !password) { setError('Please enter email and password'); return; }
-        setLoading(true); setError('');
-        setTimeout(() => {
-            if (email === 'superadmin@unieat.com' && password === 'SuperAdmin123!') {
-                localStorage.setItem('superAdminToken', 'demo-token-123');
-                onLogin({ name: 'System Owner', email, role: 'super_admin' });
-            } else { setError('Invalid credentials'); setLoading(false); }
-        }, 1000);
+        setLoading(true);
+        setError('');
+
+        try {
+            const response = await fetch('http://localhost:5001/api/super-admin/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json'},
+                body: JSON.stringify({ email, password })
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.token) {
+                localStorage.setItem('superAdminToken', data.token);
+                localStorage.setItem('superAdmin', JSON.stringify(data.admin));
+                onLogin(data.admin);
+            } else {
+                setError(data.message || 'Invalid credentials');
+                setLoading(false);
+            }
+        } catch (err) {
+            console.error('Login error:', err);
+            setError('Network error. Please make sure the backend server is running on port 5001.');
+            setLoading(false);
+        }
     };
+
     return (
         <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
             <div style={{ background: 'rgba(26, 26, 26, 0.95)', borderRadius: 20, padding: 40, width: '100%', maxWidth: 420 }}>

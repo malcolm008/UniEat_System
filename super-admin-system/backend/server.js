@@ -8,19 +8,21 @@ const bcrypt = require('bcryptjs');
 const app = express();
 const PORT = process.env.PORT || 5001;
 
+// Middleware
 app.use(cors({
     origin: ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3001'],
     credentials: true
 }));
-
 app.use(express.json());
 
+// ========== HELPER: Verify JWT Token ==========
 const verifyToken = (req, res, next) => {
     const token = req.headers.authorization?.split(' ')[1];
 
     if (!token) {
         return res.status(401).json({ success: false, message: 'Access token required' });
     }
+
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super-admin-secret-key');
         req.admin = decoded;
@@ -30,12 +32,14 @@ const verifyToken = (req, res, next) => {
     }
 };
 
+// ========== SUPER ADMIN LOGIN ==========
 app.post('/api/super-admin/login', async (req, res) => {
     const { email, password } = req.body;
 
     console.log('Login attempt:', { email });
 
     try {
+        // Check super_admins table
         const result = await pool.query(
             'SELECT * FROM super_admins WHERE email = $1 AND is_active = true',
             [email]
@@ -50,6 +54,7 @@ app.post('/api/super-admin/login', async (req, res) => {
 
         const admin = result.rows[0];
 
+        // Verify password (for demo, accept plain password)
         const validPassword = (password === 'SuperAdmin123!' || password === 'Admin123!');
 
         if (!validPassword) {
@@ -59,6 +64,7 @@ app.post('/api/super-admin/login', async (req, res) => {
             });
         }
 
+        // Generate JWT token
         const token = jwt.sign(
             { id: admin.id, email: admin.email, role: admin.role },
             process.env.JWT_SECRET || 'super-admin-secret-key',
@@ -66,7 +72,7 @@ app.post('/api/super-admin/login', async (req, res) => {
         );
 
         res.json({
-            success: true;
+            success: true,
             token,
             admin: {
                 id: admin.id,
@@ -75,34 +81,36 @@ app.post('/api/super-admin/login', async (req, res) => {
                 role: admin.role
             }
         });
+
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ success: false, message: 'Server error: ' + error.message });
     }
 });
 
-app.get('/api/super-admin/stats', verifyToken, async (res, res) => {
+// ========== GET STATISTICS ==========
+app.get('/api/super-admin/stats', verifyToken, async (req, res) => {
     try {
         const universities = await pool.query('SELECT COUNT(*) FROM universities');
-
-        const activateSubscriptions = await pool.query('SELECT COUNT(*) FROM universities WHERE subscription_status = $1', ['activate']);
-        const totalUsers = await pool.query('SELECT COUNT (*) FROM users');
+        const activeSubscriptions = await pool.query('SELECT COUNT(*) FROM universities WHERE subscription_status = $1', ['active']);
+        const totalUsers = await pool.query('SELECT COUNT(*) FROM users');
 
         res.json({
             success: true,
             stats: {
                 totalUniversities: parseInt(universities.rows[0].count),
-                activeSubscriptions: parseInt(activateSubscriptions.rows[0].count),
-                totalUser: parseInt(totalUsers.rows[0].count),
+                activeSubscriptions: parseInt(activeSubscriptions.rows[0].count),
+                totalUsers: parseInt(totalUsers.rows[0].count),
                 monthlyRevenue: 1200
             }
         });
     } catch (error) {
-        console.error('Error fetching stats:', errors);
+        console.error('Error fetching stats:', error);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
+// ========== GET ALL UNIVERSITIES ==========
 app.get('/api/super-admin/universities', verifyToken, async (req, res) => {
     try {
         const result = await pool.query(`
@@ -119,6 +127,7 @@ app.get('/api/super-admin/universities', verifyToken, async (req, res) => {
     }
 });
 
+// ========== ADD NEW UNIVERSITY ==========
 app.post('/api/super-admin/universities', verifyToken, async (req, res) => {
     const { name, email, phone, address, city, country } = req.body;
 
@@ -136,6 +145,7 @@ app.post('/api/super-admin/universities', verifyToken, async (req, res) => {
     }
 });
 
+// ========== ACTIVATE/EXTEND SUBSCRIPTION ==========
 app.post('/api/super-admin/universities/:id/activate-subscription', verifyToken, async (req, res) => {
     const { id } = req.params;
     const { duration, amount } = req.body;
@@ -145,28 +155,30 @@ app.post('/api/super-admin/universities/:id/activate-subscription', verifyToken,
 
     try {
         await pool.query(
-           `UPDATE universities
-            SET subscription_status = 'active',
-                status = 'active',
-                subscription_end = $1,
-                updated_at = NOW()
-            WHERE id = $2`,
-           [endDate, id]
+            `UPDATE universities
+             SET subscription_status = 'active',
+                 status = 'active',
+                 subscription_end = $1,
+                 updated_at = NOW()
+             WHERE id = $2`,
+            [endDate, id]
         );
 
+        // Log the subscription activation
         await pool.query(
             `INSERT INTO subscription_logs (university_id, action, details)
              VALUES ($1, $2, $3)`,
             [id, 'subscription_activated', JSON.stringify({ duration, amount, endDate: endDate.toISOString() })]
         );
 
-        res.json({ success: true, message: 'Subscription activated successfully'});
+        res.json({ success: true, message: 'Subscription activated successfully' });
     } catch (error) {
         console.error('Error activating subscription:', error);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });
 
+// ========== SUSPEND UNIVERSITY ==========
 app.post('/api/super-admin/universities/:id/suspend', verifyToken, async (req, res) => {
     const { id } = req.params;
 
@@ -186,10 +198,11 @@ app.post('/api/super-admin/universities/:id/suspend', verifyToken, async (req, r
     }
 });
 
+// ========== GET ALL USERS (for Super Admin management) ==========
 app.get('/api/super-admin/users', verifyToken, async (req, res) => {
     const { universityId, role } = req.query;
 
-    set query = `
+    let query = `
         SELECT u.*, un.name as university_name
         FROM users u
         LEFT JOIN universities un ON u.university_id = un.id
@@ -204,7 +217,7 @@ app.get('/api/super-admin/users', verifyToken, async (req, res) => {
 
     if (role && role !== 'all') {
         params.push(role);
-        query += `AND u.role = $${params.length}`;
+        query += ` AND u.role = $${params.length}`;
     }
 
     query += ` ORDER BY u.created_at DESC`;
@@ -218,10 +231,12 @@ app.get('/api/super-admin/users', verifyToken, async (req, res) => {
     }
 });
 
+// ========== CREATE NEW USER (via Super Admin) ==========
 app.post('/api/super-admin/users', verifyToken, async (req, res) => {
     const { name, email, reg_number, password, role, university_id } = req.body;
 
     try {
+        // Check if user already exists
         const existing = await pool.query(
             'SELECT id FROM users WHERE reg_number = $1 OR email = $2',
             [reg_number, email]
@@ -251,6 +266,7 @@ app.post('/api/super-admin/users', verifyToken, async (req, res) => {
     }
 });
 
+// ========== UPDATE USER ==========
 app.put('/api/super-admin/users/:id', verifyToken, async (req, res) => {
     const { id } = req.params;
     const { name, email, reg_number, role, university_id } = req.body;
@@ -269,6 +285,7 @@ app.put('/api/super-admin/users/:id', verifyToken, async (req, res) => {
     }
 });
 
+// ========== DELETE USER ==========
 app.delete('/api/super-admin/users/:id', verifyToken, async (req, res) => {
     const { id } = req.params;
 
@@ -281,6 +298,23 @@ app.delete('/api/super-admin/users/:id', verifyToken, async (req, res) => {
     }
 });
 
+// ========== GET SUBSCRIPTIONS HISTORY ==========
+app.get('/api/super-admin/subscriptions', verifyToken, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT s.*, u.name as university_name
+            FROM subscriptions s
+            JOIN universities u ON s.university_id = u.id
+            ORDER BY s.created_at DESC
+        `);
+        res.json({ success: true, subscriptions: result.rows });
+    } catch (error) {
+        console.error('Error fetching subscriptions:', error);
+        res.json({ success: true, subscriptions: [] });
+    }
+});
+
+// ========== HEALTH CHECK ==========
 app.get('/health', (req, res) => {
     res.json({
         status: 'ok',
@@ -290,6 +324,7 @@ app.get('/health', (req, res) => {
     });
 });
 
+// ========== START SERVER ==========
 app.listen(PORT, () => {
     console.log(`👑 Super Admin API running on http://localhost:${PORT}`);
     console.log(`📊 Frontend should be at: http://localhost:3001`);
