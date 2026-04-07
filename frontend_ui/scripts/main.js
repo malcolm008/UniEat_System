@@ -581,27 +581,29 @@
             setLoading(true);
             try {
                 const token = localStorage.getItem('token');
-                const response = await fetch('http://localhost:5000/api/users', {
+                const response = await fetch('http://localhost:5000/api/users?role=staff', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const result = await response.json();
                 if (result.success && result.users) {
-                    setUsers(result.users);
+                    // Filter to ensure only staff users
+                    const staffUsers = result.users.filter(user => user.role === 'staff');
+                    setUsers(staffUsers);
                 } else {
-                    // Fallback to sample data
+                    // Fallback to sample staff data
                     setUsers([
-                        { id: 1, name: 'John Mwangi', email: 'john@unieat.com', reg_number: 'CS/2022/042', role: 'student', is_active: true },
-                        { id: 2, name: 'Mary K.', email: 'mary@unieat.com', reg_number: 'STAFF001', role: 'staff', is_active: true },
-                        { id: 3, name: 'Dr. Osei', email: 'admin@unieat.com', reg_number: 'ADMIN001', role: 'admin', is_active: true },
+                        { id: 2, name: 'Mary K.', email: 'mary@unieat.com', reg_number: 'STAFF001', role: 'staff', is_active: true, created_at: '2024-01-15' },
+                        { id: 4, name: 'James Otieno', email: 'james@unieat.com', reg_number: 'STAFF002', role: 'staff', is_active: true, created_at: '2024-02-20' },
+                        { id: 5, name: 'Grace Mwangi', email: 'grace@unieat.com', reg_number: 'STAFF003', role: 'staff', is_active: false, created_at: '2024-03-10' },
                     ]);
                 }
             } catch (error) {
                 console.error('Failed to load users:', error);
-                // Fallback to sample data
+                // Fallback to sample staff data
                 setUsers([
-                    { id: 1, name: 'John Mwangi', email: 'john@unieat.com', reg_number: 'CS/2022/042', role: 'student', is_active: true },
-                    { id: 2, name: 'Mary K.', email: 'mary@unieat.com', reg_number: 'STAFF001', role: 'staff', is_active: true },
-                    { id: 3, name: 'Dr. Osei', email: 'admin@unieat.com', reg_number: 'ADMIN001', role: 'admin', is_active: true },
+                    { id: 2, name: 'Mary K.', email: 'mary@unieat.com', reg_number: 'STAFF001', role: 'staff', is_active: true, created_at: '2024-01-15' },
+                    { id: 4, name: 'James Otieno', email: 'james@unieat.com', reg_number: 'STAFF002', role: 'staff', is_active: true, created_at: '2024-02-20' },
+                    { id: 5, name: 'Grace Mwangi', email: 'grace@unieat.com', reg_number: 'STAFF003', role: 'staff', is_active: false, created_at: '2024-03-10' },
                 ]);
             }
             setLoading(false);
@@ -630,6 +632,7 @@
                     },
                     body: JSON.stringify({
                         ...formData,
+                        role: 'staff', // Force role to be staff
                         password: newPassword
                     })
                 });
@@ -639,9 +642,9 @@
                     await loadUsers();
                     setShowAddModal(false);
                     setFormData({ name: '', email: '', reg_number: '', role: 'staff' });
-                    showToast(`User added! Password: ${newPassword}`, 'success');
-                    // Show password in alert for demo (in production, email it)
-                    alert(`User created successfully!\n\nUsername: ${formData.reg_number}\nPassword: ${newPassword}\n\nPlease share these credentials with the user.`);
+                    showToast(`Staff member added!`, 'success');
+                    // Show password in alert for sharing
+                    alert(`Staff account created successfully!\n\nName: ${formData.name}\nUsername: ${formData.reg_number}\nPassword: ${newPassword}\n\nPlease share these credentials with the staff member.`);
                 } else {
                     throw new Error(result.message);
                 }
@@ -650,14 +653,15 @@
                 const newUser = {
                     id: Date.now(),
                     ...formData,
+                    role: 'staff',
                     is_active: true,
                     created_at: new Date().toISOString()
                 };
                 setUsers(prev => [...prev, newUser]);
                 setShowAddModal(false);
                 setFormData({ name: '', email: '', reg_number: '', role: 'staff' });
-                showToast(`User added (demo mode). Password: ${newPassword}`, 'success');
-                alert(`Demo mode - User created!\n\nUsername: ${formData.reg_number}\nPassword: ${newPassword}\n\nIn production, this would be emailed.`);
+                showToast(`Staff added (demo mode)`, 'success');
+                alert(`Demo mode - Staff created!\n\nName: ${formData.name}\nUsername: ${formData.reg_number}\nPassword: ${newPassword}`);
             }
         };
 
@@ -672,7 +676,10 @@
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify(formData)
+                    body: JSON.stringify({
+                        ...formData,
+                        role: 'staff' // Ensure role remains staff
+                    })
                 });
                 const result = await response.json();
 
@@ -681,28 +688,23 @@
                     setShowEditModal(false);
                     setSelectedUser(null);
                     setFormData({ name: '', email: '', reg_number: '', role: 'staff' });
-                    showToast('User updated successfully', 'success');
+                    showToast('Staff member updated successfully', 'success');
                 } else {
                     throw new Error(result.message);
                 }
             } catch (error) {
                 // Fallback to local edit
                 setUsers(prev => prev.map(u =>
-                    u.id === selectedUser.id ? { ...u, ...formData } : u
+                    u.id === selectedUser.id ? { ...u, ...formData, role: 'staff' } : u
                 ));
                 setShowEditModal(false);
                 setSelectedUser(null);
-                showToast('User updated (demo mode)', 'success');
+                showToast('Staff updated (demo mode)', 'success');
             }
         };
 
         const handleDeleteUser = async (user) => {
-            if (user.role === 'admin') {
-                showToast('Cannot delete admin users', 'error');
-                return;
-            }
-
-            if (!confirm(`Are you sure you want to delete ${user.name}?`)) return;
+            if (!confirm(`Are you sure you want to delete staff member ${user.name}?`)) return;
 
             try {
                 const token = localStorage.getItem('token');
@@ -714,14 +716,42 @@
 
                 if (result.success) {
                     await loadUsers();
-                    showToast('User deleted successfully', 'success');
+                    showToast('Staff member deleted successfully', 'success');
                 } else {
                     throw new Error(result.message);
                 }
             } catch (error) {
                 // Fallback to local delete
                 setUsers(prev => prev.filter(u => u.id !== user.id));
-                showToast('User deleted (demo mode)', 'success');
+                showToast('Staff deleted (demo mode)', 'success');
+            }
+        };
+
+        const handleToggleStatus = async (user) => {
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5000/api/users/${user.id}/toggle-status`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ is_active: !user.is_active })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    await loadUsers();
+                    showToast(`Staff ${user.is_active ? 'deactivated' : 'activated'} successfully`, 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                // Fallback to local toggle
+                setUsers(prev => prev.map(u =>
+                    u.id === user.id ? { ...u, is_active: !u.is_active } : u
+                ));
+                showToast(`Staff ${user.is_active ? 'deactivated' : 'activated'} (demo mode)`, 'success');
             }
         };
 
@@ -741,13 +771,13 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    showToast(`Password reset! New password: ${newPassword}`, 'success');
-                    alert(`Password reset for ${user.name}\n\nUsername: ${user.reg_number}\nNew Password: ${newPassword}\n\nPlease share this with the user.`);
+                    showToast(`Password reset for ${user.name}`, 'success');
+                    alert(`Password reset for staff member\n\nName: ${user.name}\nUsername: ${user.reg_number}\nNew Password: ${newPassword}\n\nPlease share this with the staff member.`);
                 } else {
                     throw new Error(result.message);
                 }
             } catch (error) {
-                showToast(`Demo mode - Password would be: ${newPassword}`, 'success');
+                showToast(`Demo mode - New password would be: ${newPassword}`, 'success');
                 alert(`Demo mode - Password reset for ${user.name}\n\nNew Password: ${newPassword}`);
             }
         };
@@ -756,7 +786,7 @@
             return (
                 <div style={{ padding: 40, textAlign: 'center' }}>
                     <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }}></div>
-                    <div>Loading users...</div>
+                    <div>Loading staff members...</div>
                 </div>
             );
         }
@@ -766,93 +796,118 @@
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                     <div>
                         <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 24, marginBottom: 4 }}>
-                            User Management
+                            Staff Management
                         </div>
                         <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                            Manage staff and student accounts
+                            Manage canteen staff accounts (view, add, edit, delete)
                         </div>
                     </div>
                     <Btn variant="rust" onClick={() => setShowAddModal(true)}>
-                        + Add New User
+                        + Add Staff Member
                     </Btn>
                 </div>
 
-                {/* Users Table */}
+                {/* Staff Statistics */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 20 }}>
+                    <StatCard label="Total Staff" value={users.length} color="sage" icon="👥" />
+                    <StatCard label="Active Staff" value={users.filter(u => u.is_active !== false).length} color="rust" icon="✅" />
+                    <StatCard label="Inactive Staff" value={users.filter(u => u.is_active === false).length} color="amber" icon="⏸️" />
+                </div>
+
+                {/* Staff Users Table */}
                 <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                             <tr style={{ background: 'var(--tag)' }}>
-                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Name</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Staff Name</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Email</th>
-                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>ID/Reg Number</th>
-                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Role</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Staff ID</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Status</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Joined</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {users.map((user, index) => (
-                                <tr key={user.id} style={{ borderTop: '1px solid var(--border)', background: index % 2 === 0 ? '#fff' : '#FAFAF7' }}>
-                                    <td style={{ padding: '12px 16px' }}>
-                                        <div style={{ fontWeight: 500 }}>{user.name}</div>
-                                    </td>
-                                    <td style={{ padding: '12px 16px', fontSize: 13, color: 'var(--muted)' }}>{user.email || '—'}</td>
-                                    <td style={{ padding: '12px 16px', fontSize: 13 }}>{user.reg_number}</td>
-                                    <td style={{ padding: '12px 16px' }}>
-                                        <Badge color={user.role === 'admin' ? 'rust' : user.role === 'staff' ? 'sage' : 'blue'}>
-                                            {user.role === 'admin' ? 'Admin' : user.role === 'staff' ? 'Staff' : 'Student'}
-                                        </Badge>
-                                    </td>
-                                    <td style={{ padding: '12px 16px' }}>
-                                        <Badge color={user.is_active !== false ? 'sage' : 'red'}>
-                                            {user.is_active !== false ? 'Active' : 'Inactive'}
-                                        </Badge>
-                                    </td>
-                                    <td style={{ padding: '12px 16px' }}>
-                                        <div style={{ display: 'flex', gap: 8 }}>
-                                            <button
-                                                onClick={() => {
-                                                    setSelectedUser(user);
-                                                    setFormData({
-                                                        name: user.name,
-                                                        email: user.email || '',
-                                                        reg_number: user.reg_number,
-                                                        role: user.role
-                                                    });
-                                                    setShowEditModal(true);
-                                                }}
-                                                style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
-                                            >
-                                                ✏️ Edit
-                                            </button>
-                                            {user.role !== 'admin' && (
-                                                <>
-                                                    <button
-                                                        onClick={() => handleResetPassword(user)}
-                                                        style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
-                                                    >
-                                                        🔑 Reset PW
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDeleteUser(user)}
-                                                        style={{ padding: '4px 8px', border: '1px solid #A32D2D', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#A32D2D' }}
-                                                    >
-                                                        🗑️ Delete
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
+                            {users.length === 0 ? (
+                                <tr>
+                                    <td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: 'var(--muted)' }}>
+                                        No staff members found. Click "Add Staff Member" to create one.
+                                     </td>
+                                 </tr>
+                            ) : (
+                                users.map((user, index) => (
+                                    <tr key={user.id} style={{ borderTop: '1px solid var(--border)', background: index % 2 === 0 ? '#fff' : '#FAFAF7' }}>
+                                        <td style={{ padding: '12px 16px' }}>
+                                            <div style={{ fontWeight: 500 }}>{user.name}</div>
+                                         </td>
+                                        <td style={{ padding: '12px 16px', fontSize: 13, color: 'var(--muted)' }}>{user.email || '—'}</td>
+                                        <td style={{ padding: '12px 16px', fontSize: 13 }}>
+                                            <Badge color="sage">{user.reg_number}</Badge>
+                                         </td>
+                                        <td style={{ padding: '12px 16px' }}>
+                                            <Badge color={user.is_active !== false ? 'sage' : 'red'}>
+                                                {user.is_active !== false ? 'Active' : 'Inactive'}
+                                            </Badge>
+                                         </td>
+                                        <td style={{ padding: '12px 16px', fontSize: 12, color: 'var(--muted)' }}>
+                                            {user.created_at ? new Date(user.created_at).toLocaleDateString() : '—'}
+                                         </td>
+                                        <td style={{ padding: '12px 16px' }}>
+                                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                                <button
+                                                    onClick={() => handleToggleStatus(user)}
+                                                    style={{
+                                                        padding: '4px 8px',
+                                                        border: '1px solid var(--border)',
+                                                        borderRadius: 6,
+                                                        cursor: 'pointer',
+                                                        fontSize: 11,
+                                                        background: user.is_active !== false ? '#FEF3DC' : '#EAF0E8',
+                                                        color: user.is_active !== false ? '#854F0B' : '#4A6741'
+                                                    }}
+                                                >
+                                                    {user.is_active !== false ? '🔴 Deactivate' : '🟢 Activate'}
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setSelectedUser(user);
+                                                        setFormData({
+                                                            name: user.name,
+                                                            email: user.email || '',
+                                                            reg_number: user.reg_number,
+                                                            role: 'staff'
+                                                        });
+                                                        setShowEditModal(true);
+                                                    }}
+                                                    style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+                                                >
+                                                    ✏️ Edit
+                                                </button>
+                                                <button
+                                                    onClick={() => handleResetPassword(user)}
+                                                    style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+                                                >
+                                                    🔑 Reset PW
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteUser(user)}
+                                                    style={{ padding: '4px 8px', border: '1px solid #A32D2D', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#A32D2D' }}
+                                                >
+                                                    🗑️ Delete
+                                                </button>
+                                            </div>
+                                         </td>
+                                     </tr>
+                                ))
+                            )}
                         </tbody>
                     </table>
                 </div>
 
-                {/* Add User Modal */}
+                {/* Add Staff Modal */}
                 <Modal open={showAddModal} onClose={() => setShowAddModal(false)} maxW={500} center>
                     <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 20, marginBottom: 20 }}>
-                        Add New User
+                        Add New Staff Member
                     </div>
                     <div style={{ marginBottom: 16 }}>
                         <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
@@ -875,48 +930,35 @@
                             value={formData.email}
                             onChange={e => setFormData({ ...formData, email: e.target.value })}
                             style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14 }}
-                            placeholder="user@unieat.com"
+                            placeholder="staff@unieat.com"
                         />
                     </div>
                     <div style={{ marginBottom: 16 }}>
                         <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
-                            ID/Registration Number *
+                            Staff ID *
                         </label>
                         <input
                             type="text"
                             value={formData.reg_number}
                             onChange={e => setFormData({ ...formData, reg_number: e.target.value })}
                             style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14 }}
-                            placeholder="STAFF002 or CS/2024/001"
+                            placeholder="STAFF002"
                         />
                     </div>
-                    <div style={{ marginBottom: 20 }}>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
-                            Role *
-                        </label>
-                        <select
-                            value={formData.role}
-                            onChange={e => setFormData({ ...formData, role: e.target.value })}
-                            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14, background: '#fff' }}
-                        >
-                            <option value="staff">Staff</option>
-                            <option value="student">Student</option>
-                        </select>
-                    </div>
-                    <div style={{ padding: 12, background: 'var(--info-bg)', borderRadius: 8, marginBottom: 20 }}>
+                    <div style={{ padding: 12, background: 'var(--infobg)', borderRadius: 8, marginBottom: 20 }}>
                         <div style={{ fontSize: 12, color: 'var(--info)', marginBottom: 4 }}>🔐 Auto-generated password</div>
-                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>A secure password will be generated automatically. You'll be able to share it with the user after creation.</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>A secure password will be generated automatically. You'll be able to share it with the staff member after creation.</div>
                     </div>
                     <div style={{ display: 'flex', gap: 12 }}>
                         <Btn fullWidth variant="ghost" onClick={() => setShowAddModal(false)}>Cancel</Btn>
-                        <Btn fullWidth variant="rust" onClick={handleAddUser}>Create User</Btn>
+                        <Btn fullWidth variant="rust" onClick={handleAddUser}>Add Staff Member</Btn>
                     </div>
                 </Modal>
 
-                {/* Edit User Modal */}
+                {/* Edit Staff Modal */}
                 <Modal open={showEditModal} onClose={() => setShowEditModal(false)} maxW={500} center>
                     <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 20, marginBottom: 20 }}>
-                        Edit User
+                        Edit Staff Member
                     </div>
                     <div style={{ marginBottom: 16 }}>
                         <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
@@ -940,9 +982,9 @@
                             style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14 }}
                         />
                     </div>
-                    <div style={{ marginBottom: 16 }}>
+                    <div style={{ marginBottom: 20 }}>
                         <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
-                            ID/Registration Number
+                            Staff ID
                         </label>
                         <input
                             type="text"
@@ -950,20 +992,6 @@
                             onChange={e => setFormData({ ...formData, reg_number: e.target.value })}
                             style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14 }}
                         />
-                    </div>
-                    <div style={{ marginBottom: 20 }}>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
-                            Role
-                        </label>
-                        <select
-                            value={formData.role}
-                            onChange={e => setFormData({ ...formData, role: e.target.value })}
-                            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14, background: '#fff' }}
-                        >
-                            <option value="staff">Staff</option>
-                            <option value="student">Student</option>
-                            <option value="admin">Admin</option>
-                        </select>
                     </div>
                     <div style={{ display: 'flex', gap: 12 }}>
                         <Btn fullWidth variant="ghost" onClick={() => setShowEditModal(false)}>Cancel</Btn>
@@ -1015,6 +1043,7 @@
                 if (page==='dashboard') return <DashboardPage/>;
                 if (page==='menu-mgmt') return <MenuMgmtPage/>;
                 if (page==='orders-mgmt') return <OrdersMgmtPage/>;
+                if (page === 'users') return <UserManagementPage/>;
                 if (page==='reports') return <ReportsPage/>;
             }
             if (page==='settings') return <SettingsPage user={user} onUpdateUser={handleUpdateUser} />;
