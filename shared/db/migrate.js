@@ -4,6 +4,59 @@ const { pool } = require('./db');
 const RESET = process.argv.includes('--reset');
 
 const migrations = [
+  // ── UNIVERSITIES (TENANT) ────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS universities (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name                VARCHAR(180) NOT NULL UNIQUE,
+    domain              VARCHAR(120) UNIQUE,
+    email               VARCHAR(180) UNIQUE NOT NULL,
+    phone               VARCHAR(20),
+    address             TEXT,
+    city                VARCHAR(100),
+    country             VARCHAR(100) DEFAULT 'Tanzania',
+    logo_url            VARCHAR(500),
+    status              VARCHAR(30) NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('active','inactive','pending','suspended')),
+    subscription_status VARCHAR(30) NOT NULL DEFAULT 'inactive'
+                        CHECK (subscription_status IN ('active','inactive','expired')),
+    subscription_start  TIMESTAMPTZ,
+    subscription_end    TIMESTAMPTZ,
+    max_users           INTEGER DEFAULT 5000,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+
+  // ── SUBSCRIPTIONS (Payment History) ─────────────────────────────
+  `CREATE TABLE IF NOT EXISTS subscriptions (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    university_id       UUID NOT NULL REFERENCES universities(id) ON DELETE CASCADE,
+    amount              INTEGER NOT NULL,
+    currency            VARCHAR(3) DEFAULT 'USD',
+    billing_cycle       VARCHAR(20) NOT NULL DEFAULT 'annual'
+                        CHECK (billing_cycle IN ('monthly','annual')),
+    status              VARCHAR(20) NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('active','expired','pending','cancelled')),
+    start_date          TIMESTAMPTZ NOT NULL,
+    end_date            TIMESTAMPTZ NOT NULL,
+    payment_method      VARCHAR(30),
+    payment_reference   VARCHAR(200),
+    notes               TEXT,
+    created_by          UUID REFERENCES super_admins(id),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS super_admins (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name                VARCHAR(120) NOT NULL,
+    email               VARCHAR(180) UNIQUE NOT NULL,
+    password            VARCHAR(255) NOT NULL,
+    role                VARCHAR(30) DEFAULT 'super_admin'
+                        CHECK (role IN ('super_admin','system_owner')),
+    is_active           BOOLEAN NOT NULL DEFAULT true,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+
   // ── USERS ──────────────────────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS users (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -127,7 +180,16 @@ const migrations = [
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
 
+  // ── ADD university_id TO USERS table ────────────────────────────
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS university_id UUID REFERENCES universities(id) ON DELETE CASCADE`,
+
   // ── INDEXES ────────────────────────────────────────────────────
+  `CREATE INDEX IF NOT EXISTS idx_users_university_id ON users(university_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_users_university_subscription ON users(university_id, is_active)`,
+  `CREATE INDEX IF NOT EXISTS idx_universities_status ON universities(status, subscription_status)`,
+  `CREATE INDEX IF NOT EXISTS idx_universities_subscription_end ON universities(subscription_end)`,
+  `CREATE INDEX IF NOT EXISTS idx_subscriptions_university_id ON subscriptions(university_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status)`,
   `CREATE INDEX IF NOT EXISTS idx_orders_status        ON orders(status)`,
   `CREATE INDEX IF NOT EXISTS idx_orders_created_at    ON orders(created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_orders_user_id       ON orders(user_id)`,
@@ -163,6 +225,26 @@ const migrations = [
     THEN CREATE TRIGGER trg_orders_updated_at BEFORE UPDATE ON orders
     FOR EACH ROW EXECUTE FUNCTION update_updated_at(); END IF;
    END $$`,
+
+  // ── AUTO-CHECK SUBSCRIPTION STATUS ────────────────────────────────
+  `CREATE OR REPLACE FUNCTION check_subscription_status()
+   RETURNS TRIGGER AS $$
+   BEGIN
+     IF NEW.subscription_end IS NOT NULL AND NEW.subscription_end < NOW() THEN
+       NEW.subscription_status := 'expired';
+     ELSIF NEW.subscription_status = 'active' AND NEW.subscription_end > NOW() THEN
+       NEW.subscription_status := 'active';
+     END IF;
+     RETURN NEW;
+   END;
+   $$ LANGUAGE plpgsql`,
+
+  `DROP TRIGGER IF EXISTS trg_check_subscription ON universities`,
+
+  `CREATE TRIGGER trg_check_subscription
+   BEFORE UPDATE ON universities
+   FOR EACH ROW
+   EXECUTE FUNCTION check_subscription_status()`,
 ];
 
 async function migrate() {
