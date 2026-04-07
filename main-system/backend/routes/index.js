@@ -32,7 +32,7 @@ const {
   getMenu, getAllItems, getItem, createItem, updateItem,
   deleteItem, toggleAvailability, getCategories, setDailyMenu, getDailySummary,
 } = require('../controllers/menuController');
-const { authenticate: auth, requireAdmin: admin, requireStaff: staff, optionalAuth } = require('../middleware/auth');
+const { authenticate: auth, requireAdmin: admin, requireStaff: staff, optionalAuth } = require('../../../shared/middleware/auth');
 
 menuRouter.get('/',          optionalAuth, getMenu);
 menuRouter.get('/categories', getCategories);
@@ -49,7 +49,7 @@ menuRouter.post('/daily',              auth, admin, setDailyMenu);
 // ── ORDER ROUTES ───────────────────────────────────────────────
 const orderRouter = require('express').Router();
 const { createOrder, getOrders, getMyOrders, getOrder, updateStatus, getStats } = require('../controllers/orderController');
-const authMw = require('../middleware/auth');
+const authMw = require('../../../shared/middleware/auth');
 
 orderRouter.post('/',          authMw.optionalAuth, createOrder);
 orderRouter.get('/',           authMw.authenticate, authMw.requireStaff, getOrders);
@@ -64,7 +64,7 @@ orderRouter.patch('/:id/status', authMw.authenticate, authMw.requireStaff,
 // ── PAYMENT ROUTES ─────────────────────────────────────────────
 const paymentRouter = require('express').Router();
 const { initiatePayment, confirmPayment, verifyQR, redeemQR, getQR } = require('../controllers/paymentController');
-const pAuth = require('../middleware/auth');
+const pAuth = require('../../../shared/middleware/auth');
 
 paymentRouter.post('/initiate',  pAuth.optionalAuth, initiatePayment);
 paymentRouter.post('/confirm',   confirmPayment);          // called by webhook or test
@@ -76,7 +76,7 @@ paymentRouter.get('/:orderId/qr',pAuth.optionalAuth, getQR);
 // ── USER ROUTES ────────────────────────────────────────────────
 const userRouter = require('express').Router();
 const { getUsers, getUser, updateUser, resetPassword } = require('../controllers/userController');
-const uAuth = require('../middleware/auth');
+const uAuth = require('../../../shared/middleware/auth');
 
 userRouter.get('/',          uAuth.authenticate, uAuth.requireAdmin, getUsers);
 userRouter.get('/:id',       uAuth.authenticate, uAuth.requireAdmin, getUser);
@@ -89,7 +89,7 @@ userRouter.post('/:id/reset-password', uAuth.authenticate, uAuth.requireAdmin,
 // ── REPORT ROUTES ──────────────────────────────────────────────
 const reportRouter = require('express').Router();
 const { getSalesReport, getAuditLog } = require('../controllers/reportController');
-const rAuth = require('../middleware/auth');
+const rAuth = require('../../../shared/middleware/auth');
 
 reportRouter.get('/sales', rAuth.authenticate, rAuth.requireAdmin, getSalesReport);
 reportRouter.get('/audit', rAuth.authenticate, rAuth.requireAdmin, getAuditLog);
