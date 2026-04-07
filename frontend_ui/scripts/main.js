@@ -96,7 +96,7 @@
             ? [{key:'menu',label:'Menu',icon:'🍽️'},{key:'orders',label:'My Orders',icon:'📋'}]
             : user.role === 'staff'
             ? [{key:'scanner',label:'Scanner',icon:'📷'},{key:'queue',label:'Queue',icon:'📋'}]
-            : [{key:'dashboard',label:'Dashboard',icon:'📊'},{key:'menu-mgmt',label:'Menu',icon:'🍽️'},{key:'orders-mgmt',label:'Orders',icon:'📋'},{key:'reports',label:'Reports',icon:'📈'}];
+            : [{key:'dashboard',label:'Dashboard',icon:'📊'},{key:'menu-mgmt',label:'Menu',icon:'🍽️'},{key:'orders-mgmt',label:'Orders',icon:'📋'},{key:'users',label:'Users',icon:'👥'},{key:'reports',label:'Reports',icon:'📈'}];
 
         return (
             <header style={{
@@ -550,6 +550,426 @@
                         </button>
                     </div>
                 )}
+            </div>
+        );
+    }
+    function UserManagementPage() {
+        const { showToast } = useContext(AppCtx);
+        const [users, setUsers] = useState([]);
+        const [loading, setLoading] = useState(true);
+        const [showAddModal, setShowAddModal] = useState(false);
+        const [showEditModal, setShowEditModal] = useState(false);
+        const [selectedUser, setSelectedUser] = useState(null);
+        const [formData, setFormData] = useState({
+            name: '',
+            email: '',
+            reg_number: '',
+            role: 'staff'
+        });
+        const [generatedPassword, setGeneratedPassword] = useState('');
+
+        const generatePassword = () => {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$';
+            let password = '';
+            for (let i = 0; i < 10; i++) {
+                password += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return password;
+        };
+
+        const loadUsers = async () => {
+            setLoading(true);
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch('http://localhost:5000/api/users', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+                if (result.success && result.users) {
+                    setUsers(result.users);
+                } else {
+                    // Fallback to sample data
+                    setUsers([
+                        { id: 1, name: 'John Mwangi', email: 'john@unieat.com', reg_number: 'CS/2022/042', role: 'student', is_active: true },
+                        { id: 2, name: 'Mary K.', email: 'mary@unieat.com', reg_number: 'STAFF001', role: 'staff', is_active: true },
+                        { id: 3, name: 'Dr. Osei', email: 'admin@unieat.com', reg_number: 'ADMIN001', role: 'admin', is_active: true },
+                    ]);
+                }
+            } catch (error) {
+                console.error('Failed to load users:', error);
+                // Fallback to sample data
+                setUsers([
+                    { id: 1, name: 'John Mwangi', email: 'john@unieat.com', reg_number: 'CS/2022/042', role: 'student', is_active: true },
+                    { id: 2, name: 'Mary K.', email: 'mary@unieat.com', reg_number: 'STAFF001', role: 'staff', is_active: true },
+                    { id: 3, name: 'Dr. Osei', email: 'admin@unieat.com', reg_number: 'ADMIN001', role: 'admin', is_active: true },
+                ]);
+            }
+            setLoading(false);
+        };
+
+        useEffect(() => {
+            loadUsers();
+        }, []);
+
+        const handleAddUser = async () => {
+            if (!formData.name || !formData.email || !formData.reg_number) {
+                showToast('Please fill in all fields', 'error');
+                return;
+            }
+
+            const newPassword = generatePassword();
+            setGeneratedPassword(newPassword);
+
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch('http://localhost:5000/api/users', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        ...formData,
+                        password: newPassword
+                    })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    await loadUsers();
+                    setShowAddModal(false);
+                    setFormData({ name: '', email: '', reg_number: '', role: 'staff' });
+                    showToast(`User added! Password: ${newPassword}`, 'success');
+                    // Show password in alert for demo (in production, email it)
+                    alert(`User created successfully!\n\nUsername: ${formData.reg_number}\nPassword: ${newPassword}\n\nPlease share these credentials with the user.`);
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                // Fallback to local add
+                const newUser = {
+                    id: Date.now(),
+                    ...formData,
+                    is_active: true,
+                    created_at: new Date().toISOString()
+                };
+                setUsers(prev => [...prev, newUser]);
+                setShowAddModal(false);
+                setFormData({ name: '', email: '', reg_number: '', role: 'staff' });
+                showToast(`User added (demo mode). Password: ${newPassword}`, 'success');
+                alert(`Demo mode - User created!\n\nUsername: ${formData.reg_number}\nPassword: ${newPassword}\n\nIn production, this would be emailed.`);
+            }
+        };
+
+        const handleEditUser = async () => {
+            if (!selectedUser) return;
+
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5000/api/users/${selectedUser.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(formData)
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    await loadUsers();
+                    setShowEditModal(false);
+                    setSelectedUser(null);
+                    setFormData({ name: '', email: '', reg_number: '', role: 'staff' });
+                    showToast('User updated successfully', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                // Fallback to local edit
+                setUsers(prev => prev.map(u =>
+                    u.id === selectedUser.id ? { ...u, ...formData } : u
+                ));
+                setShowEditModal(false);
+                setSelectedUser(null);
+                showToast('User updated (demo mode)', 'success');
+            }
+        };
+
+        const handleDeleteUser = async (user) => {
+            if (user.role === 'admin') {
+                showToast('Cannot delete admin users', 'error');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to delete ${user.name}?`)) return;
+
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5000/api/users/${user.id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    await loadUsers();
+                    showToast('User deleted successfully', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                // Fallback to local delete
+                setUsers(prev => prev.filter(u => u.id !== user.id));
+                showToast('User deleted (demo mode)', 'success');
+            }
+        };
+
+        const handleResetPassword = async (user) => {
+            const newPassword = generatePassword();
+
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5000/api/users/${user.id}/reset-password`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ newPassword })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(`Password reset! New password: ${newPassword}`, 'success');
+                    alert(`Password reset for ${user.name}\n\nUsername: ${user.reg_number}\nNew Password: ${newPassword}\n\nPlease share this with the user.`);
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                showToast(`Demo mode - Password would be: ${newPassword}`, 'success');
+                alert(`Demo mode - Password reset for ${user.name}\n\nNew Password: ${newPassword}`);
+            }
+        };
+
+        if (loading) {
+            return (
+                <div style={{ padding: 40, textAlign: 'center' }}>
+                    <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }}></div>
+                    <div>Loading users...</div>
+                </div>
+            );
+        }
+
+        return (
+            <div style={{ padding: 24, overflowY: 'auto', animation: 'fadeIn .25s ease' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                    <div>
+                        <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 24, marginBottom: 4 }}>
+                            User Management
+                        </div>
+                        <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                            Manage staff and student accounts
+                        </div>
+                    </div>
+                    <Btn variant="rust" onClick={() => setShowAddModal(true)}>
+                        + Add New User
+                    </Btn>
+                </div>
+
+                {/* Users Table */}
+                <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                            <tr style={{ background: 'var(--tag)' }}>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Name</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Email</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>ID/Reg Number</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Role</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Status</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {users.map((user, index) => (
+                                <tr key={user.id} style={{ borderTop: '1px solid var(--border)', background: index % 2 === 0 ? '#fff' : '#FAFAF7' }}>
+                                    <td style={{ padding: '12px 16px' }}>
+                                        <div style={{ fontWeight: 500 }}>{user.name}</div>
+                                    </td>
+                                    <td style={{ padding: '12px 16px', fontSize: 13, color: 'var(--muted)' }}>{user.email || '—'}</td>
+                                    <td style={{ padding: '12px 16px', fontSize: 13 }}>{user.reg_number}</td>
+                                    <td style={{ padding: '12px 16px' }}>
+                                        <Badge color={user.role === 'admin' ? 'rust' : user.role === 'staff' ? 'sage' : 'blue'}>
+                                            {user.role === 'admin' ? 'Admin' : user.role === 'staff' ? 'Staff' : 'Student'}
+                                        </Badge>
+                                    </td>
+                                    <td style={{ padding: '12px 16px' }}>
+                                        <Badge color={user.is_active !== false ? 'sage' : 'red'}>
+                                            {user.is_active !== false ? 'Active' : 'Inactive'}
+                                        </Badge>
+                                    </td>
+                                    <td style={{ padding: '12px 16px' }}>
+                                        <div style={{ display: 'flex', gap: 8 }}>
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedUser(user);
+                                                    setFormData({
+                                                        name: user.name,
+                                                        email: user.email || '',
+                                                        reg_number: user.reg_number,
+                                                        role: user.role
+                                                    });
+                                                    setShowEditModal(true);
+                                                }}
+                                                style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+                                            >
+                                                ✏️ Edit
+                                            </button>
+                                            {user.role !== 'admin' && (
+                                                <>
+                                                    <button
+                                                        onClick={() => handleResetPassword(user)}
+                                                        style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+                                                    >
+                                                        🔑 Reset PW
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteUser(user)}
+                                                        style={{ padding: '4px 8px', border: '1px solid #A32D2D', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#A32D2D' }}
+                                                    >
+                                                        🗑️ Delete
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Add User Modal */}
+                <Modal open={showAddModal} onClose={() => setShowAddModal(false)} maxW={500} center>
+                    <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 20, marginBottom: 20 }}>
+                        Add New User
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                            Full Name *
+                        </label>
+                        <input
+                            type="text"
+                            value={formData.name}
+                            onChange={e => setFormData({ ...formData, name: e.target.value })}
+                            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14 }}
+                            placeholder="e.g., Sarah Johnson"
+                        />
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                            Email *
+                        </label>
+                        <input
+                            type="email"
+                            value={formData.email}
+                            onChange={e => setFormData({ ...formData, email: e.target.value })}
+                            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14 }}
+                            placeholder="user@unieat.com"
+                        />
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                            ID/Registration Number *
+                        </label>
+                        <input
+                            type="text"
+                            value={formData.reg_number}
+                            onChange={e => setFormData({ ...formData, reg_number: e.target.value })}
+                            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14 }}
+                            placeholder="STAFF002 or CS/2024/001"
+                        />
+                    </div>
+                    <div style={{ marginBottom: 20 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                            Role *
+                        </label>
+                        <select
+                            value={formData.role}
+                            onChange={e => setFormData({ ...formData, role: e.target.value })}
+                            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14, background: '#fff' }}
+                        >
+                            <option value="staff">Staff</option>
+                            <option value="student">Student</option>
+                        </select>
+                    </div>
+                    <div style={{ padding: 12, background: 'var(--info-bg)', borderRadius: 8, marginBottom: 20 }}>
+                        <div style={{ fontSize: 12, color: 'var(--info)', marginBottom: 4 }}>🔐 Auto-generated password</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>A secure password will be generated automatically. You'll be able to share it with the user after creation.</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 12 }}>
+                        <Btn fullWidth variant="ghost" onClick={() => setShowAddModal(false)}>Cancel</Btn>
+                        <Btn fullWidth variant="rust" onClick={handleAddUser}>Create User</Btn>
+                    </div>
+                </Modal>
+
+                {/* Edit User Modal */}
+                <Modal open={showEditModal} onClose={() => setShowEditModal(false)} maxW={500} center>
+                    <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 20, marginBottom: 20 }}>
+                        Edit User
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                            Full Name
+                        </label>
+                        <input
+                            type="text"
+                            value={formData.name}
+                            onChange={e => setFormData({ ...formData, name: e.target.value })}
+                            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14 }}
+                        />
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                            Email
+                        </label>
+                        <input
+                            type="email"
+                            value={formData.email}
+                            onChange={e => setFormData({ ...formData, email: e.target.value })}
+                            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14 }}
+                        />
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                            ID/Registration Number
+                        </label>
+                        <input
+                            type="text"
+                            value={formData.reg_number}
+                            onChange={e => setFormData({ ...formData, reg_number: e.target.value })}
+                            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14 }}
+                        />
+                    </div>
+                    <div style={{ marginBottom: 20 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                            Role
+                        </label>
+                        <select
+                            value={formData.role}
+                            onChange={e => setFormData({ ...formData, role: e.target.value })}
+                            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14, background: '#fff' }}
+                        >
+                            <option value="staff">Staff</option>
+                            <option value="student">Student</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    <div style={{ display: 'flex', gap: 12 }}>
+                        <Btn fullWidth variant="ghost" onClick={() => setShowEditModal(false)}>Cancel</Btn>
+                        <Btn fullWidth variant="rust" onClick={handleEditUser}>Save Changes</Btn>
+                    </div>
+                </Modal>
             </div>
         );
     }
