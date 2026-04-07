@@ -138,7 +138,7 @@ function LoginScreen({ onLogin }) {
                     </div>
                     {error && <div style={{ background: '#5a1a1a', color: '#ef5350', padding: '10px 14px', borderRadius: 8, fontSize: 12, marginBottom: 16 }}>{error}</div>}
                     <Btn type="submit" fullWidth disabled={loading}>{loading ? 'Logging in...' : 'Access Portal →'}</Btn>
-                    <div style={{ fontSize: 11, color: '#555', textAlign: 'center', marginTop: 16 }}>Demo: superadmin@unieat.com / SuperAdmin123!</div>
+                    <div style={{ fontSize: 11, color: '#555', textAlign: 'center', marginTop: 16 }}></div>
                 </form>
             </div>
         </div>
