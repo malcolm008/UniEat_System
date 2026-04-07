@@ -438,7 +438,13 @@ function App() {
 
     useEffect(() => {
         const token = localStorage.getItem('superAdminToken');
-        if (token) { setIsAuthenticated(true); setAdmin({ name: 'System Owner', email: 'superadmin@unieat.com' }); }
+        const savedAdmin = localStorage.getItem('superAdmin');
+
+        if (token) {
+            setIsAuthenticated(true);
+            setAdmin(JSON.parse(savedAdmin));
+        }
+
         const handleResize = () => {
             const mobile = window.innerWidth <= 768;
             setIsMobile(mobile);
