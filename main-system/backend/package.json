@@ -6,9 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "db:migrate": "node db/migrate.js",
-    "db:seed": "node db/seed.js",
-    "db:reset": "node db/migrate.js --reset && node db/seed.js"
+    "db:migrate": "node ../../shared/db/migrate.js",
+    "db:seed": "node ../../shared/db/seed.js",
+    "db:reset": "node ../../shared/db/migrate.js --reset && node ../../shared/db/seed.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

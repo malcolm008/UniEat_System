@@ -1,9 +1,22 @@
-require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
+require('dotenv').config({ path: require('path').join(__dirname, '../../main-system/backend/.env') });
 const { pool } = require('./db');
 
 const RESET = process.argv.includes('--reset');
 
 const migrations = [
+
+  `CREATE TABLE IF NOT EXISTS super_admins (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name                VARCHAR(120) NOT NULL,
+    email               VARCHAR(180) UNIQUE NOT NULL,
+    password            VARCHAR(255) NOT NULL,
+    role                VARCHAR(30) DEFAULT 'super_admin'
+                        CHECK (role IN ('super_admin','system_owner')),
+    is_active           BOOLEAN NOT NULL DEFAULT true,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+
   // ── UNIVERSITIES (TENANT) ────────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS universities (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -43,18 +56,6 @@ const migrations = [
     notes               TEXT,
     created_by          UUID REFERENCES super_admins(id),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  )`,
-
-  `CREATE TABLE IF NOT EXISTS super_admins (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name                VARCHAR(120) NOT NULL,
-    email               VARCHAR(180) UNIQUE NOT NULL,
-    password            VARCHAR(255) NOT NULL,
-    role                VARCHAR(30) DEFAULT 'super_admin'
-                        CHECK (role IN ('super_admin','system_owner')),
-    is_active           BOOLEAN NOT NULL DEFAULT true,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
 
   // ── USERS ──────────────────────────────────────────────────────
