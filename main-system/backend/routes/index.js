@@ -1,7 +1,7 @@
 // ── AUTH ROUTES ────────────────────────────────────────────────
 const authRouter = require('express').Router();
 const { login, refresh, me, register } = require('../controllers/authController');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../../../shared/middleware/auth');
 const { body, validationResult } = require('express-validator');
 
 const validate = (req, res, next) => {

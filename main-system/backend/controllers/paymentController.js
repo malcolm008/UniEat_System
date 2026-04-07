@@ -1,8 +1,8 @@
-const { query, withTransaction } = require('../db/db');
-const { success, created, notFound, error } = require('../utils/response');
+const { query, withTransaction } = require('../../../shared/db/db');
+const { success, created, notFound, error } = require('../../../shared/utils/response');
 const QRCode = require('qrcode');
 const crypto = require('crypto');
-const logger = require('../utils/logger');
+const logger = require('../../../shared/utils/logger');
 
 // ── POST /payments/initiate ────────────────────────────────────
 // Simulate mobile money STK push (replace with real Flutterwave SDK)

@@ -1,5 +1,5 @@
-const { query, withTransaction } = require('../db/db');
-const { success, created, notFound, error, paginate } = require('../utils/response');
+const { query, withTransaction } = require('../../../shared/db/db');
+const { success, created, notFound, error, paginate } = require('../../../shared/utils/response');
 
 // ── GET /menu — public, returns today's available items ────────
 const getMenu = async (req, res, next) => {

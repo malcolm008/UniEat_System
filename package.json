@@ -1,0 +1,12 @@
+{
+  "name": "unieat-full-system",
+  "version": "1.0.0",
+  "scripts": {
+    "dev:main": "cd main-system/backend && npm run dev",
+    "dev:admin": "cd super-admin-system/backend && npm run dev",
+    "dev:all": "concurrently \"npm run dev:main\" \"npm run dev:admin\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}

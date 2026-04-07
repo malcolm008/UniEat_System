@@ -1,8 +1,8 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { query } = require('../db/db');
-const { success, error, unauthorized, created } = require('../utils/response');
-const logger = require('../utils/logger');
+const { query } = require('../../../shared/db/db');
+const { success, error, unauthorized, created } = require('../../../shared/utils/response');
+const logger = require('../../../shared/utils/logger');
 
 const signTokens = (userId) => {
   const access = jwt.sign({ userId }, process.env.JWT_SECRET, {

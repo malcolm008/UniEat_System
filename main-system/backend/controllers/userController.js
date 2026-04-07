@@ -1,6 +1,6 @@
-const { query } = require('../db/db');
+const { query } = require('../../../shared/db/db');
 const bcrypt = require('bcryptjs');
-const { success, notFound, error, paginate, created } = require('../utils/response');
+const { success, notFound, error, paginate, created } = require('../../../shared/utils/response');
 
 const getUsers = async (req, res, next) => {
   try {
