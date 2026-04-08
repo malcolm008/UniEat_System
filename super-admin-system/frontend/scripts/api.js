@@ -66,14 +66,14 @@ const apiService = {
 
     async deleteUser(id) {
         return await this.authFetch(`/users/${id}`, {
-            method: 'PUT',
-            body: JSON.stringify(data)
+            method: 'DELETE',
         });
     },
 
-    async updateUser(id) {
+    async updateUser(id, data) {
         return await this.authFetch(`/users/${id}`, {
-            method: 'DELETE'
+            method: 'PUT',
+            body: JSON.stringify(data)
         });
     },
 

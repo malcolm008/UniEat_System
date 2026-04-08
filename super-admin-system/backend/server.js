@@ -185,25 +185,26 @@ app.post('/api/super-admin/universities/:id/activate-subscription', verifyToken,
 app.post('/api/super-admin/universities/:id/suspend', verifyToken, async (req, res) => {
     const { id } = req.params;
 
-    console.log('Suspend request received for university ID:', id);
+    console.log('Suspend request for university ID:', id);
 
     try {
+        // Check if university exists first
         const checkResult = await pool.query(
             'SELECT id, name, status FROM universities WHERE id = $1',
             [id]
         );
 
         if (checkResult.rows.length === 0) {
-            console.log('University not found:', id);
             return res.status(404).json({
                 success: false,
                 message: 'University not found'
             });
         }
 
-        console.log('Found university:', checkResult.rows[0]);
+        console.log('Found university:', checkResult.rows[0].name);
 
-        const updateResult = await pool.query(
+        // Update university status - FIXED: using 'result' instead of 'updatedResult'
+        const result = await pool.query(
             `UPDATE universities
              SET status = 'suspended',
                  subscription_status = 'inactive',
@@ -213,35 +214,29 @@ app.post('/api/super-admin/universities/:id/suspend', verifyToken, async (req, r
             [id]
         );
 
-        console.log('Update result:', updateResult.rows[0]);
+        console.log('Update successful:', result.rows[0]);
 
         res.json({
             success: true,
             message: 'University suspended successfully',
-            university: updatedResult.rows[0]
+            university: result.rows[0]
         });
 
     } catch (error) {
         console.error('Error suspending university:', error);
-        console.error('Error details:', {
-            message: error.message,
-            code: error.code,
-            stack: error.stack
-        });
         res.status(500).json({
             success: false,
-            message: 'Server error: ' + error.message,
-            details: error.message
+            message: 'Server error: ' + error.message
         });
     }
 });
 
-// ========== GET ALL USERS (for Super Admin management) ==========
+// ========== GET ALL USERS ==========
 app.get('/api/super-admin/users', verifyToken, async (req, res) => {
     const { universityId, role } = req.query;
 
     let query = `
-        SELECT u.*, un.name as university_name
+        SELECT u.id, u.name, u.email, u.reg_number, u.role, u.is_active, u.university_id, un.name as university_name
         FROM users u
         LEFT JOIN universities un ON u.university_id = un.id
         WHERE 1=1

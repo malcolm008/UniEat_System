@@ -300,7 +300,7 @@ function UniversityManagement() {
         console.log('Suspended university:', uni.id, uni.name);
 
         try {
-            const result = await apiService.suspendedUniversity(uni.id);
+            const result = await apiService.suspendUniversity(uni.id);
             console.log('Suspended response:', result);
 
             if (result.success) {
@@ -374,6 +374,30 @@ function UniversityManagement() {
 
 // ========== USER MANAGEMENT ==========
 function UserManagement() {
+    const inputStyle = {
+        width: '100%',
+        padding: 'clamp(8px, 3vw, 12px)',
+        background: '#2a2a2a',
+        border: '1px solid #3a3a3a',
+        borderRadius: 8,
+        color: '#fff',
+        fontSize: 'clamp(12px, 4vw, 14px)',
+        marginBottom: 12,
+        boxSizing: 'border-box'
+    };
+
+    const selectStyle = {
+        width: '100%',
+        padding: 'clamp(8px, 3vw, 12px)',
+        background: '#2a2a2a',
+        border: '1px solid #3a3a3a',
+        borderRadius: 8,
+        color: '#fff',
+        fontSize: 'clamp(12px, 4vw, 14px)',
+        marginBottom: 12,
+        cursor: 'pointer',
+        boxSizing: 'border-box'
+    };
     const [users, setUsers] = useState([]);
     const [universities, setUniversities] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -384,74 +408,382 @@ function UserManagement() {
     const [filterUniversity, setFilterUniversity] = useState('all');
     const [formData, setFormData] = useState({ name: '', email: '', reg_number: '', role: 'student', university_id: '' });
 
-    useEffect(() => { loadData(); }, []);
     const loadData = async () => {
         setLoading(true);
-        setTimeout(() => {
-            setUniversities([{ id: 1, name: 'University of Dar es Salaam' }, { id: 2, name: 'Ardhi University' }, { id: 3, name: 'Sokoine University' }]);
-            setUsers([
-                { id: 1, name: 'John Mwangi', email: 'john@udsm.ac.tz', reg_number: 'CS/2022/042', role: 'student', university_id: 1, is_active: true },
-                { id: 2, name: 'Mary K.', email: 'mary@ardhi.ac.tz', reg_number: 'STAFF001', role: 'staff', university_id: 2, is_active: true },
-                { id: 3, name: 'Dr. Osei', email: 'admin@udsm.ac.tz', reg_number: 'ADMIN001', role: 'admin', university_id: 1, is_active: true },
-                { id: 4, name: 'James Otieno', email: 'james@sua.ac.tz', reg_number: 'STAFF002', role: 'staff', university_id: 3, is_active: false }
-            ]);
-            setLoading(false);
-        }, 500);
+        try {
+            // Load universities first (important for dropdown)
+            const uniResult = await apiService.getUniversities();
+            console.log('Universities loaded:', uniResult);
+
+            if (uniResult.success && uniResult.universities) {
+                setUniversities(uniResult.universities);
+            } else if (uniResult.universities) {
+                setUniversities(uniResult.universities);
+            }
+
+            // Load users
+            const usersResult = await apiService.getUsers();
+            console.log('Users loaded:', usersResult);
+
+            if (usersResult.success && usersResult.users) {
+                setUsers(usersResult.users);
+            } else if (usersResult.users) {
+                setUsers(usersResult.users);
+            }
+        } catch (error) {
+            console.error('Error loading data:', error);
+        }
+        setLoading(false);
     };
-    const generatePassword = () => { const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$'; let p = ''; for (let i = 0; i < 10; i++) p += chars[Math.floor(Math.random() * chars.length)]; return p; };
-    const addUser = () => { if (!formData.name || !formData.email || !formData.reg_number) { alert('Please fill required fields'); return; } const newPassword = generatePassword(); setUsers(prev => [...prev, { id: Date.now(), ...formData, is_active: true }]); setShowAddModal(false); setFormData({ name: '', email: '', reg_number: '', role: 'student', university_id: '' }); alert(`User created!\n\nPassword: ${newPassword}`); };
-    const editUser = () => { if (!selectedUser) return; setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, ...formData } : u)); setShowEditModal(false); setSelectedUser(null); alert('User updated successfully'); };
-    const deleteUser = (user) => { if (confirm(`Delete ${user.name}?`)) setUsers(prev => prev.filter(u => u.id !== user.id)); };
-    const filteredUsers = users.filter(u => { if (filterRole !== 'all' && u.role !== filterRole) return false; if (filterUniversity !== 'all' && u.university_id !== parseInt(filterUniversity)) return false; return true; });
+
+    useEffect(() => {
+        loadData();
+    }, []);
+
+    const generatePassword = () => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$';
+        let p = '';
+        for (let i = 0; i < 10; i++) p += chars[Math.floor(Math.random() * chars.length)];
+        return p;
+    };
+
+    const addUser = async () => {
+        if (!formData.name || !formData.email || !formData.reg_number) {
+            alert('Please fill required fields');
+            return;
+        }
+
+        if (!formData.university_id) {
+            alert('Please select a university');
+            return;
+        }
+
+        const newPassword = generatePassword();
+        const userData = {
+            name: formData.name,
+            email: formData.email,
+            reg_number: formData.reg_number,
+            password: newPassword,
+            role: formData.role,
+            university_id: formData.university_id
+        };
+
+        console.log('Creating user:', userData);
+
+        try {
+            const result = await apiService.createUser(userData);
+            console.log('Create user result:', result);
+
+            if (result.success) {
+                await loadData();
+                setShowAddModal(false);
+                setFormData({ name: '', email: '', reg_number: '', role: 'student', university_id: '' });
+                alert(`User created successfully!\n\nUsername: ${formData.reg_number}\nPassword: ${newPassword}\n\nPlease share these credentials with the user.`);
+            } else {
+                alert('Error: ' + (result.message || 'Failed to create user'));
+            }
+        } catch (error) {
+            console.error('Error adding user:', error);
+            alert('Network error. Please try again.');
+        }
+    };
+
+    const editUser = async () => {
+        if (!selectedUser) return;
+
+        const updateData = {
+            name: formData.name,
+            email: formData.email,
+            reg_number: formData.reg_number,
+            role: formData.role,
+            university_id: formData.university_id
+        };
+
+        console.log('Updating user:', selectedUser.id, updateData);
+
+        try {
+            const result = await apiService.updateUser(selectedUser.id, updateData);
+            console.log('Update user result:', result);
+
+            if (result.success) {
+                await loadData();
+                setShowEditModal(false);
+                setSelectedUser(null);
+                setFormData({ name: '', email: '', reg_number: '', role: 'student', university_id: '' });
+                alert('User updated successfully!');
+            } else {
+                alert('Error: ' + (result.message || 'Failed to update user'));
+            }
+        } catch (error) {
+            console.error('Error updating user:', error);
+            alert('Network error. Please try again.');
+        }
+    };
+
+    const deleteUser = async (user) => {
+        if (!confirm(`⚠️ Are you sure you want to delete ${user.name}?\n\nThis action cannot be undone.`)) return;
+
+        try {
+            const result = await apiService.deleteUser(user.id);
+            console.log('Delete user result:', result);
+
+            if (result.success) {
+                await loadData();
+                alert(`✅ ${user.name} has been deleted.`);
+            } else {
+                alert('❌ Error: ' + (result.message || 'Failed to delete user'));
+            }
+        } catch (error) {
+            console.error('Error deleting user:', error);
+            alert('Network error. Please try again.');
+        }
+    };
+
+    const filteredUsers = users.filter(u => {
+        if (filterRole !== 'all' && u.role !== filterRole) return false;
+        if (filterUniversity !== 'all' && u.university_id !== parseInt(filterUniversity)) return false;
+        return true;
+    });
+
+    console.log('Universities available for dropdown:', universities);
+
     if (loading) return <div style={{ textAlign: 'center', padding: 40 }}>Loading users...</div>;
+
     return (
+
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
-                <div><h1 style={{ fontSize: 24, marginBottom: 4 }}>User Management</h1><p style={{ color: '#aaa' }}>Manage all users across all universities</p></div>
+                <div>
+                    <h1 style={{ fontSize: 24, marginBottom: 4 }}>User Management</h1>
+                    <p style={{ color: '#aaa' }}>Manage all users across all universities</p>
+                </div>
                 <Btn onClick={() => setShowAddModal(true)}>+ Add User</Btn>
             </div>
+
+            {/* Filters */}
             <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-                <select value={filterRole} onChange={e => setFilterRole(e.target.value)} style={{ ...inputStyle, width: 150 }}><option value="all">All Roles</option><option value="admin">Admin</option><option value="staff">Staff</option><option value="student">Student</option></select>
-                <select value={filterUniversity} onChange={e => setFilterUniversity(e.target.value)} style={{ ...inputStyle, width: 200 }}><option value="all">All Universities</option>{universities.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
+                <select value={filterRole} onChange={e => setFilterRole(e.target.value)} style={{ ...inputStyle, width: 150 }}>
+                    <option value="all">All Roles</option>
+                    <option value="admin">Admin</option>
+                    <option value="staff">Staff</option>
+                    <option value="student">Student</option>
+                </select>
+                <select value={filterUniversity} onChange={e => setFilterUniversity(e.target.value)} style={{ ...inputStyle, width: 200 }}>
+                    <option value="all">All Universities</option>
+                    {universities.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
             </div>
+
+            {/* Users Table */}
             <div style={{ overflowX: 'auto', width: '100%' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
-                    <thead><tr style={{ borderBottom: '1px solid #2a2a2a', textAlign: 'left' }}>
-                        <th style={{ padding: '12px' }}>Name</th><th style={{ padding: '12px' }}>Email</th><th style={{ padding: '12px' }}>ID/Reg</th><th style={{ padding: '12px' }}>Role</th><th style={{ padding: '12px' }}>University</th><th style={{ padding: '12px' }}>Status</th><th style={{ padding: '12px' }}>Actions</th>
-                    </tr></thead>
-                    <tbody>{filteredUsers.map(user => (
-                        <tr key={user.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                            <td style={{ padding: '12px', fontWeight: 500 }}>{user.name}</td>
-                            <td style={{ padding: '12px', fontSize: 13 }}>{user.email}</td>
-                            <td style={{ padding: '12px', fontSize: 13 }}>{user.reg_number}</td>
-                            <td style={{ padding: '12px' }}><Badge type={user.role === 'admin' ? 'admin' : user.role === 'staff' ? 'staff' : 'student'}>{user.role}</Badge></td>
-                            <td style={{ padding: '12px', fontSize: 13 }}>{universities.find(u => u.id === user.university_id)?.name || '—'}</td>
-                            <td style={{ padding: '12px' }}><Badge type={user.is_active ? 'active' : 'inactive'}>{user.is_active ? 'Active' : 'Inactive'}</Badge></td>
-                            <td style={{ padding: '12px' }}>
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                    <Btn variant="secondary" onClick={() => { setSelectedUser(user); setFormData(user); setShowEditModal(true); }}>Edit</Btn>
-                                    <Btn variant="danger" onClick={() => deleteUser(user)}>Delete</Btn>
-                                </div>
-                            </td>
+                    <thead>
+                        <tr style={{ borderBottom: '1px solid #2a2a2a', textAlign: 'left' }}>
+                            <th style={{ padding: '12px' }}>Name</th>
+                            <th style={{ padding: '12px' }}>Email</th>
+                            <th style={{ padding: '12px' }}>ID/Reg</th>
+                            <th style={{ padding: '12px' }}>Role</th>
+                            <th style={{ padding: '12px' }}>University</th>
+                            <th style={{ padding: '12px' }}>Status</th>
+                            <th style={{ padding: '12px' }}>Actions</th>
                         </tr>
-                    ))}</tbody>
+                    </thead>
+                    <tbody>
+                        {filteredUsers.length === 0 ? (
+                            <tr>
+                                <td colSpan="7" style={{ textAlign: 'center', padding: 40, color: '#aaa' }}>
+                                    No users found. Click "Add User" to create one.
+                                 </td>
+                             </tr>
+                        ) : (
+                            filteredUsers.map(user => (
+                                <tr key={user.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                                    <td style={{ padding: '12px', fontWeight: 500 }}>{user.name}</td>
+                                    <td style={{ padding: '12px', fontSize: 13 }}>{user.email}</td>
+                                    <td style={{ padding: '12px', fontSize: 13 }}>{user.reg_number}</td>
+                                    <td style={{ padding: '12px' }}>
+                                        <Badge type={user.role === 'admin' ? 'admin' : user.role === 'staff' ? 'staff' : 'student'}>
+                                            {user.role}
+                                        </Badge>
+                                    </td>
+                                    <td style={{ padding: '12px', fontSize: 13 }}>
+                                        {universities.find(u => u.id === user.university_id)?.name || '—'}
+                                    </td>
+                                    <td style={{ padding: '12px' }}>
+                                        <Badge type={user.is_active ? 'active' : 'inactive'}>
+                                            {user.is_active ? 'Active' : 'Inactive'}
+                                        </Badge>
+                                    </td>
+                                    <td style={{ padding: '12px' }}>
+                                        <div style={{ display: 'flex', gap: 8 }}>
+                                            <Btn variant="secondary" onClick={() => {
+                                                setSelectedUser(user);
+                                                setFormData({
+                                                    name: user.name,
+                                                    email: user.email,
+                                                    reg_number: user.reg_number,
+                                                    role: user.role,
+                                                    university_id: user.university_id || ''
+                                                });
+                                                setShowEditModal(true);
+                                            }}>Edit</Btn>
+                                            <Btn variant="danger" onClick={() => deleteUser(user)}>Delete</Btn>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
                 </table>
             </div>
+
+            {/* Add User Modal */}
             <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="Add New User">
-                <input type="text" placeholder="Full Name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={inputStyle} />
-                <input type="email" placeholder="Email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} style={inputStyle} />
-                <input type="text" placeholder="ID/Registration Number" value={formData.reg_number} onChange={e => setFormData({...formData, reg_number: e.target.value})} style={inputStyle} />
-                <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} style={inputStyle}><option value="student">Student</option><option value="staff">Staff</option><option value="admin">Admin</option></select>
-                <select value={formData.university_id} onChange={e => setFormData({...formData, university_id: e.target.value})} style={inputStyle}><option value="">Select University</option>{universities.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
-                <div style={{ display: 'flex', gap: 12, marginTop: 20 }}><Btn variant="secondary" onClick={() => setShowAddModal(false)}>Cancel</Btn><Btn onClick={addUser}>Create User</Btn></div>
+                <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 12,
+                    width: '100%'
+                }}>
+                    <input
+                        type="text"
+                        placeholder="Full Name *"
+                        value={formData.name}
+                        onChange={e => setFormData({...formData, name: e.target.value})}
+                        style={inputStyle}
+                    />
+                    <input
+                        type="email"
+                        placeholder="Email *"
+                        value={formData.email}
+                        onChange={e => setFormData({...formData, email: e.target.value})}
+                        style={inputStyle}
+                    />
+                    <input
+                        type="text"
+                        placeholder="ID/Registration Number *"
+                        value={formData.reg_number}
+                        onChange={e => setFormData({...formData, reg_number: e.target.value})}
+                        style={inputStyle}
+                    />
+
+                    <select
+                        value={formData.role}
+                        onChange={e => setFormData({...formData, role: e.target.value})}
+                        style={selectStyle}
+                    >
+                        <option value="student">Student</option>
+                        <option value="staff">Staff</option>
+                        <option value="admin">Admin</option>
+                    </select>
+
+                    <select
+                        value={formData.university_id}
+                        onChange={e => setFormData({...formData, university_id: e.target.value})}
+                        style={selectStyle}
+                    >
+                        <option value="">Select University *</option>
+                        {universities.length === 0 ? (
+                            <option value="" disabled>No universities available. Please add a university first.</option>
+                        ) : (
+                            universities.map(u => <option key={u.id} value={u.id}>{u.name}</option>)
+                        )}
+                    </select>
+
+                    {universities.length === 0 && (
+                        <div style={{
+                            padding: 'clamp(10px, 4vw, 12px)',
+                            background: '#5a1a1a',
+                            borderRadius: 8,
+                            marginBottom: 12,
+                            color: '#ef5350',
+                            fontSize: 'clamp(11px, 3vw, 12px)'
+                        }}>
+                            ⚠️ No universities found. Please add a university first in the Universities tab.
+                        </div>
+                    )}
+
+                    <div style={{
+                        padding: 'clamp(10px, 4vw, 12px)',
+                        background: '#1a3a5a',
+                        borderRadius: 8,
+                        marginBottom: 12
+                    }}>
+                        <div style={{ fontSize: 'clamp(11px, 3.5vw, 12px)', color: '#64b5f6', marginBottom: 4 }}>🔐 Password</div>
+                        <div style={{ fontSize: 'clamp(10px, 3vw, 11px)', color: '#aaa' }}>A secure password will be generated automatically. You'll be able to share it with the user after creation.</div>
+                    </div>
+
+                    <div style={{
+                        display: 'flex',
+                        gap: 12,
+                        flexDirection: window.innerWidth <= 480 ? 'column' : 'row',
+                        marginTop: 8
+                    }}>
+                        <Btn variant="secondary" onClick={() => setShowAddModal(false)} fullWidth={window.innerWidth <= 480}>Cancel</Btn>
+                        <Btn onClick={addUser} fullWidth={window.innerWidth <= 480}>Create User</Btn>
+                    </div>
+                </div>
             </Modal>
+
+            {/* Edit User Modal */}
             <Modal open={showEditModal} onClose={() => setShowEditModal(false)} title="Edit User">
-                <input type="text" placeholder="Full Name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={inputStyle} />
-                <input type="email" placeholder="Email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} style={inputStyle} />
-                <input type="text" placeholder="ID/Registration Number" value={formData.reg_number} onChange={e => setFormData({...formData, reg_number: e.target.value})} style={inputStyle} />
-                <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} style={inputStyle}><option value="student">Student</option><option value="staff">Staff</option><option value="admin">Admin</option></select>
-                <select value={formData.university_id} onChange={e => setFormData({...formData, university_id: e.target.value})} style={inputStyle}><option value="">Select University</option>{universities.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
-                <div style={{ display: 'flex', gap: 12, marginTop: 20 }}><Btn variant="secondary" onClick={() => setShowEditModal(false)}>Cancel</Btn><Btn onClick={editUser}>Save Changes</Btn></div>
+                <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 12,
+                    width: '100%'
+                }}>
+                    <input
+                        type="text"
+                        placeholder="Full Name"
+                        value={formData.name}
+                        onChange={e => setFormData({...formData, name: e.target.value})}
+                        style={inputStyle}
+                    />
+                    <input
+                        type="email"
+                        placeholder="Email"
+                        value={formData.email}
+                        onChange={e => setFormData({...formData, email: e.target.value})}
+                        style={inputStyle}
+                    />
+                    <input
+                        type="text"
+                        placeholder="ID/Registration Number"
+                        value={formData.reg_number}
+                        onChange={e => setFormData({...formData, reg_number: e.target.value})}
+                        style={inputStyle}
+                    />
+
+                    <select
+                        value={formData.role}
+                        onChange={e => setFormData({...formData, role: e.target.value})}
+                        style={selectStyle}
+                    >
+                        <option value="student">Student</option>
+                        <option value="staff">Staff</option>
+                        <option value="admin">Admin</option>
+                    </select>
+
+                    <select
+                        value={formData.university_id}
+                        onChange={e => setFormData({...formData, university_id: e.target.value})}
+                        style={selectStyle}
+                    >
+                        <option value="">Select University</option>
+                        {universities.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+
+                    <div style={{
+                        display: 'flex',
+                        gap: 12,
+                        flexDirection: window.innerWidth <= 480 ? 'column' : 'row',
+                        marginTop: 8
+                    }}>
+                        <Btn variant="secondary" onClick={() => setShowEditModal(false)} fullWidth={window.innerWidth <= 480}>Cancel</Btn>
+                        <Btn onClick={editUser} fullWidth={window.innerWidth <= 480}>Save Changes</Btn>
+                    </div>
+                </div>
             </Modal>
         </div>
     );
