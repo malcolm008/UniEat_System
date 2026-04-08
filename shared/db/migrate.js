@@ -58,6 +58,27 @@ const migrations = [
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
 
+  // ── SUBSCRIPTIONS-LOGS (Payment History) ─────────────────────────────
+  `CREATE TABLE IF NOT EXISTS subscription_logs (
+      id                  BIGSERIAL PRIMARY KEY,
+      university_id       UUID NOT NULL REFERENCES universities(id) ON DELETE CASCADE,
+      action              VARCHAR(50) NOT NULL,
+      details             JSONB,
+      created_by          UUID,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+
+  // ── SYSTEM-SETTINGS  ─────────────────────────────
+  `CREATE TABLE IF NOT EXISTS system_settings (
+      id SERIAL PRIMARY KEY,
+      setting_key VARCHAR(100) UNIQUE NOT NULL,
+      setting_value TEXT NOT NULL,
+      setting_type VARCHAR(20) DEFAULT 'string',
+      description TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by UUID REFERENCES super_admins(id)
+  )`,
+
   // ── USERS ──────────────────────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS users (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -191,6 +212,8 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_universities_subscription_end ON universities(subscription_end)`,
   `CREATE INDEX IF NOT EXISTS idx_subscriptions_university_id ON subscriptions(university_id)`,
   `CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_subscription_logs_university_id ON subscription_logs(university_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_subscription_logs_created_at ON subscription_logs(created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_orders_status        ON orders(status)`,
   `CREATE INDEX IF NOT EXISTS idx_orders_created_at    ON orders(created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_orders_user_id       ON orders(user_id)`,

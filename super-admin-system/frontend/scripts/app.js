@@ -151,33 +151,132 @@ function LoginScreen({ onLogin }) {
 
 // ========== DASHBOARD ==========
 function Dashboard({ stats }) {
+    const formatCurrency = (amount) => {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        }).format(amount);
+    };
+
     return (
         <div>
-            <h1 style={{ fontSize: 'clamp(20px, 6vw, 24px)', marginBottom: 8 }}>Dashboard</h1>
-            <p style={{ color: '#aaa', marginBottom: 24, fontSize: 'clamp(12px, 4vw, 14px)' }}>System Overview & Analytics</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
-                <StatCard title="Total Universities" value={stats.totalUniversities || 0} icon="🏛️" color="blue" />
-                <StatCard title="Active Subscriptions" value={stats.activeSubscriptions || 0} icon="✅" color="green" />
-                <StatCard title="Total Users" value={stats.totalUsers || 0} icon="👥" color="orange" />
-                <StatCard title="Monthly Revenue" value={`$${stats.monthlyRevenue || 0}`} icon="💰" color="purple" />
+            <h1 style={{ fontSize: 'clamp(20px, 5vw, 24px)', marginBottom: 8 }}>Dashboard</h1>
+            <p style={{ color: '#aaa', marginBottom: 24, fontSize: 'clamp(12px, 4vw, 14px)' }}>
+                System Overview & Analytics
+            </p>
+
+            {/* Main Stats Cards */}
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: 16,
+                marginBottom: 24
+            }}>
+                <StatCard
+                    title="Total Universities"
+                    value={stats.totalUniversities || 0}
+                    icon="🏛️"
+                    color="blue"
+                />
+                <StatCard
+                    title="Active Subscriptions"
+                    value={stats.activeSubscriptions || 0}
+                    icon="✅"
+                    color="green"
+                />
+                <StatCard
+                    title="Total Users"
+                    value={stats.totalUsers || 0}
+                    icon="👥"
+                    color="orange"
+                />
+                <StatCard
+                    title="Monthly Revenue"
+                    value={formatCurrency(stats.monthlyRevenue || 0)}
+                    icon="💰"
+                    color="purple"
+                />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+
+            {/* Revenue Stats */}
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: 16,
+                marginBottom: 24
+            }}>
                 <div style={{ background: '#1a1a1a', borderRadius: 12, padding: 20, border: '1px solid #2a2a2a' }}>
-                    <h3 style={{ marginBottom: 16, fontSize: 'clamp(14px, 4vw, 16px)' }}>Recent Activity</h3>
-                    <div style={{ color: '#aaa', fontSize: 13, textAlign: 'center', padding: 20 }}>No recent activity</div>
+                    <h3 style={{ marginBottom: 16, fontSize: 'clamp(14px, 4vw, 16px)' }}>Revenue Overview</h3>
+                    <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 4 }}>Annual Revenue</div>
+                        <div style={{ fontSize: 24, fontWeight: 700, color: '#4caf50' }}>
+                            {formatCurrency(stats.annualRevenue || 0)}
+                        </div>
+                    </div>
+                    <div>
+                        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 4 }}>Total Revenue (All Time)</div>
+                        <div style={{ fontSize: 24, fontWeight: 700, color: '#2196f3' }}>
+                            {formatCurrency(stats.totalRevenue || 0)}
+                        </div>
+                    </div>
                 </div>
+
                 <div style={{ background: '#1a1a1a', borderRadius: 12, padding: 20, border: '1px solid #2a2a2a' }}>
-                    <h3 style={{ marginBottom: 16, fontSize: 'clamp(14px, 4vw, 16px)' }}>System Health</h3>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-                        <span>API Status:</span><Badge type="active">Operational</Badge>
+                    <h3 style={{ marginBottom: 16, fontSize: 'clamp(14px, 4vw, 16px)' }}>Subscription Status</h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                        <span>Active:</span>
+                        <Badge type="active">{stats.activeSubscriptions || 0}</Badge>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-                        <span>Database:</span><Badge type="active">Connected</Badge>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                        <span>Pending/Inactive:</span>
+                        <Badge type="pending">{stats.pendingSubscriptions || 0}</Badge>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                        <span>Last Backup:</span><span style={{ color: '#aaa' }}>Today, 02:00 AM</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Expired:</span>
+                        <Badge type="inactive">{stats.expiredSubscriptions || 0}</Badge>
                     </div>
                 </div>
+            </div>
+
+            {/* Recent Activities */}
+            <div style={{ background: '#1a1a1a', borderRadius: 12, padding: 20, border: '1px solid #2a2a2a' }}>
+                <h3 style={{ marginBottom: 16, fontSize: 'clamp(14px, 4vw, 16px)' }}>Recent Activities</h3>
+                {stats.recentActivities && stats.recentActivities.length > 0 ? (
+                    <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ borderBottom: '1px solid #2a2a2a' }}>
+                                    <th style={{ padding: '8px', textAlign: 'left', fontSize: 12 }}>University</th>
+                                    <th style={{ padding: '8px', textAlign: 'left', fontSize: 12 }}>Amount</th>
+                                    <th style={{ padding: '8px', textAlign: 'left', fontSize: 12 }}>Cycle</th>
+                                    <th style={{ padding: '8px', textAlign: 'left', fontSize: 12 }}>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {stats.recentActivities.map((activity, index) => (
+                                    <tr key={index} style={{ borderBottom: index === stats.recentActivities.length - 1 ? 'none' : '1px solid #2a2a2a' }}>
+                                        <td style={{ padding: '8px', fontSize: 13 }}>{activity.university_name}</td>
+                                        <td style={{ padding: '8px', fontSize: 13 }}>{formatCurrency(activity.amount)}</td>
+                                        <td style={{ padding: '8px', fontSize: 13 }}>
+                                            <Badge type={activity.billing_cycle === 'annual' ? 'active' : 'pending'}>
+                                                {activity.billing_cycle}
+                                            </Badge>
+                                        </td>
+                                        <td style={{ padding: '8px', fontSize: 12, color: '#aaa' }}>
+                                            {new Date(activity.created_at).toLocaleDateString()}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : (
+                    <div style={{ textAlign: 'center', padding: 40, color: '#aaa' }}>
+                        No recent activities
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -798,38 +897,187 @@ function UserManagement() {
 function SubscriptionManagement() {
     const [subscriptions, setSubscriptions] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    // Load subscription history from API
+    const loadSubscriptions = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const result = await apiService.getSubscriptions();
+            console.log('Subscriptions loaded:', result);
+
+            if (result.success && result.subscriptions) {
+                setSubscriptions(result.subscriptions);
+            } else if (result.subscriptions) {
+                setSubscriptions(result.subscriptions);
+            } else {
+                setSubscriptions([]);
+            }
+        } catch (error) {
+            console.error('Error loading subscriptions:', error);
+            setError('Failed to load subscription history. Please try again.');
+            setSubscriptions([]);
+        }
+        setLoading(false);
+    };
+
     useEffect(() => {
-        setTimeout(() => {
-            setSubscriptions([
-                { id: 1, university: 'University of Dar es Salaam', amount: 1200, cycle: 'annual', status: 'active', start_date: '2024-01-01', end_date: '2025-12-31', payment_method: 'Bank Transfer' },
-                { id: 2, university: 'Ardhi University', amount: 100, cycle: 'monthly', status: 'expired', start_date: '2024-02-01', end_date: '2024-03-15', payment_method: 'Bank Transfer' }
-            ]);
-            setLoading(false);
-        }, 500);
+        loadSubscriptions();
     }, []);
-    if (loading) return <div style={{ textAlign: 'center', padding: 40 }}>Loading subscriptions...</div>;
+
+    // Format currency
+    const formatCurrency = (amount, currency = 'USD') => {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: currency,
+            minimumFractionDigits: 0
+        }).format(amount);
+    };
+
+    if (loading) {
+        return (
+            <div style={{ textAlign: 'center', padding: 40 }}>
+                <div style={{
+                    width: 40,
+                    height: 40,
+                    border: '3px solid #2a2a2a',
+                    borderTopColor: '#2563eb',
+                    borderRadius: '50%',
+                    margin: '0 auto 16px',
+                    animation: 'spin 0.7s linear infinite'
+                }} />
+                <div>Loading subscription history...</div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div style={{ textAlign: 'center', padding: 40 }}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+                <div style={{ color: '#ef5350', marginBottom: 16 }}>{error}</div>
+                <Btn onClick={loadSubscriptions}>Try Again</Btn>
+            </div>
+        );
+    }
+
     return (
         <div>
-            <h1 style={{ fontSize: 24, marginBottom: 8 }}>Subscription History</h1>
-            <p style={{ color: '#aaa', marginBottom: 24 }}>View all subscription payments</p>
-            <div style={{ overflowX: 'auto', width: '100%' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
-                    <thead><tr style={{ borderBottom: '1px solid #2a2a2a', textAlign: 'left' }}>
-                        <th style={{ padding: '12px' }}>University</th><th style={{ padding: '12px' }}>Amount</th><th style={{ padding: '12px' }}>Cycle</th><th style={{ padding: '12px' }}>Status</th><th style={{ padding: '12px' }}>Start Date</th><th style={{ padding: '12px' }}>End Date</th><th style={{ padding: '12px' }}>Payment Method</th>
-                    </tr></thead>
-                    <tbody>{subscriptions.map(sub => (
-                        <tr key={sub.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                            <td style={{ padding: '12px' }}>{sub.university}</td>
-                            <td style={{ padding: '12px' }}>${sub.amount}</td>
-                            <td style={{ padding: '12px' }}>{sub.cycle}</td>
-                            <td style={{ padding: '12px' }}><Badge type={sub.status === 'active' ? 'active' : 'inactive'}>{sub.status}</Badge></td>
-                            <td style={{ padding: '12px', fontSize: 13 }}>{new Date(sub.start_date).toLocaleDateString()}</td>
-                            <td style={{ padding: '12px', fontSize: 13 }}>{new Date(sub.end_date).toLocaleDateString()}</td>
-                            <td style={{ padding: '12px', fontSize: 13 }}>{sub.payment_method}</td>
-                        </tr>
-                    ))}</tbody>
-                </table>
+            <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 24,
+                flexWrap: 'wrap',
+                gap: 16
+            }}>
+                <div>
+                    <h1 style={{ fontSize: 'clamp(20px, 5vw, 24px)', marginBottom: 4 }}>Subscription History</h1>
+                    <p style={{ color: '#aaa', fontSize: 'clamp(12px, 4vw, 14px)' }}>
+                        View all subscription payments and history
+                    </p>
+                </div>
+                <Btn variant="secondary" onClick={loadSubscriptions} small>⟳ Refresh</Btn>
             </div>
+
+            {/* Statistics Cards */}
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: 16,
+                marginBottom: 24
+            }}>
+                <StatCard
+                    title="Total Payments"
+                    value={subscriptions.length}
+                    icon="💰"
+                    color="blue"
+                />
+                <StatCard
+                    title="Total Revenue"
+                    value={formatCurrency(subscriptions.reduce((sum, s) => sum + (s.amount || 0), 0))}
+                    icon="📊"
+                    color="green"
+                />
+                <StatCard
+                    title="Active Subscriptions"
+                    value={subscriptions.filter(s => s.status === 'active').length}
+                    icon="✅"
+                    color="purple"
+                />
+            </div>
+
+            {/* Subscriptions Table */}
+            {subscriptions.length === 0 ? (
+                <div style={{
+                    textAlign: 'center',
+                    padding: 60,
+                    background: '#1a1a1a',
+                    borderRadius: 12,
+                    border: '1px solid #2a2a2a'
+                }}>
+                    <div style={{ fontSize: 48, marginBottom: 16 }}>📭</div>
+                    <div style={{ fontSize: 16, marginBottom: 8 }}>No subscription records found</div>
+                    <div style={{ color: '#aaa', fontSize: 13 }}>
+                        When you activate a subscription for a university, it will appear here.
+                    </div>
+                </div>
+            ) : (
+                <div style={{ overflowX: 'auto', width: '100%', borderRadius: 12, border: '1px solid #2a2a2a' }}>
+                    <table style={{
+                        width: '100%',
+                        borderCollapse: 'collapse',
+                        minWidth: 700,
+                        fontSize: 'clamp(12px, 3vw, 14px)'
+                    }}>
+                        <thead>
+                            <tr style={{ borderBottom: '1px solid #2a2a2a', background: '#1a1a1a' }}>
+                                <th style={{ padding: '12px', textAlign: 'left' }}>University</th>
+                                <th style={{ padding: '12px', textAlign: 'left' }}>Amount</th>
+                                <th style={{ padding: '12px', textAlign: 'left' }}>Cycle</th>
+                                <th style={{ padding: '12px', textAlign: 'left' }}>Status</th>
+                                <th style={{ padding: '12px', textAlign: 'left' }}>Start Date</th>
+                                <th style={{ padding: '12px', textAlign: 'left' }}>End Date</th>
+                                <th style={{ padding: '12px', textAlign: 'left' }}>Payment Method</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {subscriptions.map((sub, index) => (
+                                <tr key={sub.id} style={{
+                                    borderBottom: index === subscriptions.length - 1 ? 'none' : '1px solid #2a2a2a'
+                                }}>
+                                    <td style={{ padding: '12px', fontWeight: 500 }}>
+                                        {sub.university_name || sub.university}
+                                    </td>
+                                    <td style={{ padding: '12px' }}>
+                                        {formatCurrency(sub.amount, sub.currency || 'USD')}
+                                    </td>
+                                    <td style={{ padding: '12px' }}>
+                                        <Badge type={sub.billing_cycle === 'annual' ? 'active' : 'pending'}>
+                                            {sub.billing_cycle === 'annual' ? 'Annual' : 'Monthly'}
+                                        </Badge>
+                                    </td>
+                                    <td style={{ padding: '12px' }}>
+                                        <Badge type={sub.status === 'active' ? 'active' : 'inactive'}>
+                                            {sub.status}
+                                        </Badge>
+                                    </td>
+                                    <td style={{ padding: '12px', fontSize: 'clamp(11px, 3vw, 13px)' }}>
+                                        {sub.start_date ? new Date(sub.start_date).toLocaleDateString() : '—'}
+                                    </td>
+                                    <td style={{ padding: '12px', fontSize: 'clamp(11px, 3vw, 13px)' }}>
+                                        {sub.end_date ? new Date(sub.end_date).toLocaleDateString() : '—'}
+                                    </td>
+                                    <td style={{ padding: '12px', fontSize: 'clamp(11px, 3vw, 13px)' }}>
+                                        {sub.payment_method || 'Bank Transfer'}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
     );
 }
@@ -868,7 +1116,27 @@ function App() {
     const [toast, setToast] = useState(null);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-    const [stats] = useState({ totalUniversities: 3, activeSubscriptions: 1, totalUsers: 1245, monthlyRevenue: 1200 });
+    const [stats, setStats] = useState({
+        totalUniversities: 0,
+        activeSubscriptions: 0,
+        totalUsers: 0,
+        monthlyRevenue: 0,
+        annualRevenue: 0,
+        totalRevenue: 0,
+        pendingSubscriptions: 0,
+        expiredSubscriptions: 0,
+        recentActivities: []
+    });
+    const loadStats = async () => {
+        try {
+            const result = await apiService.getSystemStats();
+            if (result.success && result.stats) {
+                setStats(result.stats);
+            }
+        } catch (error) {
+            console.error('Error loading stats:', error);
+        }
+    };
 
     useEffect(() => {
         const token = localStorage.getItem('superAdminToken');
@@ -876,6 +1144,7 @@ function App() {
         if (token && savedAdmin) {
             setIsAuthenticated(true);
             setAdmin(JSON.parse(savedAdmin));
+            loadStats();
         }
 
         const handleResize = () => {

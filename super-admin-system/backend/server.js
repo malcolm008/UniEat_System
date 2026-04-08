@@ -91,9 +91,78 @@ app.post('/api/super-admin/login', async (req, res) => {
 // ========== GET STATISTICS ==========
 app.get('/api/super-admin/stats', verifyToken, async (req, res) => {
     try {
+        // Get total universities
         const universities = await pool.query('SELECT COUNT(*) FROM universities');
-        const activeSubscriptions = await pool.query('SELECT COUNT(*) FROM universities WHERE subscription_status = $1', ['active']);
+
+        // Get active subscriptions
+        const activeSubscriptions = await pool.query(
+            'SELECT COUNT(*) FROM universities WHERE subscription_status = $1',
+            ['active']
+        );
+
+        // Get total users across all universities
         const totalUsers = await pool.query('SELECT COUNT(*) FROM users');
+
+        // Calculate monthly revenue from subscriptions table
+        // Get current month's start and end dates
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+        const monthlyRevenueResult = await pool.query(
+            `SELECT COALESCE(SUM(amount), 0) as total
+             FROM subscriptions
+             WHERE status = 'active'
+               AND start_date <= $1
+               AND end_date >= $2
+               AND billing_cycle = 'monthly'`,
+            [endOfMonth, startOfMonth]
+        );
+
+        // Calculate annual revenue (yearly from subscriptions table)
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+        const endOfYear = new Date(now.getFullYear(), 11, 31);
+
+        const annualRevenueResult = await pool.query(
+            `SELECT COALESCE(SUM(amount), 0) as total
+             FROM subscriptions
+             WHERE status = 'active'
+               AND start_date <= $1
+               AND end_date >= $2
+               AND billing_cycle = 'annual'`,
+            [endOfYear, startOfYear]
+        );
+
+        // Total monthly revenue = monthly subscriptions + (annual subscriptions / 12)
+        const monthlyFromAnnual = annualRevenueResult.rows[0].total / 12;
+        const totalMonthlyRevenue = Math.round(monthlyRevenueResult.rows[0].total + monthlyFromAnnual);
+
+        // Get total revenue all time
+        const totalRevenueResult = await pool.query(
+            'SELECT COALESCE(SUM(amount), 0) as total FROM subscriptions WHERE status = $1',
+            ['active']
+        );
+
+        // Get pending subscriptions count
+        const pendingSubscriptions = await pool.query(
+            'SELECT COUNT(*) FROM universities WHERE subscription_status = $1',
+            ['inactive']
+        );
+
+        // Get expired subscriptions count
+        const expiredSubscriptions = await pool.query(
+            'SELECT COUNT(*) FROM universities WHERE subscription_status = $1 AND subscription_end < NOW()',
+            ['active']
+        );
+
+        // Get recent activities (last 5 subscription activations)
+        const recentActivities = await pool.query(
+            `SELECT s.*, u.name as university_name
+             FROM subscriptions s
+             JOIN universities u ON s.university_id = u.id
+             ORDER BY s.created_at DESC
+             LIMIT 5`
+        );
 
         res.json({
             success: true,
@@ -101,12 +170,17 @@ app.get('/api/super-admin/stats', verifyToken, async (req, res) => {
                 totalUniversities: parseInt(universities.rows[0].count),
                 activeSubscriptions: parseInt(activeSubscriptions.rows[0].count),
                 totalUsers: parseInt(totalUsers.rows[0].count),
-                monthlyRevenue: 1200
+                monthlyRevenue: totalMonthlyRevenue,
+                annualRevenue: annualRevenueResult.rows[0].total,
+                totalRevenue: totalRevenueResult.rows[0].total,
+                pendingSubscriptions: parseInt(pendingSubscriptions.rows[0].count),
+                expiredSubscriptions: parseInt(expiredSubscriptions.rows[0].count),
+                recentActivities: recentActivities.rows
             }
         });
     } catch (error) {
         console.error('Error fetching stats:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        res.status(500).json({ success: false, message: 'Server error: ' + error.message });
     }
 });
 
@@ -155,15 +229,16 @@ app.post('/api/super-admin/universities/:id/activate-subscription', verifyToken,
     endDate.setDate(endDate.getDate() + duration);
 
     try {
-
         const currentUni = await pool.query(
             'SELECT subscription_start, subscription_end, subscription_status FROM universities WHERE id = $1',
             [id]
         );
 
         if (currentUni.rows.length === 0) {
-            return res.status(404).json({success: false, message: 'University not found'});
+            return res.status(404).json({ success: false, message: 'University not found' });
         }
+
+        const uni = currentUni.rows[0];
 
         let subscriptionStart = startDate;
         if (uni.subscription_start && uni.subscription_status === 'active' && uni.subscription_end > new Date()) {
@@ -171,7 +246,7 @@ app.post('/api/super-admin/universities/:id/activate-subscription', verifyToken,
         }
 
         await pool.query(
-           `UPDATE universities
+            `UPDATE universities
              SET subscription_status = 'active',
                  status = 'active',
                  subscription_start = $1,
