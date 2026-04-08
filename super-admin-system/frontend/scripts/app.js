@@ -295,19 +295,24 @@ function UniversityManagement() {
     };
 
     const suspendUniversity = async (uni) => {
-        if (confirm(`Are you sure you want to suspend ${uni.name}?\n\nThis will block all users from accessing the system.`)) return;
+        if (!confirm(`Are you sure you want to suspend ${uni.name}?\n\nThis will:\n- Block all users from accessing the system\n- Deactivate their subscription\n- Prevent new logins\n\nThis action can be reversed by activating the subscription again.`)) return;
+
+        console.log('Suspended university:', uni.id, uni.name);
 
         try {
             const result = await apiService.suspendedUniversity(uni.id);
+            console.log('Suspended response:', result);
+
             if (result.success) {
                 await loadUniversities();
-                alert(`${uni.name} has been suspended.`);
+                alert(`${uni.name} has been suspended successfully.\n\nAll users from this university have been blocked.`);
             } else {
-                alert('Error: ' + (result.message || 'Failed to suspend university'));
+                console.error('Suspend failed:', result);
+                alert(`Failed to suspend: ${result.message || 'Unknown error'}\n\nCheck console for details.`);
             }
         } catch (error) {
             console.error('Error suspending university:', error);
-            alert('Network error. Please try again.');
+            alert(`Network error: ${error.message}\n\nPlease check if the backend is running.`);
         }
     };
 

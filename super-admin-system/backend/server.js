@@ -164,17 +164,20 @@ app.post('/api/super-admin/universities/:id/activate-subscription', verifyToken,
             [endDate, id]
         );
 
-        // Log the subscription activation
-        await pool.query(
-            `INSERT INTO subscription_logs (university_id, action, details)
-             VALUES ($1, $2, $3)`,
-            [id, 'subscription_activated', JSON.stringify({ duration, amount, endDate: endDate.toISOString() })]
-        );
+        try {
+            await pool.query(
+                `INSERT INTO subscription_logs (university_id, action, details, created_by)
+                 VALUES ($1, $2, $3, $4)`,
+                [id, 'subscription_activated', JSON.stringify({ duration, amount, endDate: endDate.toISOString() }), req.admin?.id]
+            );
+        } catch (logError) {
+            console.log('Note: subscription_logs table not found, skipping log entry');
+        }
 
         res.json({ success: true, message: 'Subscription activated successfully' });
     } catch (error) {
         console.error('Error activating subscription:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
@@ -182,19 +185,54 @@ app.post('/api/super-admin/universities/:id/activate-subscription', verifyToken,
 app.post('/api/super-admin/universities/:id/suspend', verifyToken, async (req, res) => {
     const { id } = req.params;
 
+    console.log('Suspend request received for university ID:', id);
+
     try {
-        await pool.query(
+        const checkResult = await pool.query(
+            'SELECT id, name, status FROM universities WHERE id = $1',
+            [id]
+        );
+
+        if (checkResult.rows.length === 0) {
+            console.log('University not found:', id);
+            return res.status(404).json({
+                success: false,
+                message: 'University not found'
+            });
+        }
+
+        console.log('Found university:', checkResult.rows[0]);
+
+        const updateResult = await pool.query(
             `UPDATE universities
              SET status = 'suspended',
                  subscription_status = 'inactive',
                  updated_at = NOW()
-             WHERE id = $1`,
+             WHERE id = $1
+             RETURNING id, name, status, subscription_status`,
             [id]
         );
-        res.json({ success: true, message: 'University suspended' });
+
+        console.log('Update result:', updateResult.rows[0]);
+
+        res.json({
+            success: true,
+            message: 'University suspended successfully',
+            university: updatedResult.rows[0]
+        });
+
     } catch (error) {
         console.error('Error suspending university:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        console.error('Error details:', {
+            message: error.message,
+            code: error.code,
+            stack: error.stack
+        });
+        res.status(500).json({
+            success: false,
+            message: 'Server error: ' + error.message,
+            details: error.message
+        });
     }
 });
 

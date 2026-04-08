@@ -43,10 +43,13 @@ const apiService = {
         });
     },
 
-    async suspendedUniversity(id) {
-        return await this.authFetch('/universities/${id}/suspend', {
-            method: 'POST',
+    async suspendUniversity(id) {
+        console.log('API call: Suspending university with ID:', id);
+        const result = await this.authFetch(`/universities/${id}/suspend`, {
+            method: 'POST'
         });
+        console.log('API response:', result);
+        return result;
     },
 
     async getUsers(universityId = null) {
