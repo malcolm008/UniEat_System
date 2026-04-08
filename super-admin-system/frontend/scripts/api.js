@@ -84,5 +84,16 @@ const apiService = {
     async getSubscriptions() {
         return await this.authFetch('/subscriptions');
     },
+
+    async getSettings() {
+        return await this.authFetch('/settings');
+    },
+
+    async updateSettings(settings) {
+        return await this.authFetch('/settings', {
+            method: 'PUT',
+            body: JSON.stringify({ settings })
+        });
+    },
 };
 

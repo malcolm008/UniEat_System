@@ -463,6 +463,67 @@ app.get('/api/super-admin/subscriptions', verifyToken, async (req, res) => {
     }
 });
 
+// ========== GET SYSTEM SETTINGS ==========
+app.get('/api/super-admin/settings', verifyToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT setting_key, setting_value, setting_type FROM system_settings'
+        );
+
+        const settings = {};
+        result.rows.forEach(row => {
+            let value = row.setting_value;
+            if (row.setting_type === 'number') {
+                value = parseInt(value);
+            } else if (row.setting_type === 'boolean') {
+                value = value === 'true';
+            }
+            settings[row.setting_key] = value;
+        });
+
+        res.json({ success: true, settings });
+    } catch (error) {
+        console.error('Error fetching settings:', error);
+        // Return default settings if table doesn't exist yet
+        res.json({
+            success: true,
+            settings: {
+                system_name: 'UniEat',
+                support_email: 'support@unieat.com',
+                annual_price: 1200,
+                monthly_price: 100,
+                currency: 'USD',
+                timezone: 'Africa/Dar_es_Salaam'
+            }
+        });
+    }
+});
+
+// ========== UPDATE SYSTEM SETTINGS ==========
+app.put('/api/super-admin/settings', verifyToken, async (req, res) => {
+    const { settings } = req.body;
+
+    try {
+        for (const [key, value] of Object.entries(settings)) {
+            let settingValue = String(value);
+            let settingType = typeof value;
+
+            await pool.query(
+                `INSERT INTO system_settings (setting_key, setting_value, setting_type, updated_at, updated_by)
+                 VALUES ($1, $2, $3, NOW(), $4)
+                 ON CONFLICT (setting_key)
+                 DO UPDATE SET setting_value = $2, setting_type = $3, updated_at = NOW(), updated_by = $4`,
+                [key, settingValue, settingType, req.admin?.id]
+            );
+        }
+
+        res.json({ success: true, message: 'Settings saved successfully' });
+    } catch (error) {
+        console.error('Error saving settings:', error);
+        res.status(500).json({ success: false, message: 'Server error: ' + error.message });
+    }
+});
+
 // ========== HEALTH CHECK ==========
 app.get('/health', (req, res) => {
     res.json({

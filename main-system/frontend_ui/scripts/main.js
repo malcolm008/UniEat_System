@@ -160,7 +160,172 @@
     function MenuMgmtPage() { const {showToast} = useContext(AppCtx); const [meals, setMeals] = useState(MEALS.map(m=>({...m}))); const [editing, setEditing] = useState(null); const [editForm, setEditForm] = useState({}); const [showAdd, setShowAdd] = useState(false); const [newMeal, setNewMeal] = useState({name:'',desc:'',price:'',cat:'lunch',emoji:'🍽️',badge:'',stock:true}); const toggleStock = (id) => { setMeals(prev=>prev.map(m=>m.id===id?{...m,stock:!m.stock}:m)); showToast('Menu updated', 'success'); }; const startEdit = (meal) => { setEditing(meal.id); setEditForm({...meal}); }; const saveEdit = () => { setMeals(prev=>prev.map(m=>m.id===editing?{...editForm,id:m.id,price:Number(editForm.price)}:m)); setEditing(null); showToast('✓ Meal updated', 'success'); }; const addMeal = () => { if(!newMeal.name||!newMeal.price){showToast('Fill in name & price','error');return;} setMeals(prev=>[...prev,{...newMeal,id:Date.now(),price:Number(newMeal.price)}]); setShowAdd(false); setNewMeal({name:'',desc:'',price:'',cat:'lunch',emoji:'🍽️',badge:'',stock:true}); showToast('✓ Meal added', 'success'); }; return ( <div style={{padding:22,overflowY:'auto'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:18}}><div><div style={{fontWeight:800,fontSize:20}}>Menu Management</div><div style={{fontSize:12,color:'var(--muted)'}}>{meals.length} items</div></div><Btn variant="rust" onClick={()=>setShowAdd(true)}>+ Add meal</Btn></div><div className="admin-menu-grid" style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>{meals.map(m=>(<div key={m.id} style={{background:'#fff',border:'1px solid var(--border)',borderRadius:12,padding:'12px 14px'}}><div style={{display:'flex',justifyContent:'space-between'}}><div style={{display:'flex',gap:10}}><span style={{fontSize:26}}>{m.emoji}</span><div><div style={{fontWeight:700,fontSize:13}}>{m.name}</div><div style={{fontSize:10}}>{m.cat} · TZS {fmt(m.price)}</div></div></div><div><button onClick={()=>startEdit(m)} style={{border:'1px solid var(--border)',padding:'4px 7px',borderRadius:6}}>✏️</button><button onClick={()=>setMeals(prev=>prev.filter(x=>x.id!==m.id))} style={{marginLeft:6,border:'1px solid var(--border)',padding:'4px 7px',borderRadius:6}}>🗑️</button></div></div><div style={{marginTop:10,display:'flex',justifyContent:'space-between'}}><div onClick={()=>toggleStock(m.id)} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}><div style={{width:32,height:18,borderRadius:9,background:m.stock?'#4A6741':'#E2D9CC',position:'relative'}}><div style={{width:14,height:14,borderRadius:'50%',background:'#fff',position:'absolute',top:2,left:m.stock?16:2}}/></div><span style={{fontSize:10}}>{m.stock?'Available':'Off menu'}</span></div></div></div>))}</div><Modal open={!!editing} onClose={()=>setEditing(null)} maxW={420} center><div style={{fontWeight:800,fontSize:18}}>Edit meal</div><Input label="Name" value={editForm.name||''} onChange={v=>setEditForm(f=>({...f,name:v}))}/><Input label="Price" type="number" value={editForm.price||''} onChange={v=>setEditForm(f=>({...f,price:v}))}/><Btn fullWidth variant="rust" onClick={saveEdit}>Save</Btn></Modal><Modal open={showAdd} onClose={()=>setShowAdd(false)} maxW={420} center><div style={{fontWeight:800,fontSize:18}}>Add new meal</div><Input label="Name" value={newMeal.name} onChange={v=>setNewMeal(f=>({...f,name:v}))}/><Input label="Price" type="number" value={newMeal.price} onChange={v=>setNewMeal(f=>({...f,price:v}))}/><Btn fullWidth variant="sage" onClick={addMeal}>Add to menu</Btn></Modal></div> ); }
     function OrdersMgmtPage() { const [filter, setFilter] = useState('all'); const [orders] = useState(SAMPLE_ORDERS.map(o=>({...o}))); const filtered = filter==='all'?orders:orders.filter(o=>o.status===filter); return ( <div style={{padding:22,overflowY:'auto'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:18}}><div><div style={{fontWeight:800,fontSize:20}}>All Orders</div><div style={{fontSize:12}}>{orders.length} orders today</div></div><div style={{display:'flex',gap:6}}>{['all','pending','served'].map(f=>(<button key={f} onClick={()=>setFilter(f)} style={{padding:'6px 14px',borderRadius:8,background:filter===f?'#1C1A17':'#fff',color:filter===f?'#F5F0E8':'var(--cr)'}}>{f}</button>))}</div></div><div className="order-table" style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse'}}><thead><tr style={{background:'var(--tag)'}}>{['Order ID','Student','Items','Total','Method','Time','Status'].map(h=><th key={h} style={{padding:'10px 14px',fontSize:10,textAlign:'left'}}>{h}</th>)}</tr></thead><tbody>{filtered.map(o=>(<tr key={o.id}><td data-label="Order ID" style={{padding:'12px 14px'}}>{o.id}</td><td data-label="Student">{o.student}</td><td data-label="Items" style={{fontSize:11}}>{o.items.map(it=>`${it.qty}× ${it.name}`).join(', ')}</td><td data-label="Total">TZS {fmt(o.total)}</td><td data-label="Method"><Badge color={o.paid==='mpesa'?'sage':'blue'}>{o.paid}</Badge></td><td data-label="Time">{o.time}</td><td data-label="Status"><Badge color={o.status==='served'?'sage':'amber'}>{o.status}</Badge></td></tr>))}</tbody></table></div></div> ); }
     function ReportsPage() { return ( <div style={{padding:24,overflowY:'auto'}}><div style={{fontWeight:800,fontSize:20}}>Reports</div><div className="admin-dashboard-stats" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}><StatCard label="This month" value="TZS 2.4M" sub="89 hours" color="rust" icon="📅"/><StatCard label="Total orders" value="1,247" color="amber" icon="📋"/><StatCard label="Top payer" value="M-Pesa" color="sage" icon="📱"/></div><div className="admin-grid-2col" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Daily revenue</div><MiniBarChart data={SALES_DATA}/></div><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Category breakdown</div>{[{label:'Lunch',pct:38},{label:'Dinner',pct:29},{label:'Breakfast',pct:18}].map(c=>(<div key={c.label} style={{display:'flex',gap:8,marginBottom:8}}><span style={{width:70}}>{c.label}</span><div style={{flex:1,height:6,background:'#EDE8DF'}}><div style={{width:c.pct+'%',height:'100%',background:'#C4522A'}}/></div><span>{c.pct}%</span></div>))}</div></div></div> ); }
-    function LoginScreen({onLogin}) { const [role, setRole] = useState('student'); const [id, setId] = useState(''); const [pass, setPass] = useState(''); const [loading, setLoading] = useState(false); const [err, setErr] = useState(''); const creds = { student:{id:'CS/2022/042',pass:'student123',name:'John M.',initials:'JM'}, staff:{id:'STAFF001',pass:'staff123',name:'Mary K.',initials:'MK'}, admin:{id:'ADMIN001',pass:'admin123',name:'Dr. Osei',initials:'DO'}, }; const handleLogin = () => { const c = creds[role]; if(id===c.id && pass===c.pass) { setLoading(true); setTimeout(()=>onLogin({role,name:c.name,initials:c.initials,id}),1000); } else { setErr('Incorrect credentials.'); } }; return ( <div style={{minHeight:'100vh',background:'#1C1A17',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}><div style={{width:'100%',maxWidth:400}}><div style={{textAlign:'center',marginBottom:32}}><div style={{fontFamily:'Syne',fontWeight:800,fontSize:32,color:'#F5F0E8'}}>UniEat</div><div style={{fontSize:12,color:'#4A4030'}}>University Canteen System</div></div><div style={{display:'flex',background:'#2D2520',borderRadius:12,padding:4,marginBottom:20,gap:3}}>{[['student','Student'],['staff','Staff'],['admin','Admin']].map(([r,l])=>(<button key={r} onClick={()=>{setRole(r);setErr('');}} style={{flex:1,padding:'8px',borderRadius:9,background:role===r?'#C4522A':'transparent',color:role===r?'#fff':'#6A6050'}}>{l}</button>))}</div><div style={{background:'#2D2520',borderRadius:16,padding:22}}><div style={{marginBottom:12}}><div style={{fontSize:10,color:'#6A6050',marginBottom:6}}>{role==='student'?'University ID':'Staff ID'}</div><input value={id} onChange={e=>setId(e.target.value)} placeholder={creds[role].id} style={{width:'100%',padding:'11px 14px',background:'#1C1A17',border:'1.5px solid #3A3530',borderRadius:10,color:'#F5F0E8'}}/></div><div style={{marginBottom:16}}><div style={{fontSize:10,color:'#6A6050',marginBottom:6}}>Password</div><input value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleLogin()} type="password" placeholder="••••••••" style={{width:'100%',padding:'11px 14px',background:'#1C1A17',border:'1.5px solid #3A3530',borderRadius:10,color:'#F5F0E8'}}/></div>{err && <div style={{fontSize:11,color:'#E8693D',marginBottom:12}}>{err}</div>}<button onClick={handleLogin} style={{width:'100%',background:loading?'#3A3530':'#C4522A',color:'#fff',borderRadius:10,padding:14,fontWeight:700}}>Sign in →</button><div style={{fontSize:10,color:'#4A4030',marginTop:14,textAlign:'center'}}>Demo: {creds[role].id} / {creds[role].pass}</div></div>{role==='student' && (<button onClick={()=>onLogin({role:'student',name:'Guest',initials:'GU',id:'GUEST'})} style={{width:'100%',marginTop:10,padding:'11px',borderRadius:12,border:'1px solid #3A3530',background:'transparent',color:'#6A6050'}}>Guest mode</button>)}</div></div> ); }
+    function LoginScreen({ onLogin }) {
+        const [role, setRole] = useState('student');
+        const [id, setId] = useState('');
+        const [pass, setPass] = useState('');
+        const [loading, setLoading] = useState(false);
+        const [err, setErr] = useState('');
+
+        // Demo credentials fallback (only if backend is not available)
+        const demoCreds = {
+            student: { id: 'CS/2022/042', pass: 'student123', name: 'John M.', initials: 'JM' },
+            staff: { id: 'STAFF001', pass: 'staff123', name: 'Mary K.', initials: 'MK' },
+            admin: { id: 'ADMIN001', pass: 'admin123', name: 'Dr. Osei', initials: 'DO' }
+        };
+
+        const handleLogin = async () => {
+            if (!id || !pass) {
+                setErr('Please enter both ID and password');
+                return;
+            }
+
+            setLoading(true);
+            setErr('');
+
+            try {
+                // Call the real backend API
+                const response = await fetch('http://localhost:5000/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        reg_number: id,
+                        password: pass
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Store tokens
+                    localStorage.setItem('access_token', data.data.access_token);
+                    localStorage.setItem('refresh_token', data.data.refresh_token);
+
+                    // Get user info from response
+                    const user = data.data.user;
+
+                    // Call onLogin with user data
+                    onLogin({
+                        role: user.role,
+                        name: user.name,
+                        initials: user.name.split(' ').map(n => n[0]).join('').toUpperCase(),
+                        id: user.reg_number,
+                        token: data.data.access_token
+                    });
+                } else {
+                    // If backend fails, try demo mode
+                    console.log('Backend login failed, trying demo mode...');
+                    const c = demoCreds[role];
+                    if (id === c.id && pass === c.pass) {
+                        setLoading(true);
+                        setTimeout(() => onLogin({
+                            role: role,
+                            name: c.name,
+                            initials: c.initials,
+                            id: c.id
+                        }), 500);
+                    } else {
+                        setErr(data.message || 'Invalid credentials. Please check your ID and password.');
+                        setLoading(false);
+                    }
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                // Fallback to demo mode if backend is not running
+                const c = demoCreds[role];
+                if (id === c.id && pass === c.pass) {
+                    setLoading(true);
+                    setTimeout(() => onLogin({
+                        role: role,
+                        name: c.name,
+                        initials: c.initials,
+                        id: c.id
+                    }), 500);
+                } else {
+                    setErr('Network error. Please make sure the backend server is running on port 5000.');
+                    setLoading(false);
+                }
+            }
+        };
+
+        return (
+            <div style={{ minHeight: '100vh', background: '#1C1A17', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                <div style={{ width: '100%', maxWidth: 400 }}>
+                    <div style={{ textAlign: 'center', marginBottom: 32 }}>
+                        <div style={{ fontFamily: 'Syne', fontWeight: 800, fontSize: 32, color: '#F5F0E8' }}>UniEat</div>
+                        <div style={{ fontSize: 12, color: '#4A4030' }}>University Canteen System</div>
+                    </div>
+
+                    <div style={{ display: 'flex', background: '#2D2520', borderRadius: 12, padding: 4, marginBottom: 20, gap: 3 }}>
+                        {[['student', 'Student'], ['staff', 'Staff'], ['admin', 'Admin']].map(([r, l]) => (
+                            <button key={r} onClick={() => { setRole(r); setErr(''); }} style={{
+                                flex: 1, padding: '8px', borderRadius: 9,
+                                background: role === r ? '#C4522A' : 'transparent',
+                                color: role === r ? '#fff' : '#6A6050'
+                            }}>
+                                {l}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div style={{ background: '#2D2520', borderRadius: 16, padding: 22 }}>
+                        <div style={{ marginBottom: 12 }}>
+                            <div style={{ fontSize: 10, color: '#6A6050', marginBottom: 6 }}>
+                                {role === 'student' ? 'Registration Number' : 'Staff ID'}
+                            </div>
+                            <input
+                                value={id}
+                                onChange={e => setId(e.target.value)}
+                                placeholder={role === 'student' ? 'e.g., CS/2022/042' : 'e.g., STAFF001'}
+                                style={{
+                                    width: '100%', padding: '11px 14px', background: '#1C1A17',
+                                    border: '1.5px solid #3A3530', borderRadius: 10, color: '#F5F0E8'
+                                }}
+                            />
+                        </div>
+
+                        <div style={{ marginBottom: 16 }}>
+                            <div style={{ fontSize: 10, color: '#6A6050', marginBottom: 6 }}>Password</div>
+                            <input
+                                value={pass}
+                                onChange={e => setPass(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                                type="password"
+                                placeholder="••••••••"
+                                style={{
+                                    width: '100%', padding: '11px 14px', background: '#1C1A17',
+                                    border: '1.5px solid #3A3530', borderRadius: 10, color: '#F5F0E8'
+                                }}
+                            />
+                        </div>
+
+                        {err && <div style={{ fontSize: 11, color: '#E8693D', marginBottom: 12 }}>{err}</div>}
+
+                        <button onClick={handleLogin} disabled={loading} style={{
+                            width: '100%', background: loading ? '#3A3530' : '#C4522A',
+                            color: '#fff', borderRadius: 10, padding: 14, fontWeight: 700
+                        }}>
+                            {loading ? 'Signing in...' : 'Sign in →'}
+                        </button>
+
+                        <div style={{ fontSize: 10, color: '#4A4030', marginTop: 14, textAlign: 'center' }}>
+                            Use credentials provided by your university administrator
+                        </div>
+                    </div>
+
+                    {role === 'student' && (
+                        <button onClick={() => onLogin({ role: 'student', name: 'Guest', initials: 'GU', id: 'GUEST' })} style={{
+                            width: '100%', marginTop: 10, padding: '11px', borderRadius: 12,
+                            border: '1px solid #3A3530', background: 'transparent', color: '#6A6050'
+                        }}>
+                            Continue as Guest (Limited Access)
+                        </button>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
     function SettingsPage({user, onUpdateUser}) {
         const { showToast } = useContext(AppCtx);
         const [formData, setFormData] = useState({
@@ -379,6 +544,7 @@
             </div>
         );
     }
+
     function UserMenu({ user, onLogout, onSettings }) {
         const [isOpen, setIsOpen] = useState(false);
         const menuRef = useRef(null);

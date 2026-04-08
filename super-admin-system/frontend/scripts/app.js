@@ -1084,25 +1084,314 @@ function SubscriptionManagement() {
 
 // ========== SETTINGS ==========
 function Settings() {
-    const [settings, setSettings] = useState({ systemName: 'UniEat', supportEmail: 'support@unieat.com', annualPrice: 1200, monthlyPrice: 100, currency: 'USD', timezone: 'Africa/Dar_es_Salaam' });
+    const [settings, setSettings] = useState({
+        systemName: 'UniEat',
+        supportEmail: 'support@unieat.com',
+        annualPrice: 1200,
+        monthlyPrice: 100,
+        currency: 'USD',
+        timezone: 'Africa/Dar_es_Salaam'
+    });
+    const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const saveSettings = () => { setSaving(true); setTimeout(() => { alert('Settings saved successfully!'); setSaving(false); }, 1000); };
+    const [error, setError] = useState(null);
+    const [success, setSuccess] = useState(null);
+    const selectStyle = {
+        width: '100%',
+        padding: 'clamp(8px, 3vw, 12px)',
+        background: '#2a2a2a',
+        border: '1px solid #3a3a3a',
+        borderRadius: 8,
+        color: '#fff',
+        fontSize: 'clamp(12px, 4vw, 14px)',
+        cursor: 'pointer',
+        boxSizing: 'border-box'
+    };
+
+    // Load settings from API
+    const loadSettings = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const result = await apiService.getSettings();
+            if (result.success && result.settings) {
+                setSettings({
+                    systemName: result.settings.system_name || 'UniEat',
+                    supportEmail: result.settings.support_email || 'support@unieat.com',
+                    annualPrice: result.settings.annual_price || 1200,
+                    monthlyPrice: result.settings.monthly_price || 100,
+                    currency: result.settings.currency || 'USD',
+                    timezone: result.settings.timezone || 'Africa/Dar_es_Salaam'
+                });
+            }
+        } catch (error) {
+            console.error('Error loading settings:', error);
+            setError('Failed to load settings. Using defaults.');
+        }
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        loadSettings();
+    }, []);
+
+    // Save settings to API
+    const saveSettings = async () => {
+        setSaving(true);
+        setError(null);
+        setSuccess(null);
+
+        try {
+            const settingsToSave = {
+                system_name: settings.systemName,
+                support_email: settings.supportEmail,
+                annual_price: settings.annualPrice,
+                monthly_price: settings.monthlyPrice,
+                currency: settings.currency,
+                timezone: settings.timezone
+            };
+
+            const result = await apiService.updateSettings(settingsToSave);
+
+            if (result.success) {
+                setSuccess('Settings saved successfully!');
+                setTimeout(() => setSuccess(null), 3000);
+            } else {
+                setError(result.message || 'Failed to save settings');
+            }
+        } catch (error) {
+            console.error('Error saving settings:', error);
+            setError('Network error. Please try again.');
+        }
+        setSaving(false);
+    };
+
+    if (loading) {
+        return (
+            <div style={{ textAlign: 'center', padding: 40 }}>
+                <div style={{
+                    width: 40,
+                    height: 40,
+                    border: '3px solid #2a2a2a',
+                    borderTopColor: '#2563eb',
+                    borderRadius: '50%',
+                    margin: '0 auto 16px',
+                    animation: 'spin 0.7s linear infinite'
+                }} />
+                <div>Loading settings...</div>
+            </div>
+        );
+    }
+
     return (
         <div>
-            <h1 style={{ fontSize: 24, marginBottom: 8 }}>System Settings</h1>
-            <p style={{ color: '#aaa', marginBottom: 24 }}>Configure system-wide settings</p>
-            <div style={{ maxWidth: 600 }}>
-                <div style={{ marginBottom: 20 }}><label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: '#aaa' }}>System Name</label><input type="text" value={settings.systemName} onChange={e => setSettings({...settings, systemName: e.target.value})} style={inputStyle} /></div>
-                <div style={{ marginBottom: 20 }}><label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: '#aaa' }}>Support Email</label><input type="email" value={settings.supportEmail} onChange={e => setSettings({...settings, supportEmail: e.target.value})} style={inputStyle} /></div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-                    <div><label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: '#aaa' }}>Annual Price (USD)</label><input type="number" value={settings.annualPrice} onChange={e => setSettings({...settings, annualPrice: parseInt(e.target.value)})} style={inputStyle} /></div>
-                    <div><label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: '#aaa' }}>Monthly Price (USD)</label><input type="number" value={settings.monthlyPrice} onChange={e => setSettings({...settings, monthlyPrice: parseInt(e.target.value)})} style={inputStyle} /></div>
+            <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 24,
+                flexWrap: 'wrap',
+                gap: 16
+            }}>
+                <div>
+                    <h1 style={{ fontSize: 'clamp(20px, 5vw, 24px)', marginBottom: 4 }}>System Settings</h1>
+                    <p style={{ color: '#aaa', fontSize: 'clamp(12px, 4vw, 14px)' }}>
+                        Configure system-wide settings
+                    </p>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-                    <div><label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: '#aaa' }}>Currency</label><select value={settings.currency} onChange={e => setSettings({...settings, currency: e.target.value})} style={inputStyle}><option value="USD">USD</option><option value="TZS">TZS</option><option value="KES">KES</option><option value="UGX">UGX</option></select></div>
-                    <div><label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: '#aaa' }}>Timezone</label><select value={settings.timezone} onChange={e => setSettings({...settings, timezone: e.target.value})} style={inputStyle}><option value="Africa/Dar_es_Salaam">Dar es Salaam</option><option value="Africa/Nairobi">Nairobi</option><option value="Africa/Kampala">Kampala</option><option value="Africa/Kigali">Kigali</option></select></div>
+                <Btn variant="secondary" onClick={loadSettings} small>⟳ Refresh</Btn>
+            </div>
+
+            {error && (
+                <div style={{
+                    background: '#5a1a1a',
+                    color: '#ef5350',
+                    padding: '12px 16px',
+                    borderRadius: 8,
+                    marginBottom: 20,
+                    fontSize: 13
+                }}>
+                    ⚠️ {error}
                 </div>
-                <Btn onClick={saveSettings} disabled={saving}>{saving ? 'Saving...' : 'Save Settings'}</Btn>
+            )}
+
+            {success && (
+                <div style={{
+                    background: '#1a5a3a',
+                    color: '#8bc34a',
+                    padding: '12px 16px',
+                    borderRadius: 8,
+                    marginBottom: 20,
+                    fontSize: 13
+                }}>
+                    ✅ {success}
+                </div>
+            )}
+
+            <div style={{
+                maxWidth: '100%',
+                width: 600,
+                background: '#1a1a1a',
+                borderRadius: 12,
+                padding: 24,
+                border: '1px solid #2a2a2a'
+            }}>
+                {/* General Settings */}
+                <div style={{ marginBottom: 24, paddingBottom: 24, borderBottom: '1px solid #2a2a2a' }}>
+                    <h3 style={{ marginBottom: 16, fontSize: 16 }}>General Settings</h3>
+
+                    <div style={{ marginBottom: 20 }}>
+                        <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: '#aaa' }}>
+                            System Name
+                        </label>
+                        <input
+                            type="text"
+                            value={settings.systemName}
+                            onChange={e => setSettings({...settings, systemName: e.target.value})}
+                            style={inputStyle}
+                            placeholder="Enter system name"
+                        />
+                        <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>
+                            Name displayed throughout the application
+                        </div>
+                    </div>
+
+                    <div style={{ marginBottom: 20 }}>
+                        <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: '#aaa' }}>
+                            Support Email
+                        </label>
+                        <input
+                            type="email"
+                            value={settings.supportEmail}
+                            onChange={e => setSettings({...settings, supportEmail: e.target.value})}
+                            style={inputStyle}
+                            placeholder="support@example.com"
+                        />
+                        <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>
+                            Email address for user support inquiries
+                        </div>
+                    </div>
+                </div>
+
+                {/* Pricing Settings */}
+                <div style={{ marginBottom: 24, paddingBottom: 24, borderBottom: '1px solid #2a2a2a' }}>
+                    <h3 style={{ marginBottom: 16, fontSize: 16 }}>Pricing Settings</h3>
+
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: window.innerWidth <= 560 ? '1fr' : '1fr 1fr',
+                        gap: 16,
+                        marginBottom: 20
+                    }}>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: '#aaa' }}>
+                                Annual Price (USD)
+                            </label>
+                            <input
+                                type="number"
+                                value={settings.annualPrice}
+                                onChange={e => setSettings({...settings, annualPrice: parseInt(e.target.value)})}
+                                style={inputStyle}
+                                min="0"
+                                step="100"
+                            />
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: '#aaa' }}>
+                                Monthly Price (USD)
+                            </label>
+                            <input
+                                type="number"
+                                value={settings.monthlyPrice}
+                                onChange={e => setSettings({...settings, monthlyPrice: parseInt(e.target.value)})}
+                                style={inputStyle}
+                                min="0"
+                                step="10"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Regional Settings */}
+                <div style={{ marginBottom: 20 }}>
+                    <h3 style={{ marginBottom: 16, fontSize: 16 }}>Regional Settings</h3>
+
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: window.innerWidth <= 560 ? '1fr' : '1fr 1fr',
+                        gap: 16,
+                        marginBottom: 20
+                    }}>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: '#aaa' }}>
+                                Currency
+                            </label>
+                            <select
+                                value={settings.currency}
+                                onChange={e => setSettings({...settings, currency: e.target.value})}
+                                style={selectStyle}
+                            >
+                                <option value="USD">USD - US Dollar</option>
+                                <option value="TZS">TZS - Tanzanian Shilling</option>
+                                <option value="KES">KES - Kenyan Shilling</option>
+                                <option value="UGX">UGX - Ugandan Shilling</option>
+                                <option value="RWF">RWF - Rwandan Franc</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: '#aaa' }}>
+                                Timezone
+                            </label>
+                            <select
+                                value={settings.timezone}
+                                onChange={e => setSettings({...settings, timezone: e.target.value})}
+                                style={selectStyle}
+                            >
+                                <option value="Africa/Dar_es_Salaam">Dar es Salaam (EAT)</option>
+                                <option value="Africa/Nairobi">Nairobi (EAT)</option>
+                                <option value="Africa/Kampala">Kampala (EAT)</option>
+                                <option value="Africa/Kigali">Kigali (CAT)</option>
+                                <option value="Africa/Johannesburg">Johannesburg (SAST)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div style={{
+                    display: 'flex',
+                    gap: 12,
+                    marginTop: 24,
+                    flexDirection: window.innerWidth <= 480 ? 'column' : 'row'
+                }}>
+                    <Btn
+                        onClick={saveSettings}
+                        disabled={saving}
+                        fullWidth={window.innerWidth <= 480}
+                    >
+                        {saving ? 'Saving...' : 'Save Settings'}
+                    </Btn>
+                    <Btn
+                        variant="secondary"
+                        onClick={loadSettings}
+                        disabled={loading}
+                        fullWidth={window.innerWidth <= 480}
+                    >
+                        Reset
+                    </Btn>
+                </div>
+
+                <div style={{
+                    marginTop: 20,
+                    padding: 12,
+                    background: '#2a2a2a',
+                    borderRadius: 8,
+                    fontSize: 11,
+                    color: '#666',
+                    textAlign: 'center'
+                }}>
+                    Settings are saved to the database and persist across system restarts
+                </div>
             </div>
         </div>
     );
