@@ -89,6 +89,7 @@ function LoginScreen({ onLogin }) {
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!email || !password) { setError('Please enter email and password'); return; }
@@ -98,7 +99,10 @@ function LoginScreen({ onLogin }) {
         try {
             const response = await fetch('http://localhost:5001/api/super-admin/login', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json'},
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
                 body: JSON.stringify({ email, password })
             });
 
@@ -189,40 +193,127 @@ function UniversityManagement() {
     const [extendDays, setExtendDays] = useState(365);
     const [formData, setFormData] = useState({ name: '', email: '', phone: '', address: '', city: '', country: 'Tanzania' });
 
-    useEffect(() => { loadUniversities(); }, []);
     const loadUniversities = async () => {
         setLoading(true);
-        setTimeout(() => {
-            setUniversities([
-                { id: 1, name: 'University of Dar es Salaam', email: 'admin@udsm.ac.tz', phone: '+255 222 123456', city: 'Dar es Salaam', status: 'active', subscription_status: 'active', subscription_end: '2025-12-31', users_count: 1245 },
-                { id: 2, name: 'Ardhi University', email: 'admin@ardhi.ac.tz', phone: '+255 222 789012', city: 'Dar es Salaam', status: 'active', subscription_status: 'expired', subscription_end: '2024-03-15', users_count: 567 },
-                { id: 3, name: 'Sokoine University', email: 'admin@sua.ac.tz', phone: '+255 232 345678', city: 'Morogoro', status: 'pending', subscription_status: 'inactive', subscription_end: null, users_count: 0 }
-            ]);
-            setLoading(false);
-        }, 500);
+        try {
+            const result = await apiService.getUniversities();
+            if (result.success && result.universities) {
+                setUniversities(result.universities);
+            } else {
+                console.error('Failed to load universities:', result);
+                setUniversities([]);
+            }
+        } catch (error) {
+            console.error('Error loading universities:', error);
+            setUniversities([]);
+        }
+        setLoading(false);
     };
+    useEffect(() => { loadUniversities(); }, []);
+
     const addUniversity = () => {
-        if (!formData.name || !formData.email) { alert('Please fill required fields'); return; }
-        setUniversities(prev => [...prev, { id: Date.now(), ...formData, status: 'pending', subscription_status: 'inactive', users_count: 0 }]);
-        setShowAddModal(false);
-        setFormData({ name: '', email: '', phone: '', address: '', city: '', country: 'Tanzania' });
-        alert('University added successfully!');
-    };
-    const activateSubscription = (uni) => { setSelectedUni(uni); setShowExtendModal(true); };
-    const extendSubscription = () => {
-        const endDate = new Date(); endDate.setDate(endDate.getDate() + extendDays);
-        const amount = extendDays === 365 ? 1200 : 100;
-        setUniversities(prev => prev.map(u => u.id === selectedUni.id ? { ...u, status: 'active', subscription_status: 'active', subscription_end: endDate.toISOString().split('T')[0] } : u));
-        alert(`Subscription activated for ${selectedUni.name}!\n\nAmount: $${amount}\nValid until: ${endDate.toDateString()}`);
-        setShowExtendModal(false); setSelectedUni(null); setExtendDays(365);
-    };
-    const suspendUniversity = (uni) => {
-        if (confirm(`Are you sure you want to suspend ${uni.name}?`)) {
-            setUniversities(prev => prev.map(u => u.id === uni.id ? { ...u, status: 'suspended', subscription_status: 'inactive' } : u));
-            alert(`${uni.name} has been suspended.`);
+        if (!formData.name || !formData.email) {
+            alert('Please fill required fields');
+            return;
+        }
+
+        try {
+            const result = await apiService.addUniversity(formData);
+            if (result.success) {
+                await loadUniversities();
+                setShowAddModal(false);
+                setFormData({ name: '', email: '', phone: '', address: '', city: '', country: 'Tanzania' });
+                alert('University added successfully!');
+            } else {
+                alert('Error: ' + (result.message || 'Failed to add university'));
+            }
+        } catch (error) {
+            console.error('Error adding university:', error);
+            alert('Network error, Please try again.');
         }
     };
-    if (loading) return <div style={{ textAlign: 'center', padding: 40 }}>Loading universities...</div>;
+
+    const updateUniversity = async () => {
+        if (!selectedUni) return;
+
+        try {
+            const result = await apiService.updateUniversity(selectedUni.id, formData);
+
+            if (result.success) {
+                await loadUniversities();
+                setShowEditModal(false);
+                setSelectedUni(null);
+                ({ name: '', email: '', phone: '', address: '', city: '', country: 'Tanzania' });
+                alert('University updated successfully!');
+            } else {
+                alert('Error: ' + (result.message || 'Failed to update university'));
+            }
+        } catch (error) {
+            console.error('Error updating university:', error);
+            alert('Network error. Please try again.');
+        }
+    };
+
+    const editUniversity = (uni) => {
+        setSelectedUni(uni);
+        setFormData({
+            name: uni.name,
+            email: uni.email,
+            phone: uni.phone || '',
+            address: uni.address || '',
+            city: uni.city || '',
+            country: uni.country || 'Tanzania'
+        });
+        setShowEditModal(true);
+    };
+
+    const activateSubscription = (uni) => {
+        setSelectedUni(uni);
+        setShowExtendModal(true);
+    };
+
+    const extendSubscription = () => {
+        const amount = extendDays === 365 ? 1200 : 100;
+
+        try {
+            const result = await apiService.activateSubscription(selectedUni.id, extendDays, amount);
+
+            if (result.success) {
+                await loadUniversities();
+                setShowExtendModal(false);
+                setSelectedUni(null);
+                setExtendDays(365);
+                alert(`Subscription activated for ${selectedUni.name}!\n\nAmount: $${amount}\nValid until: ${new Date(Date.now() + extendDays * 86400000).toDateString()}`);
+            } else {
+                alert('Error: ' + (result.message || 'Failed to activate subscription'));
+            }
+        } catch (error) {
+            console.error('Error activating subscription:', error);
+            alert('Network error. Please try again.');
+        }
+    };
+
+    const suspendUniversity = (uni) => {
+        if (confirm(`Are you sure you want to suspend ${uni.name}?\n\nThis will block all users from accessing the system.`)) return;
+
+        try {
+            const result = await apiService.suspendedUniversity(uni.id);
+            if (result.success) {
+                await loadUniversities();
+                alert(`${uni.name} has been suspended.`);
+            } else {
+                alert('Error: ' + (result.message || 'Failed to suspend university'));
+            }
+        } catch (error) {
+            console.error('Error suspending university:', error);
+            alert('Network error. Please try again.');
+        }
+    };
+
+    if (loading) {
+        return <div style={{ textAlign: 'center', padding: 40 }}>Loading universities...</div>;
+    }
+
     return (
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
@@ -439,8 +530,7 @@ function App() {
     useEffect(() => {
         const token = localStorage.getItem('superAdminToken');
         const savedAdmin = localStorage.getItem('superAdmin');
-
-        if (token) {
+        if (token && savedAdmin) {
             setIsAuthenticated(true);
             setAdmin(JSON.parse(savedAdmin));
         }
@@ -455,7 +545,7 @@ function App() {
     }, []);
 
     const showToast = (message) => { setToast(message); setTimeout(() => setToast(null), 3000); };
-    const handleLogout = () => { localStorage.removeItem('superAdminToken'); setIsAuthenticated(false); setAdmin(null); showToast('Logged out successfully'); };
+    const handleLogout = () => { localStorage.removeItem('superAdminToken'); localStorage.removeItem('superAdmin'); setIsAuthenticated(false); setAdmin(null); showToast('Logged out successfully'); };
 
     if (!isAuthenticated) return <LoginScreen onLogin={(adminData) => { setIsAuthenticated(true); setAdmin(adminData); showToast(`Welcome back, ${adminData.name}`); }} />;
 
@@ -480,16 +570,17 @@ function App() {
                     {isMobileMenuOpen ? '✕' : '☰'} Menu
                 </button>
             )}
+
             {/* Sidebar */}
             <div style={{
-                width: 260,
+                width: isMobile ? (isMobileMenuOpen ? 260 : 0) : 260,
                 background: '#111',
                 borderRight: '1px solid #2a2a2a',
-                padding: '24px 16px',
-                position: isMobile ? 'fixed' : 'sticky',
+                padding: isMobile ? (isMobileMenuOpen ? '24px 16px' : '0') : '24px 16px',
+                position: isMobile ? 'fixed' : 'relative',
                 top: 0, left: 0, height: '100vh', overflowY: 'auto', zIndex: 1000,
-                transform: isMobile ? (isMobileMenuOpen ? 'translateX(0)' : 'translateX(-100%)') : 'none',
-                transition: 'transform 0.3s ease'
+                transition: 'width 0.3s ease, padding 0.3s ease',
+                flexShrink: 0
             }}>
                 <div style={{ textAlign: 'center', marginBottom: 32 }}>
                     <div style={{ fontSize: 32, marginBottom: 8 }}>👑</div>
@@ -502,7 +593,8 @@ function App() {
                             width: '100%', padding: '12px 16px', marginBottom: 4,
                             background: currentPage === item.id ? '#2563eb' : 'transparent',
                             border: 'none', borderRadius: 8, color: currentPage === item.id ? '#fff' : '#aaa',
-                            fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12
+                            fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12,
+                            transition: 'all 0.2s'
                         }}>
                             <span style={{ fontSize: 20 }}>{item.icon}</span>
                             <span>{item.label}</span>
@@ -517,6 +609,7 @@ function App() {
                     <Btn variant="danger" onClick={handleLogout} fullWidth>Logout</Btn>
                 </div>
             </div>
+
             {/* Overlay for mobile */}
             {isMobile && isMobileMenuOpen && (
                 <div onClick={() => setIsMobileMenuOpen(false)} style={{
@@ -524,12 +617,14 @@ function App() {
                     background: 'rgba(0,0,0,0.5)', zIndex: 999
                 }} />
             )}
+
             {/* Main Content */}
             <div style={{
-                marginLeft: isMobile ? 0 : 260,
-                flex: 1, padding: 24,
-                width: isMobile ? '100%' : `calc(100% - 260px)`,
-                boxSizing: 'border-box'
+                flex: 1,
+                padding: isMobile ? '70px 16px 16px' : 24,
+                width: isMobile ? '100%' : 'auto',
+                overflowX: 'auto',
+                minWidth: 0
             }}>
                 {currentPage === 'dashboard' && <Dashboard stats={stats} />}
                 {currentPage === 'universities' && <UniversityManagement />}
@@ -537,6 +632,7 @@ function App() {
                 {currentPage === 'subscriptions' && <SubscriptionManagement />}
                 {currentPage === 'settings' && <Settings />}
             </div>
+
             <Toast toast={toast} />
         </div>
     );
