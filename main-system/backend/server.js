@@ -22,8 +22,18 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(helmet());
 app.use(cors({
-    origin: (process.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(','),
+    origin: [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'http://localhost:5500',
+        'http://localhost:63342',      // JetBrains IDE
+        'http://127.0.0.1:63342',      // JetBrains IDE alternative
+        'http://localhost:5000',
+        'http://127.0.0.1:5000'
+    ],
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(rateLimit({

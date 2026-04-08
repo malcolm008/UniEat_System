@@ -160,6 +160,7 @@
     function MenuMgmtPage() { const {showToast} = useContext(AppCtx); const [meals, setMeals] = useState(MEALS.map(m=>({...m}))); const [editing, setEditing] = useState(null); const [editForm, setEditForm] = useState({}); const [showAdd, setShowAdd] = useState(false); const [newMeal, setNewMeal] = useState({name:'',desc:'',price:'',cat:'lunch',emoji:'🍽️',badge:'',stock:true}); const toggleStock = (id) => { setMeals(prev=>prev.map(m=>m.id===id?{...m,stock:!m.stock}:m)); showToast('Menu updated', 'success'); }; const startEdit = (meal) => { setEditing(meal.id); setEditForm({...meal}); }; const saveEdit = () => { setMeals(prev=>prev.map(m=>m.id===editing?{...editForm,id:m.id,price:Number(editForm.price)}:m)); setEditing(null); showToast('✓ Meal updated', 'success'); }; const addMeal = () => { if(!newMeal.name||!newMeal.price){showToast('Fill in name & price','error');return;} setMeals(prev=>[...prev,{...newMeal,id:Date.now(),price:Number(newMeal.price)}]); setShowAdd(false); setNewMeal({name:'',desc:'',price:'',cat:'lunch',emoji:'🍽️',badge:'',stock:true}); showToast('✓ Meal added', 'success'); }; return ( <div style={{padding:22,overflowY:'auto'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:18}}><div><div style={{fontWeight:800,fontSize:20}}>Menu Management</div><div style={{fontSize:12,color:'var(--muted)'}}>{meals.length} items</div></div><Btn variant="rust" onClick={()=>setShowAdd(true)}>+ Add meal</Btn></div><div className="admin-menu-grid" style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>{meals.map(m=>(<div key={m.id} style={{background:'#fff',border:'1px solid var(--border)',borderRadius:12,padding:'12px 14px'}}><div style={{display:'flex',justifyContent:'space-between'}}><div style={{display:'flex',gap:10}}><span style={{fontSize:26}}>{m.emoji}</span><div><div style={{fontWeight:700,fontSize:13}}>{m.name}</div><div style={{fontSize:10}}>{m.cat} · TZS {fmt(m.price)}</div></div></div><div><button onClick={()=>startEdit(m)} style={{border:'1px solid var(--border)',padding:'4px 7px',borderRadius:6}}>✏️</button><button onClick={()=>setMeals(prev=>prev.filter(x=>x.id!==m.id))} style={{marginLeft:6,border:'1px solid var(--border)',padding:'4px 7px',borderRadius:6}}>🗑️</button></div></div><div style={{marginTop:10,display:'flex',justifyContent:'space-between'}}><div onClick={()=>toggleStock(m.id)} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}><div style={{width:32,height:18,borderRadius:9,background:m.stock?'#4A6741':'#E2D9CC',position:'relative'}}><div style={{width:14,height:14,borderRadius:'50%',background:'#fff',position:'absolute',top:2,left:m.stock?16:2}}/></div><span style={{fontSize:10}}>{m.stock?'Available':'Off menu'}</span></div></div></div>))}</div><Modal open={!!editing} onClose={()=>setEditing(null)} maxW={420} center><div style={{fontWeight:800,fontSize:18}}>Edit meal</div><Input label="Name" value={editForm.name||''} onChange={v=>setEditForm(f=>({...f,name:v}))}/><Input label="Price" type="number" value={editForm.price||''} onChange={v=>setEditForm(f=>({...f,price:v}))}/><Btn fullWidth variant="rust" onClick={saveEdit}>Save</Btn></Modal><Modal open={showAdd} onClose={()=>setShowAdd(false)} maxW={420} center><div style={{fontWeight:800,fontSize:18}}>Add new meal</div><Input label="Name" value={newMeal.name} onChange={v=>setNewMeal(f=>({...f,name:v}))}/><Input label="Price" type="number" value={newMeal.price} onChange={v=>setNewMeal(f=>({...f,price:v}))}/><Btn fullWidth variant="sage" onClick={addMeal}>Add to menu</Btn></Modal></div> ); }
     function OrdersMgmtPage() { const [filter, setFilter] = useState('all'); const [orders] = useState(SAMPLE_ORDERS.map(o=>({...o}))); const filtered = filter==='all'?orders:orders.filter(o=>o.status===filter); return ( <div style={{padding:22,overflowY:'auto'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:18}}><div><div style={{fontWeight:800,fontSize:20}}>All Orders</div><div style={{fontSize:12}}>{orders.length} orders today</div></div><div style={{display:'flex',gap:6}}>{['all','pending','served'].map(f=>(<button key={f} onClick={()=>setFilter(f)} style={{padding:'6px 14px',borderRadius:8,background:filter===f?'#1C1A17':'#fff',color:filter===f?'#F5F0E8':'var(--cr)'}}>{f}</button>))}</div></div><div className="order-table" style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse'}}><thead><tr style={{background:'var(--tag)'}}>{['Order ID','Student','Items','Total','Method','Time','Status'].map(h=><th key={h} style={{padding:'10px 14px',fontSize:10,textAlign:'left'}}>{h}</th>)}</tr></thead><tbody>{filtered.map(o=>(<tr key={o.id}><td data-label="Order ID" style={{padding:'12px 14px'}}>{o.id}</td><td data-label="Student">{o.student}</td><td data-label="Items" style={{fontSize:11}}>{o.items.map(it=>`${it.qty}× ${it.name}`).join(', ')}</td><td data-label="Total">TZS {fmt(o.total)}</td><td data-label="Method"><Badge color={o.paid==='mpesa'?'sage':'blue'}>{o.paid}</Badge></td><td data-label="Time">{o.time}</td><td data-label="Status"><Badge color={o.status==='served'?'sage':'amber'}>{o.status}</Badge></td></tr>))}</tbody></table></div></div> ); }
     function ReportsPage() { return ( <div style={{padding:24,overflowY:'auto'}}><div style={{fontWeight:800,fontSize:20}}>Reports</div><div className="admin-dashboard-stats" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}><StatCard label="This month" value="TZS 2.4M" sub="89 hours" color="rust" icon="📅"/><StatCard label="Total orders" value="1,247" color="amber" icon="📋"/><StatCard label="Top payer" value="M-Pesa" color="sage" icon="📱"/></div><div className="admin-grid-2col" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Daily revenue</div><MiniBarChart data={SALES_DATA}/></div><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Category breakdown</div>{[{label:'Lunch',pct:38},{label:'Dinner',pct:29},{label:'Breakfast',pct:18}].map(c=>(<div key={c.label} style={{display:'flex',gap:8,marginBottom:8}}><span style={{width:70}}>{c.label}</span><div style={{flex:1,height:6,background:'#EDE8DF'}}><div style={{width:c.pct+'%',height:'100%',background:'#C4522A'}}/></div><span>{c.pct}%</span></div>))}</div></div></div> ); }
+
     function LoginScreen({ onLogin }) {
         const [role, setRole] = useState('student');
         const [id, setId] = useState('');
@@ -254,6 +255,7 @@
                     <div style={{ textAlign: 'center', marginBottom: 32 }}>
                         <div style={{ fontFamily: 'Syne', fontWeight: 800, fontSize: 32, color: '#F5F0E8' }}>UniEat</div>
                         <div style={{ fontSize: 12, color: '#4A4030' }}>University Canteen System</div>
+                        <div style={{ fontSize: 11, color: '#C4522A', marginTop: 8 }}>For Subscribed Universities Only</div>
                     </div>
 
                     <div style={{ display: 'flex', background: '#2D2520', borderRadius: 12, padding: 4, marginBottom: 20, gap: 3 }}>
@@ -309,18 +311,9 @@
                         </button>
 
                         <div style={{ fontSize: 10, color: '#4A4030', marginTop: 14, textAlign: 'center' }}>
-                            Use credentials provided by your university administrator
+                            Access is provided to subscribed universities only
                         </div>
                     </div>
-
-                    {role === 'student' && (
-                        <button onClick={() => onLogin({ role: 'student', name: 'Guest', initials: 'GU', id: 'GUEST' })} style={{
-                            width: '100%', marginTop: 10, padding: '11px', borderRadius: 12,
-                            border: '1px solid #3A3530', background: 'transparent', color: '#6A6050'
-                        }}>
-                            Continue as Guest (Limited Access)
-                        </button>
-                    )}
                 </div>
             </div>
         );
@@ -719,6 +712,7 @@
             </div>
         );
     }
+
     function UserManagementPage() {
         const { showToast } = useContext(AppCtx);
         const [users, setUsers] = useState([]);
@@ -1259,6 +1253,7 @@
             </div>
         );
     }
+
     function App() {
         const [user, setUser] = useState(null);
         const [page, setPage] = useState('');
