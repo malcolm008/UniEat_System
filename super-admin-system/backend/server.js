@@ -150,31 +150,72 @@ app.post('/api/super-admin/universities/:id/activate-subscription', verifyToken,
     const { id } = req.params;
     const { duration, amount } = req.body;
 
+    const startDate = new Date();
     const endDate = new Date();
     endDate.setDate(endDate.getDate() + duration);
 
     try {
+
+        const currentUni = await pool.query(
+            'SELECT subscription_start, subscription_end, subscription_status FROM universities WHERE id = $1',
+            [id]
+        );
+
+        if (currentUni.rows.length === 0) {
+            return res.status(404).json({success: false, message: 'University not found'});
+        }
+
+        let subscriptionStart = startDate;
+        if (uni.subscription_start && uni.subscription_status === 'active' && uni.subscription_end > new Date()) {
+            subscriptionStart = uni.subscription_start;
+        }
+
         await pool.query(
-            `UPDATE universities
+           `UPDATE universities
              SET subscription_status = 'active',
                  status = 'active',
-                 subscription_end = $1,
+                 subscription_start = $1,
+                 subscription_end = $2,
                  updated_at = NOW()
-             WHERE id = $2`,
-            [endDate, id]
+             WHERE id = $3`,
+            [subscriptionStart, endDate, id]
         );
+
+        try {
+            await pool.query(
+                `INSERT INTO subscriptions (id, university_id, amount, currency, billing_cycle, status, start_date, end_date, payment_method, created_by)
+                 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                [id, amount, 'USD', duration === 365 ? 'annual' : 'monthly', 'active', subscriptionStart, endDate, 'Bank Transfer', req.admin?.id]
+            );
+        } catch (historyError) {
+            console.log('Note: subscriptions table not found or error inserting history:', historyError.message);
+        }
 
         try {
             await pool.query(
                 `INSERT INTO subscription_logs (university_id, action, details, created_by)
                  VALUES ($1, $2, $3, $4)`,
-                [id, 'subscription_activated', JSON.stringify({ duration, amount, endDate: endDate.toISOString() }), req.admin?.id]
+                [id, 'subscription_activated', JSON.stringify({
+                    duration,
+                    amount,
+                    startDate: subscriptionStart.toISOString(),
+                    endDate: endDate.toISOString(),
+                    isExtension: subscriptionStart !== startDate
+                }), req.admin?.id]
             );
         } catch (logError) {
             console.log('Note: subscription_logs table not found, skipping log entry');
         }
 
-        res.json({ success: true, message: 'Subscription activated successfully' });
+        res.json({
+            success: true,
+            message: `Subscription ${subscriptionStart !== startDate ? 'extended' : 'activated'} successfully from ${subscriptionStart.toLocaleDateString()} until ${endDate.toLocaleDateString()}`,
+            data: {
+                startDate: subscriptionStart,
+                endDate: endDate,
+                isExtension: subscriptionStart !== startDate
+            }
+        });
     } catch (error) {
         console.error('Error activating subscription:', error);
         res.status(500).json({ success: false, message: error.message });

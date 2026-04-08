@@ -278,13 +278,18 @@ function UniversityManagement() {
 
         try {
             const result = await apiService.activateSubscription(selectedUni.id, extendDays, amount);
-
             if (result.success) {
                 await loadUniversities();
                 setShowExtendModal(false);
                 setSelectedUni(null);
                 setExtendDays(365);
-                alert(`Subscription activated for ${selectedUni.name}!\n\nAmount: $${amount}\nValid until: ${new Date(Date.now() + extendDays * 86400000).toDateString()}`);
+
+                // Show detailed success message
+                const message = result.data?.isExtension
+                    ? `✅ Subscription extended for ${selectedUni.name}!\n\nAmount: $${amount}\nNew expiry date: ${new Date(result.data.endDate).toLocaleDateString()}\n\nOriginal start date: ${new Date(result.data.startDate).toLocaleDateString()}`
+                    : `✅ Subscription activated for ${selectedUni.name}!\n\nAmount: $${amount}\nValid from: ${new Date(result.data.startDate).toLocaleDateString()}\nValid until: ${new Date(result.data.endDate).toLocaleDateString()}`;
+
+                alert(message);
             } else {
                 alert('Error: ' + (result.message || 'Failed to activate subscription'));
             }
