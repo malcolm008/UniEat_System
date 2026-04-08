@@ -209,11 +209,12 @@ function UniversityManagement() {
         }
         setLoading(false);
     };
+
     useEffect(() => { loadUniversities(); }, []);
 
-    const addUniversity = () => {
+    const addUniversity = async () => {
         if (!formData.name || !formData.email) {
-            alert('Please fill required fields');
+            alert('Please fill required fields (Name and Email)');
             return;
         }
 
@@ -229,7 +230,7 @@ function UniversityManagement() {
             }
         } catch (error) {
             console.error('Error adding university:', error);
-            alert('Network error, Please try again.');
+            alert('Network error. Please try again.');
         }
     };
 
@@ -272,7 +273,7 @@ function UniversityManagement() {
         setShowExtendModal(true);
     };
 
-    const extendSubscription = () => {
+    const extendSubscription = async () => {
         const amount = extendDays === 365 ? 1200 : 100;
 
         try {
@@ -293,7 +294,7 @@ function UniversityManagement() {
         }
     };
 
-    const suspendUniversity = (uni) => {
+    const suspendUniversity = async (uni) => {
         if (confirm(`Are you sure you want to suspend ${uni.name}?\n\nThis will block all users from accessing the system.`)) return;
 
         try {
