@@ -67,7 +67,7 @@ const { initiatePayment, confirmPayment, verifyQR, redeemQR, getQR } = require('
 const pAuth = require('../../../shared/middleware/auth');
 
 paymentRouter.post('/initiate',  pAuth.optionalAuth, initiatePayment);
-paymentRouter.post('/confirm',   confirmPayment);          // called by webhook or test
+paymentRouter.post('/confirm',   confirmPayment);
 paymentRouter.post('/verify-qr', pAuth.authenticate, pAuth.requireStaff, verifyQR);
 paymentRouter.post('/redeem-qr', pAuth.authenticate, pAuth.requireStaff, redeemQR);
 paymentRouter.get('/:orderId/qr',pAuth.optionalAuth, getQR);
@@ -82,7 +82,8 @@ const {
   updateUser,
   deleteUser,
   resetPassword,
-  toggleUserStatus
+  toggleUserStatus,
+  changePassword  // ✅ Add changePassword to the import
 } = require('../controllers/userController');
 const uAuth = require('../../../shared/middleware/auth');
 
@@ -103,6 +104,11 @@ userRouter.post('/:id/reset-password', uAuth.authenticate, uAuth.requireAdmin,
 );
 userRouter.patch('/:id/toggle-status', uAuth.authenticate, uAuth.requireAdmin,
   body('is_active').isBoolean(), validate, toggleUserStatus
+);
+userRouter.post('/:id/change-password', uAuth.authenticate,
+  body('currentPassword').notEmpty(),
+  body('newPassword').isLength({ min: 6 }),
+  validate, changePassword  // ✅ Now changePassword is defined
 );
 
 

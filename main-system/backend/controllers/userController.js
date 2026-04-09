@@ -56,15 +56,61 @@ const createUser = async (req, res, next) => {
 
 const updateUser = async (req, res, next) => {
   try {
-    const { name, email, role, is_active } = req.body;
-    const { rows } = await query(
-      `UPDATE users SET name = COALESCE($1,name), email = COALESCE($2,email), role = COALESCE($3,role), is_active = COALESCE($4,is_active)
-       WHERE id = $5 RETURNING id, name, email, reg_number, role, is_active`,
-      [name || null, email || null, role || null, is_active ?? null, req.params.id]
-    );
+    const { name, email, role, is_active, display_name } = req.body;
+    const userId = req.params.id;
+
+    console.log('Update user request:', { userId, display_name, name, email, role, is_active });
+
+    // Build dynamic update query
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = $${idx++}`);
+      values.push(name);
+    }
+    if (display_name !== undefined) {
+      updates.push(`display_name = $${idx++}`);
+      values.push(display_name);
+      console.log('Updating display_name to:', display_name);
+    }
+    if (email !== undefined) {
+      updates.push(`email = $${idx++}`);
+      values.push(email);
+    }
+    if (role !== undefined) {
+      updates.push(`role = $${idx++}`);
+      values.push(role);
+    }
+    if (is_active !== undefined) {
+      updates.push(`is_active = $${idx++}`);
+      values.push(is_active);
+    }
+
+    if (updates.length === 0) {
+      return error(res, 'No fields to update', 400);
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(userId);
+
+    const queryText = `UPDATE users SET ${updates.join(', ')} WHERE id = $${idx} RETURNING id, name, email, reg_number, role, is_active, display_name, created_at, updated_at`;
+
+    console.log('Update query:', queryText);
+    console.log('Update values:', values);
+
+    const { rows } = await query(queryText, values);
+
     if (!rows[0]) return notFound(res, 'User not found');
-    return success(res, rows[0], 'User updated');
-  } catch (err) { next(err); }
+
+    console.log('Update result:', rows[0]);
+
+    return success(res, rows[0], 'User updated successfully');
+  } catch (err) {
+    console.error('Update user error:', err);
+    next(err);
+  }
 };
 
 const deleteUser = async (req, res, next) => {
@@ -93,6 +139,46 @@ const resetPassword = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.params.id;
+
+    console.log('Change password request for user:', userId);
+    console.log('Current password provided:', !!currentPassword);
+    console.log('New password length:', newPassword?.length);
+
+    if (!currentPassword || !newPassword) {
+      return error(res, 'Current password and new password are required', 400);
+    }
+
+    if (newPassword.length < 6) {
+      return error(res, 'New password must be at least 6 characters', 400);
+    }
+
+    // Get current user with password
+    const { rows } = await query('SELECT password FROM users WHERE id = $1', [userId]);
+    if (!rows[0]) return notFound(res, 'User not found');
+
+    // Verify current password
+    const isValid = await bcrypt.compare(currentPassword, rows[0].password);
+    if (!isValid) {
+      return error(res, 'Current password is incorrect', 401);
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update password
+    await query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [hashedPassword, userId]);
+
+    return success(res, {}, 'Password changed successfully');
+  } catch (err) {
+    console.error('Change password error:', err);
+    next(err);
+  }
+};
+
 const toggleUserStatus = async (req, res, next) => {
   try {
     const { is_active } = req.body;
@@ -112,5 +198,6 @@ module.exports = {
   updateUser,
   deleteUser,
   resetPassword,
+  changePassword,
   toggleUserStatus
 };

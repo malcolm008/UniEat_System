@@ -17,18 +17,37 @@ const apiService = {
         try {
             const response = await fetch(`${API_BASE_URL}${url}`, { ...options, headers });
 
-            // If 401, token might be expired
+            const data = await response.json();
+
+            if (response.status === 403 && data.code === 'SUBSCRIPTION_INACTIVE') {
+                localStorage.setItem('subscription_error', JSON.stringify({
+                    message: data.message,
+                    status: data.subscription_status
+                }));
+
+                window.dispatchEvent(new CustomEvent('subscription:inactive', {
+                    detail: {
+                        message: data.message,
+                        status: data.subscription_status
+                    }
+                }));
+                throw new Error('SUBSCRIPTION_INACTIVE');
+            }
+
             if (response.status === 401) {
-                console.log('Token expired or invalid, clearing storage');
                 localStorage.removeItem('access_token');
                 localStorage.removeItem('token');
                 localStorage.removeItem('refresh_token');
+                localStorage.removeItem('user');
                 window.location.href = '/';
                 return { success: false, message: 'Session expired. Please login again.' };
             }
 
-            return await response.json();
+            return data;
         } catch (error) {
+            if (error.message === 'SUBSCRIPTION_INACTIVE') {
+                throw error;
+            }
             console.error('Fetch error:', error);
             throw error;
         }
@@ -53,10 +72,12 @@ const apiService = {
     async getUsers(params = {}) {
         const queryString = new URLSearchParams(params).toString();
         const url = queryString ? `/users?${queryString}` : '/users';
-        const response = await fetch(`${API_BASE_URL}${url}`, {
-            headers: { 'Authorization': `Bearer ${this.getToken()}` }
-        });
-        return response.json();
+        try {
+            return await this.authFetch(url);
+        } catch (error) {
+            if (error.message === 'SUBSCRIPTION_INACTIVE') throw error;
+            return { users: [] };
+        }
     },
 
     async createUser(userData) {
@@ -116,8 +137,12 @@ const apiService = {
     },
 
     async getMenu() {
-        const response = await fetch(`${API_BASE_URL}/menu`);
-        return response.json();
+        try {
+            return await this.authFetch('/menu');
+        } catch (error) {
+            if (error.message === 'SUBSCRIPTION_INACTIVE') throw error;
+            return { items: [] };
+        }
     },
 
     async createMenuItem(itemData, token) {
@@ -206,6 +231,69 @@ const apiService = {
 
     async healthCheck() {
         const response = await fetch('http://localhost:5000/health');
+        return response.json();
+    }
+
+    const handleUpdateProfile = async (e) => {
+        e.preventDefault();
+
+        if (formData.display_name.trim() === '') {
+            showToast('Display name cannot be empty', 'error');
+            return;
+        }
+
+        setIsLoading(true);
+
+        try {
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+            const userId = user.id; // This should be the UUID (ece71f41-2dc9-4484-97a0-d9e8f4ba187e)
+
+            console.log('Updating display name for user:', userId);
+            console.log('New display name:', formData.display_name);
+
+            const response = await fetch(`http://localhost:5000/api/users/${userId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    display_name: formData.display_name
+                })
+            });
+
+            const data = await response.json();
+            console.log('Update response:', data);
+
+            if (data.success) {
+                // Update local user data
+                const updatedUser = {
+                    ...user,
+                    display_name: formData.display_name
+                };
+                onUpdateUser(updatedUser);
+                localStorage.setItem('user', JSON.stringify(updatedUser));
+                showToast('Display name updated successfully!', 'success');
+            } else {
+                showToast(data.message || 'Failed to update display name', 'error');
+            }
+        } catch (error) {
+            console.error('Update profile error:', error);
+            showToast('Network error. Please try again.', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    async changePassword(userId, passwordData) {
+        const response = await fetch(`{API_BASE_URL}/users/${userId}/change-password`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.getToken()}`
+            },
+            body: JSON.stringify(passwordData)
+        });
         return response.json();
     }
 };

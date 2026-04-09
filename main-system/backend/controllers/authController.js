@@ -41,6 +41,7 @@ const login = async (req, res, next) => {
       user: {
         id: user.id,
         name: user.name,
+        display_name: user.display_name || user.name,  // Use display_name if exists, fallback to name
         email: user.email,
         reg_number: user.reg_number,
         role: user.role,

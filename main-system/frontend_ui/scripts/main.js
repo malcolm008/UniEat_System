@@ -184,6 +184,8 @@
             setErr('');
 
             try {
+                console.log('Attempting login to: http://localhost:5000/api/auth/login');
+
                 const response = await fetch('http://localhost:5000/api/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -193,29 +195,53 @@
                     })
                 });
 
+                console.log('Response status:', response.status);
                 const data = await response.json();
+                console.log('Response data:', data);
 
                 if (data.success) {
-                    // Store token with multiple keys for compatibility
                     const accessToken = data.data.access_token;
                     localStorage.setItem('access_token', accessToken);
                     localStorage.setItem('token', accessToken);
                     localStorage.setItem('refresh_token', data.data.refresh_token);
 
-                    // Store user info
                     const user = data.data.user;
                     localStorage.setItem('user', JSON.stringify(user));
 
-                    // Call onLogin with user data
+                    // Check subscription status
+                    try {
+                        const testResponse = await fetch('http://localhost:5000/api/menu', {
+                            headers: { 'Authorization': `Bearer ${accessToken}` }
+                        });
+                        const testData = await testResponse.json();
+
+                        if (testResponse.status === 403 && testData.code === 'SUBSCRIPTION_INACTIVE') {
+                            localStorage.removeItem('access_token');
+                            localStorage.removeItem('token');
+                            localStorage.removeItem('refresh_token');
+                            localStorage.removeItem('user');
+                            setErr(testData.message || 'University subscription is inactive. Please contact your administrator.');
+                            setLoading(false);
+                            return;
+                        }
+                    } catch (subError) {
+                        console.log('Subscription check error:', subError);
+                    }
+
+                    // ✅ FIXED: Pass the UUID as id, not reg_number
                     onLogin({
-                        role: user.role,
+                        id: user.id,                           // UUID: ece71f41-2dc9-4484-97a0-d9e8f4ba187e
+                        userId: user.id,                       // Also store as userId
+                        reg_number: user.reg_number,           // 25011026
                         name: user.name,
+                        display_name: user.display_name || user.name,
+                        email: user.email,
+                        role: user.role,
                         initials: user.name.split(' ').map(n => n[0]).join('').toUpperCase(),
-                        id: user.reg_number,
                         token: accessToken
                     });
                 } else {
-                    // Demo mode fallback
+                    console.log('Backend login failed, trying demo mode...');
                     const c = demoCreds[role];
                     if (id === c.id && pass === c.pass) {
                         const demoToken = 'demo-token-' + Date.now();
@@ -226,6 +252,7 @@
                             name: c.name,
                             initials: c.initials,
                             id: c.id,
+                            reg_number: c.id,
                             token: demoToken
                         });
                     } else {
@@ -302,7 +329,7 @@
                         </button>
 
                         <div style={{ fontSize: 10, color: '#4A4030', marginTop: 14, textAlign: 'center' }}>
-                            Access is provided to subscribed universities only
+                            Use credentials provided by your university administrator
                         </div>
                     </div>
                 </div>
@@ -310,9 +337,10 @@
         );
     }
 
-    function SettingsPage({user, onUpdateUser}) {
+    function SettingsPage({ user, onUpdateUser }) {
         const { showToast } = useContext(AppCtx);
         const [formData, setFormData] = useState({
+            display_name: user.display_name || user.name || '',
             name: user.name || '',
             currentPassword: '',
             newPassword: '',
@@ -321,30 +349,62 @@
         const [isLoading, setIsLoading] = useState(false);
         const [showPasswordForm, setShowPasswordForm] = useState(false);
 
+        // Make sure we have the correct user ID (UUID)
+        const userId = user.userId || user.id;  // Try both possible field names
+        console.log('User object:', user);
+        console.log('Using user ID:', userId);
+
         const handleInputChange = (e) => {
             const { name, value } = e.target;
             setFormData(prev => ({ ...prev, [name]: value }));
         };
 
+        // Update display name
         const handleUpdateProfile = async (e) => {
             e.preventDefault();
+
+            if (formData.display_name.trim() === '') {
+                showToast('Display name cannot be empty', 'error');
+                return;
+            }
+
             setIsLoading(true);
 
-            setTimeout(() => {
-                if (formData.name.trim() === '') {
-                    showToast('Name cannot be empty', 'error');
-                    setIsLoading(false);
-                    return;
-                }
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5000/api/users/${userId}`, {  // Use UUID here
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        display_name: formData.display_name
+                    })
+                });
 
-                const updatedUser = { ...user, name: formData.name };
-                onUpdateUser(updatedUser);
-                localStorage.setItem('user', JSON.stringify(updatedUser));
-                showToast('Profile updated successfully!', 'success');
+                const data = await response.json();
+
+                if (data.success) {
+                    const updatedUser = {
+                        ...user,
+                        display_name: formData.display_name
+                    };
+                    onUpdateUser(updatedUser);
+                    localStorage.setItem('user', JSON.stringify(updatedUser));
+                    showToast('Display name updated successfully!', 'success');
+                } else {
+                    showToast(data.message || 'Failed to update display name', 'error');
+                }
+            } catch (error) {
+                console.error('Update profile error:', error);
+                showToast('Network error. Please try again.', 'error');
+            } finally {
                 setIsLoading(false);
-            }, 1000);
+            }
         };
 
+        // Change password
         const handleChangePassword = async (e) => {
             e.preventDefault();
 
@@ -358,19 +418,52 @@
                 return;
             }
 
+            if (!formData.currentPassword) {
+                showToast('Please enter your current password', 'error');
+                return;
+            }
+
             setIsLoading(true);
 
-            setTimeout(() => {
-                showToast('Password changed successfully!', 'success');
-                setFormData(prev => ({
-                    ...prev,
-                    currentPassword: '',
-                    newPassword: '',
-                    confirmPassword: ''
-                }));
-                setShowPasswordForm(false);
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5000/api/users/${userId}/change-password`, {  // Use UUID here
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        currentPassword: formData.currentPassword,
+                        newPassword: formData.newPassword
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('Password changed successfully!', 'success');
+                    setFormData(prev => ({
+                        ...prev,
+                        currentPassword: '',
+                        newPassword: '',
+                        confirmPassword: ''
+                    }));
+                    setShowPasswordForm(false);
+                } else {
+                    showToast(data.message || 'Failed to change password', 'error');
+                }
+            } catch (error) {
+                console.error('Change password error:', error);
+                showToast('Network error. Please try again.', 'error');
+            } finally {
                 setIsLoading(false);
-            }, 1000);
+            }
+        };
+
+        // Get the display name to show in the UI
+        const getDisplayName = () => {
+            return user.display_name || user.name;
         };
 
         return (
@@ -384,6 +477,7 @@
                     </div>
                 </div>
 
+                {/* Profile Information */}
                 <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 16, padding: 24, marginBottom: 20 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}>
                         <div style={{
@@ -392,17 +486,21 @@
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: 20, fontWeight: 700, color: '#fff'
                         }}>
-                            {user.initials}
+                            {user.initials || getDisplayName().charAt(0)}
                         </div>
                         <div>
-                            <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 18 }}>{user.name}</div>
+                            <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 18 }}>{getDisplayName()}</div>
                             <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-                                {user.role === 'student' ? `Student ID: ${user.id}` : `${user.role === 'staff' ? 'Staff' : 'Admin'} ID: ${user.id}`}
+                                {user.role === 'student' ? `Student ID: ${user.reg_number}` : `${user.role === 'staff' ? 'Staff' : 'Admin'} ID: ${user.reg_number}`}
                             </div>
+                            {user.name !== getDisplayName() && (
+                                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                                    Official name: {user.name}
+                                </div>
+                            )}
                         </div>
                     </div>
 
-                    {/* Profile Information */}
                     <form onSubmit={handleUpdateProfile}>
                         <div style={{ marginBottom: 20 }}>
                             <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
@@ -410,20 +508,39 @@
                             </label>
                             <input
                                 type="text"
-                                name="name"
-                                value={formData.name}
+                                name="display_name"
+                                value={formData.display_name}
                                 onChange={handleInputChange}
                                 style={{
                                     width: '100%', padding: '10px 14px',
                                     border: '1.5px solid var(--border)', borderRadius: 10,
                                     fontSize: 14, background: '#fff'
                                 }}
-                                placeholder="Your full name"
+                                placeholder="How you want your name to appear"
+                            />
+                            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                                This name will be displayed throughout the system.
+                            </div>
+                        </div>
+
+                        <div style={{ marginBottom: 20 }}>
+                            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                Official Name (Read Only)
+                            </label>
+                            <input
+                                type="text"
+                                value={user.name}
+                                disabled
+                                style={{
+                                    width: '100%', padding: '10px 14px',
+                                    border: '1.5px solid #E2D9CC', borderRadius: 10,
+                                    fontSize: 14, background: '#F5F0E8', color: '#7A7268'
+                                }}
                             />
                         </div>
 
                         <Btn type="submit" variant="rust" fullWidth disabled={isLoading}>
-                            {isLoading ? 'Saving...' : 'Update Profile'}
+                            {isLoading ? 'Saving...' : 'Update Display Name'}
                         </Btn>
                     </form>
                 </div>
@@ -479,6 +596,9 @@
                                     required
                                     minLength={6}
                                 />
+                                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                                    Password must be at least 6 characters
+                                </div>
                             </div>
 
                             <div style={{ marginBottom: 20 }}>
@@ -522,7 +642,8 @@
                 {/* Account Info */}
                 <div style={{ marginTop: 20, padding: 16, background: 'var(--tag)', borderRadius: 12 }}>
                     <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>
-                        Account created: Demo Mode • Last login: Today
+                        User ID: {userId}<br />
+                        Registration Number: {user.reg_number}
                     </div>
                 </div>
             </div>

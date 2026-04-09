@@ -83,6 +83,7 @@ const migrations = [
   `CREATE TABLE IF NOT EXISTS users (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name        VARCHAR(120) NOT NULL,
+    display_name VARCHAR(120),
     email       VARCHAR(180) UNIQUE,
     reg_number  VARCHAR(60)  UNIQUE,
     password    VARCHAR(255) NOT NULL,
