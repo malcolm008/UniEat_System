@@ -73,16 +73,36 @@ paymentRouter.post('/redeem-qr', pAuth.authenticate, pAuth.requireStaff, redeemQ
 paymentRouter.get('/:orderId/qr',pAuth.optionalAuth, getQR);
 
 
-// ── USER ROUTES ────────────────────────────────────────────────
+// ── USER ROUTES (Complete CRUD for staff management) ───────────
 const userRouter = require('express').Router();
-const { getUsers, getUser, updateUser, resetPassword } = require('../controllers/userController');
+const {
+  getUsers,
+  getUser,
+  createUser,
+  updateUser,
+  deleteUser,
+  resetPassword,
+  toggleUserStatus
+} = require('../controllers/userController');
 const uAuth = require('../../../shared/middleware/auth');
 
+// User management routes (admin only)
 userRouter.get('/',          uAuth.authenticate, uAuth.requireAdmin, getUsers);
 userRouter.get('/:id',       uAuth.authenticate, uAuth.requireAdmin, getUser);
-userRouter.patch('/:id',     uAuth.authenticate, uAuth.requireAdmin, updateUser);
+userRouter.post('/',         uAuth.authenticate, uAuth.requireAdmin,
+  body('name').notEmpty().trim(),
+  body('reg_number').notEmpty().trim(),
+  body('password').isLength({ min: 6 }),
+  body('role').isIn(['student','staff','admin']),
+  validate, createUser
+);
+userRouter.put('/:id',       uAuth.authenticate, uAuth.requireAdmin, updateUser);
+userRouter.delete('/:id',    uAuth.authenticate, uAuth.requireAdmin, deleteUser);
 userRouter.post('/:id/reset-password', uAuth.authenticate, uAuth.requireAdmin,
-  body('password').isLength({ min: 6 }), validate, resetPassword
+  body('newPassword').isLength({ min: 6 }), validate, resetPassword
+);
+userRouter.patch('/:id/toggle-status', uAuth.authenticate, uAuth.requireAdmin,
+  body('is_active').isBoolean(), validate, toggleUserStatus
 );
 
 

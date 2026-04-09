@@ -17,6 +17,75 @@ const apiService = {
         return response.json();
     },
 
+    async getUsers(params = {}) {
+        const queryString = new URLSearchParams(params).toString();
+        const url = queryString ? `/users?${queryString}` : '/users';
+        const response = await fetch(`${API_BASE_URL}${url}`, {
+            headers: { 'Authorization': `Bearer ${this.getToken()}` }
+        });
+        return response.json();
+    },
+
+    async createUser(userData) {
+        const response = await fetch(`${API_BASE_URL}/users`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.getToken()}`
+            },
+            body: JSON.stringify(userData)
+        });
+        return response.json();
+    },
+
+    async updateUser(id, userData) {
+        const response = await fetch(`${API_BASE_URL}/users/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.getToken()}`
+            },
+            body: JSON.stringify(userData)
+        });
+        return response.json();
+    },
+
+    async deleteUser(id) {
+        const response = await fetch(`${API_BASE_URL}/users/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${this.getToken()}` }
+        });
+        return response.json();
+    },
+
+    async resetPassword(id, newPassword) {
+        const response = await fetch(`${API_BASE_URL}/users/${id}/reset-password`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.getToken()}`
+            },
+            body: JSON.stringify({ newPassword })
+        });
+        return response.json();
+    },
+
+    async toggleUserStatus(id, isActive) {
+        const response = await fetch(`${API_BASE_URL}/users/${id}/toggle-status`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.getToken()}`
+            },
+            body: JSON.stringify({ is_active: isActive })
+        });
+        return response.json();
+    },
+
+    getToken() {
+        return localStorage.getItem('access_token');
+    }
+
     async getMenu() {
         const response = await fetch(`${API_BASE_URL}/menu`);
         return response.json();
