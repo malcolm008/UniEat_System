@@ -168,7 +168,6 @@
         const [loading, setLoading] = useState(false);
         const [err, setErr] = useState('');
 
-        // Demo credentials fallback (only if backend is not available)
         const demoCreds = {
             student: { id: 'CS/2022/042', pass: 'student123', name: 'John M.', initials: 'JM' },
             staff: { id: 'STAFF001', pass: 'staff123', name: 'Mary K.', initials: 'MK' },
@@ -185,7 +184,6 @@
             setErr('');
 
             try {
-                // Call the real backend API
                 const response = await fetch('http://localhost:5000/api/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -198,12 +196,15 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    // Store tokens
-                    localStorage.setItem('access_token', data.data.access_token);
+                    // Store token with multiple keys for compatibility
+                    const accessToken = data.data.access_token;
+                    localStorage.setItem('access_token', accessToken);
+                    localStorage.setItem('token', accessToken);
                     localStorage.setItem('refresh_token', data.data.refresh_token);
 
-                    // Get user info from response
+                    // Store user info
                     const user = data.data.user;
+                    localStorage.setItem('user', JSON.stringify(user));
 
                     // Call onLogin with user data
                     onLogin({
@@ -211,41 +212,31 @@
                         name: user.name,
                         initials: user.name.split(' ').map(n => n[0]).join('').toUpperCase(),
                         id: user.reg_number,
-                        token: data.data.access_token
+                        token: accessToken
                     });
                 } else {
-                    // If backend fails, try demo mode
-                    console.log('Backend login failed, trying demo mode...');
+                    // Demo mode fallback
                     const c = demoCreds[role];
                     if (id === c.id && pass === c.pass) {
-                        setLoading(true);
-                        setTimeout(() => onLogin({
+                        const demoToken = 'demo-token-' + Date.now();
+                        localStorage.setItem('access_token', demoToken);
+                        localStorage.setItem('token', demoToken);
+                        onLogin({
                             role: role,
                             name: c.name,
                             initials: c.initials,
-                            id: c.id
-                        }), 500);
+                            id: c.id,
+                            token: demoToken
+                        });
                     } else {
-                        setErr(data.message || 'Invalid credentials. Please check your ID and password.');
+                        setErr(data.message || 'Invalid credentials');
                         setLoading(false);
                     }
                 }
             } catch (error) {
                 console.error('Login error:', error);
-                // Fallback to demo mode if backend is not running
-                const c = demoCreds[role];
-                if (id === c.id && pass === c.pass) {
-                    setLoading(true);
-                    setTimeout(() => onLogin({
-                        role: role,
-                        name: c.name,
-                        initials: c.initials,
-                        id: c.id
-                    }), 500);
-                } else {
-                    setErr('Network error. Please make sure the backend server is running on port 5000.');
-                    setLoading(false);
-                }
+                setErr('Cannot connect to server. Please make sure the backend is running on port 5000.');
+                setLoading(false);
             }
         };
 
@@ -748,28 +739,43 @@
         const loadUsers = async () => {
             setLoading(true);
             try {
-                const token = localStorage.getItem('token');
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+
+                if (!token) {
+                    console.log('No token found, redirecting to login');
+                    window.location.href = '/';
+                    return;
+                }
+
                 const response = await fetch('http://localhost:5000/api/users?role=staff', {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
                 });
+
+                if (response.status === 401) {
+                    console.log('Unauthorized, clearing token and redirecting');
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('token');
+                    window.location.href = '/';
+                    return;
+                }
+
                 const result = await response.json();
-                if (result.success && result.users) {
+
+                if (result.success && result.data) {
+                    const staffUsers = result.data.filter(user => user.role === 'staff');
+                    setUsers(staffUsers);
+                } else if (result.users) {
                     const staffUsers = result.users.filter(user => user.role === 'staff');
                     setUsers(staffUsers);
                 } else {
-                    setUsers([
-                        { id: 2, name: 'Mary K.', email: 'mary@unieat.com', reg_number: 'STAFF001', role: 'staff', is_active: true, created_at: '2024-01-15' },
-                        { id: 4, name: 'James Otieno', email: 'james@unieat.com', reg_number: 'STAFF002', role: 'staff', is_active: true, created_at: '2024-02-20' },
-                        { id: 5, name: 'Grace Mwangi', email: 'grace@unieat.com', reg_number: 'STAFF003', role: 'staff', is_active: false, created_at: '2024-03-10' },
-                    ]);
+                    setUsers([]);
                 }
             } catch (error) {
                 console.error('Failed to load users:', error);
-                setUsers([
-                    { id: 2, name: 'Mary K.', email: 'mary@unieat.com', reg_number: 'STAFF001', role: 'staff', is_active: true, created_at: '2024-01-15' },
-                    { id: 4, name: 'James Otieno', email: 'james@unieat.com', reg_number: 'STAFF002', role: 'staff', is_active: true, created_at: '2024-02-20' },
-                    { id: 5, name: 'Grace Mwangi', email: 'grace@unieat.com', reg_number: 'STAFF003', role: 'staff', is_active: false, created_at: '2024-03-10' },
-                ]);
+                setUsers([]);
             }
             setLoading(false);
         };
@@ -1254,23 +1260,166 @@
         );
     }
 
+    function SubscriptionInactiveScreen({ user, onLogout }) {
+        const [universityName, setUniversityName] = useState('');
+        const [subscriptionStatus, setSubscriptionStatus] = useState('');
+
+        useEffect(() => {
+            const savedUser = JSON.parse(localStorage.getItem('user') || '{}');
+            setUniversityName(savedUser.university_name || '');
+            setSubscriptionStatus(savedUser.subscription_status || 'inactive');
+        }, []);
+
+        return (
+             <div style={{
+                 minHeight: '100vh',
+                 background: 'linear-gradient(135deg, #1C1A17 0%, #2D2520 100%)',
+                 display: 'flex',
+                 alignItems: 'center',
+                 justifyContent: 'center',
+                 padding: 20
+             }}>
+                 <div style={{
+                     background: '#fff',
+                     borderRadius: 20,
+                     padding: 'clamp(30px, 8vw, 50px)',
+                     maxWidth: 500,
+                     textAlign: 'center',
+                     animation: 'fadeUp 0.4s ease',
+                     boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
+                 }}>
+                     <div style={{ fontSize: 'clamp(50px, 15vw, 70px)', marginBottom: 20 }}>🔒</div>
+                     <div style={{
+                         fontFamily: 'Syne, sans-serif',
+                         fontWeight: 800,
+                         fontSize: 'clamp(20px, 6vw, 28px)',
+                         marginBottom: 12,
+                         color: '#1C1A17'
+                     }}>
+                         Subscription Inactive
+                     </div>
+                     <div style={{
+                         fontSize: 'clamp(13px, 4vw, 15px)',
+                         color: '#7A7268',
+                         marginBottom: 24,
+                         lineHeight: 1.6
+                     }}>
+                         The subscription for <strong>{universityName}</strong> is currently <strong style={{ color: '#C4522A' }}>{subscriptionStatus}</strong>.
+                     </div>
+
+                     <div style={{
+                         background: '#FEF3DC',
+                         padding: 'clamp(15px, 4vw, 20px)',
+                         borderRadius: 12,
+                         marginBottom: 24,
+                         textAlign: 'left'
+                     }}>
+                         <div style={{ fontSize: 14, fontWeight: 600, color: '#854F0B', marginBottom: 8 }}>
+                             📋 What you can do:
+                         </div>
+                         <ul style={{ fontSize: 13, color: '#7A7268', marginLeft: 20, lineHeight: 1.8 }}>
+                             <li>Contact your university administrator</li>
+                             <li>Request subscription renewal</li>
+                             <li>Check with IT department for access status</li>
+                         </ul>
+                     </div>
+
+                     <div style={{
+                         background: '#EAF0E8',
+                         padding: 'clamp(15px, 4vw, 20px)',
+                         borderRadius: 12,
+                         marginBottom: 24,
+                         textAlign: 'left'
+                     }}>
+                         <div style={{ fontSize: 14, fontWeight: 600, color: '#4A6741', marginBottom: 8 }}>
+                             💡 Need help?
+                         </div>
+                         <div style={{ fontSize: 13, color: '#7A7268', lineHeight: 1.6 }}>
+                             Contact support at <strong>support@unieat.com</strong> or call +255 222 123456
+                         </div>
+                     </div>
+
+                     <button
+                         onClick={onLogout}
+                         style={{
+                             width: '100%',
+                             background: '#C4522A',
+                             color: '#fff',
+                             border: 'none',
+                             borderRadius: 10,
+                             padding: '14px 20px',
+                             fontSize: 16,
+                             fontWeight: 600,
+                             cursor: 'pointer',
+                             transition: 'background 0.2s'
+                         }}
+                         onMouseEnter={e => e.currentTarget.style.background = '#A03D1E'}
+                         onMouseLeave={e => e.currentTarget.style.background = '#C4522A'}
+                     >
+                         Return to Login
+                     </button>
+
+                     <div style={{ fontSize: 11, color: '#B0A898', marginTop: 20 }}>
+                         Annual subscription: $1,200/year | Monthly: $100/month
+                     </div>
+                 </div>
+             </div>
+        );
+    }
+
+
     function App() {
+        // ✅ ALL HOOKS MUST BE AT THE TOP (unconditionally)
         const [user, setUser] = useState(null);
         const [page, setPage] = useState('');
         const [cart, setCart] = useState({});
         const [toast, showToast] = useToast();
+        const [subscriptionError, setSubscriptionError] = useState(null);
 
+        // ✅ useEffect hooks go here - BEFORE any conditional returns
+        useEffect(() => {
+            const handleSubscriptionInactive = (event) => {
+                setSubscriptionError({
+                    message: event.detail.message,
+                    status: event.detail.subscription_status
+                });
+                showToast('University subscription is inactive', 'error');
+            };
+
+            window.addEventListener('subscription:inactive', handleSubscriptionInactive);
+
+            return () => {
+                window.removeEventListener('subscription:inactive', handleSubscriptionInactive);
+            };
+        }, [showToast]);
+
+        // ✅ Helper functions (not hooks)
         const handleLogin = (u) => {
             setUser(u);
-            setPage(u.role==='student'?'menu':u.role==='staff'?'scanner':'dashboard');
+            setPage(u.role === 'student' ? 'menu' : u.role === 'staff' ? 'scanner' : 'dashboard');
+            setSubscriptionError(null);
         };
 
         const handleLogout = () => {
             setUser(null);
             setPage('');
             setCart({});
+            setSubscriptionError(null);
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
             localStorage.removeItem('token');
             localStorage.removeItem('user');
+        };
+
+        const handleApiError = (error) => {
+            if (error.code === 'SUBSCRIPTION_INACTIVE' || error.message?.includes('subscription')) {
+                setSubscriptionError({
+                    message: error.message,
+                    status: error.subscription_status || 'inactive'
+                });
+                return true;
+            }
+            return false;
         };
 
         const handleUpdateUser = (updatedUser) => {
@@ -1281,31 +1430,48 @@
             setPage('settings');
         };
 
-        if (!user) return (<AppCtx.Provider value={{showToast}}><LoginScreen onLogin={handleLogin}/><Toast toast={toast}/></AppCtx.Provider>);
+        // ✅ NOW conditional returns (after all hooks)
+        if (subscriptionError) {
+            return (
+                <AppCtx.Provider value={{ showToast }}>
+                    <SubscriptionInactiveScreen user={user} onLogout={handleLogout} />
+                    <Toast toast={toast} />
+                </AppCtx.Provider>
+            );
+        }
+
+        if (!user) {
+            return (
+                <AppCtx.Provider value={{ showToast }}>
+                    <LoginScreen onLogin={handleLogin} />
+                    <Toast toast={toast} />
+                </AppCtx.Provider>
+            );
+        }
 
         const renderPage = () => {
-            if (user.role==='student') {
-                if (page==='menu') return <MenuPage cart={cart} setCart={setCart} setPage={setPage}/>;
-                if (page==='orders') return <OrdersPage/>;
+            if (user.role === 'student') {
+                if (page === 'menu') return <MenuPage cart={cart} setCart={setCart} setPage={setPage} />;
+                if (page === 'orders') return <OrdersPage />;
             }
-            if (user.role==='staff') {
-                if (page==='scanner') return <ScannerPage/>;
-                if (page==='queue') return <QueuePage/>;
+            if (user.role === 'staff') {
+                if (page === 'scanner') return <ScannerPage />;
+                if (page === 'queue') return <QueuePage />;
             }
-            if (user.role==='admin') {
-                if (page==='dashboard') return <DashboardPage/>;
-                if (page==='menu-mgmt') return <MenuMgmtPage/>;
-                if (page==='orders-mgmt') return <OrdersMgmtPage/>;
-                if (page === 'users') return <UserManagementPage/>;
-                if (page==='reports') return <ReportsPage/>;
+            if (user.role === 'admin') {
+                if (page === 'dashboard') return <DashboardPage />;
+                if (page === 'menu-mgmt') return <MenuMgmtPage />;
+                if (page === 'orders-mgmt') return <OrdersMgmtPage />;
+                if (page === 'users') return <UserManagementPage />;
+                if (page === 'reports') return <ReportsPage />;
             }
-            if (page==='settings') return <SettingsPage user={user} onUpdateUser={handleUpdateUser} />;
+            if (page === 'settings') return <SettingsPage user={user} onUpdateUser={handleUpdateUser} />;
             return <div>404</div>;
         };
 
         return (
-            <AppCtx.Provider value={{showToast}}>
-                <div style={{height:'100vh',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            <AppCtx.Provider value={{ showToast }}>
+                <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                     <TopBar
                         page={page}
                         setPage={setPage}
@@ -1314,11 +1480,11 @@
                         onLogout={handleLogout}
                         onSettings={handleOpenSettings}
                     />
-                    <div style={{flex:1,overflow:'auto'}}>
+                    <div style={{ flex: 1, overflow: 'auto' }}>
                         {renderPage()}
                     </div>
                 </div>
-                <Toast toast={toast}/>
+                <Toast toast={toast} />
             </AppCtx.Provider>
         );
     }

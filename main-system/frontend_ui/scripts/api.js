@@ -1,6 +1,39 @@
 const API_BASE_URL = window.CONFIG?.API_URL || 'http://localhost:5000/api';
 
 const apiService = {
+
+    getToken() {
+        return localStorage.getItem('access_token') || localStorage.getItem('token');
+    },
+
+    async authFetch(url, options = {}) {
+        const token = this.getToken();
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` }),
+            ...options.headers
+        };
+
+        try {
+            const response = await fetch(`${API_BASE_URL}${url}`, { ...options, headers });
+
+            // If 401, token might be expired
+            if (response.status === 401) {
+                console.log('Token expired or invalid, clearing storage');
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('token');
+                localStorage.removeItem('refresh_token');
+                window.location.href = '/';
+                return { success: false, message: 'Session expired. Please login again.' };
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('Fetch error:', error);
+            throw error;
+        }
+    },
+
     async login(credentials) {
         const response = await fetch(`${API_BASE_URL}/auth/login`, {
             method: 'POST',
@@ -81,10 +114,6 @@ const apiService = {
         });
         return response.json();
     },
-
-    getToken() {
-        return localStorage.getItem('access_token');
-    }
 
     async getMenu() {
         const response = await fetch(`${API_BASE_URL}/menu`);

@@ -72,12 +72,12 @@ const checkSubscription = async (req, res, next) => {
     }
 
     if (userData.subscription_status !== 'active') {
-      return res.status(403).json({
-        success: false,
-        message: 'University subscription is inactive. Please contact your university administrator to renew.',
-        code: 'SUBSCRIPTION_INACTIVE',
-        subscription_status: userData.subscription_status
-      });
+        return res.status(403).json({
+            success: false,
+            message: `University subscription is ${userData.subscription_status}. Please contact your university administrator to renew.`,
+            code: 'SUBSCRIPTION_INACTIVE',
+            subscription_status: userData.subscription_status
+        });
     }
 
     next();
