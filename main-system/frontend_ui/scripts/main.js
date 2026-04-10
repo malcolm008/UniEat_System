@@ -92,11 +92,27 @@
     function TopBar({page, setPage, user, cart, onLogout, onSettings}) {
         const time = useClock();
         const cartCount = Object.values(cart).reduce((s,i)=>s+i.qty,0);
+
+        // Use display_name if available, otherwise fallback to name
+        const displayName = user.display_name || user.name;
+        const userIdentifier = user.reg_number || user.id;
+
+        // Calculate initials from display name
+        const displayInitials = displayName.split(' ').map(n => n[0]).join('').toUpperCase();
+
         const navItems = user.role === 'student'
             ? [{key:'menu',label:'Menu',icon:'🍽️'},{key:'orders',label:'My Orders',icon:'📋'}]
             : user.role === 'staff'
             ? [{key:'scanner',label:'Scanner',icon:'📷'},{key:'queue',label:'Queue',icon:'📋'}]
             : [{key:'dashboard',label:'Dashboard',icon:'📊'},{key:'menu-mgmt',label:'Menu',icon:'🍽️'},{key:'orders-mgmt',label:'Orders',icon:'📋'},{key:'users',label:'Users',icon:'👥'},{key:'reports',label:'Reports',icon:'📈'}];
+
+        // Create user object for UserMenu with display values
+        const menuUser = {
+            ...user,
+            name: displayName,
+            initials: displayInitials,
+            id: userIdentifier
+        };
 
         return (
             <header style={{
@@ -128,7 +144,7 @@
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
                     <span style={{fontSize:11,color:'#4A4030',display:window.innerWidth<=560?'none':'inline'}}>{time}</span>
-                    <UserMenu user={user} onLogout={onLogout} onSettings={onSettings} />
+                    <UserMenu user={menuUser} onLogout={onLogout} onSettings={onSettings} />
                 </div>
             </header>
         );
@@ -184,8 +200,6 @@
             setErr('');
 
             try {
-                console.log('Attempting login to: http://localhost:5000/api/auth/login');
-
                 const response = await fetch('http://localhost:5000/api/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -195,9 +209,7 @@
                     })
                 });
 
-                console.log('Response status:', response.status);
                 const data = await response.json();
-                console.log('Response data:', data);
 
                 if (data.success) {
                     const accessToken = data.data.access_token;
@@ -206,7 +218,25 @@
                     localStorage.setItem('refresh_token', data.data.refresh_token);
 
                     const user = data.data.user;
-                    localStorage.setItem('user', JSON.stringify(user));
+
+                    // Use display_name for display purposes
+                    const displayName = user.display_name || user.name;
+                    const displayInitials = displayName.split(' ').map(n => n[0]).join('').toUpperCase();
+
+                    // Create user object with all necessary fields
+                    const userObject = {
+                        id: user.id,                           // UUID
+                        userId: user.id,                       // Also store as userId
+                        reg_number: user.reg_number,           // Registration number
+                        name: user.name,                       // Official name
+                        display_name: displayName,             // Display name
+                        email: user.email,
+                        role: user.role,
+                        initials: displayInitials,             // Use display name for initials
+                        token: accessToken
+                    };
+
+                    localStorage.setItem('user', JSON.stringify(userObject));
 
                     // Check subscription status
                     try {
@@ -228,20 +258,9 @@
                         console.log('Subscription check error:', subError);
                     }
 
-                    // ✅ FIXED: Pass the UUID as id, not reg_number
-                    onLogin({
-                        id: user.id,                           // UUID: ece71f41-2dc9-4484-97a0-d9e8f4ba187e
-                        userId: user.id,                       // Also store as userId
-                        reg_number: user.reg_number,           // 25011026
-                        name: user.name,
-                        display_name: user.display_name || user.name,
-                        email: user.email,
-                        role: user.role,
-                        initials: user.name.split(' ').map(n => n[0]).join('').toUpperCase(),
-                        token: accessToken
-                    });
+                    onLogin(userObject);
                 } else {
-                    console.log('Backend login failed, trying demo mode...');
+                    // Demo mode fallback
                     const c = demoCreds[role];
                     if (id === c.id && pass === c.pass) {
                         const demoToken = 'demo-token-' + Date.now();
@@ -359,7 +378,6 @@
             setFormData(prev => ({ ...prev, [name]: value }));
         };
 
-        // Update display name
         const handleUpdateProfile = async (e) => {
             e.preventDefault();
 
@@ -372,7 +390,11 @@
 
             try {
                 const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-                const response = await fetch(`http://localhost:5000/api/users/${userId}`, {  // Use UUID here
+
+                console.log('Updating display name to:', formData.display_name);
+
+                // ✅ CHANGE THIS: Use the profile endpoint, not the admin endpoint
+                const response = await fetch(`http://localhost:5000/api/users/profile`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -384,11 +406,14 @@
                 });
 
                 const data = await response.json();
+                console.log('Update response:', data);
 
                 if (data.success) {
+                    // Update local user data
                     const updatedUser = {
                         ...user,
-                        display_name: formData.display_name
+                        display_name: formData.display_name,
+                        initials: formData.display_name.split(' ').map(n => n[0]).join('').toUpperCase()
                     };
                     onUpdateUser(updatedUser);
                     localStorage.setItem('user', JSON.stringify(updatedUser));

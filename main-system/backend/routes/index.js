@@ -3,6 +3,8 @@ const authRouter = require('express').Router();
 const { login, refresh, me, register } = require('../controllers/authController');
 const { authenticate, requireAdmin } = require('../../../shared/middleware/auth');
 const { body, validationResult } = require('express-validator');
+const { query } = require('../../../shared/db/db');
+const { success, error, notFound } = require('../../../shared/utils/response');
 
 const validate = (req, res, next) => {
   const errors = validationResult(req);
@@ -87,6 +89,37 @@ const {
 } = require('../controllers/userController');
 const uAuth = require('../../../shared/middleware/auth');
 
+
+userRouter.put('/profile', uAuth.authenticate, async (req, res, next) => {
+  try {
+    const { display_name } = req.body;
+    const userId = req.user.id;
+
+    console.log('Profile update request for user:', userId);
+    console.log('New display_name:', display_name);
+
+    if (!display_name || display_name.trim() === '') {
+      return error(res, 'Display name cannot be empty', 400);
+    }
+
+    const { rows } = await query(
+      `UPDATE users SET display_name = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, name, email, reg_number, role, is_active, display_name, created_at, updated_at`,
+      [display_name, userId]
+    );
+
+    if (!rows[0]) return notFound(res, 'User not found');
+
+    console.log('Profile updated successfully:', rows[0]);
+
+    return success(res, rows[0], 'Profile updated successfully');
+  } catch (err) {
+    console.error('Profile update error:', err);
+    next(err);
+  }
+});
+
 // User management routes (admin only)
 userRouter.get('/',          uAuth.authenticate, uAuth.requireAdmin, getUsers);
 userRouter.get('/:id',       uAuth.authenticate, uAuth.requireAdmin, getUser);
@@ -110,6 +143,7 @@ userRouter.post('/:id/change-password', uAuth.authenticate,
   body('newPassword').isLength({ min: 6 }),
   validate, changePassword  // ✅ Now changePassword is defined
 );
+
 
 
 // ── REPORT ROUTES ──────────────────────────────────────────────

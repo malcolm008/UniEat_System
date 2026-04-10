@@ -20,7 +20,7 @@ const login = async (req, res, next) => {
     const { reg_number, password } = req.body;
 
     const { rows } = await query(
-      'SELECT id, name, email, reg_number, password, role, is_active FROM users WHERE reg_number = $1',
+      'SELECT id, name, email, reg_number, password, role, is_active, display_name FROM users WHERE reg_number = $1',
       [reg_number?.trim()]
     );
 
@@ -33,7 +33,8 @@ const login = async (req, res, next) => {
 
     const { access, refresh } = signTokens(user.id);
 
-    logger.info(`User logged in: ${user.reg_number} (${user.role})`);
+    // Make sure to return display_name (fallback to name if null)
+    const displayName = user.display_name || user.name;
 
     return success(res, {
       access_token: access,
@@ -41,7 +42,7 @@ const login = async (req, res, next) => {
       user: {
         id: user.id,
         name: user.name,
-        display_name: user.display_name || user.name,  // Use display_name if exists, fallback to name
+        display_name: displayName,
         email: user.email,
         reg_number: user.reg_number,
         role: user.role,
@@ -77,8 +78,15 @@ const refresh = async (req, res, next) => {
 
 // GET /auth/me
 const me = async (req, res) => {
-  const { id, name, email, reg_number, role } = req.user;
-  return success(res, { id, name, email, reg_number, role });
+  const { id, name, email, reg_number, role, display_name } = req.user;
+  return success(res, {
+    id,
+    name,
+    display_name: display_name || name,
+    email,
+    reg_number,
+    role
+  });
 };
 
 // POST /auth/register  (admin only — creates staff/student accounts)

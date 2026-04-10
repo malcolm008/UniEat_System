@@ -246,12 +246,10 @@ const apiService = {
 
         try {
             const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-            const userId = user.id; // This should be the UUID (ece71f41-2dc9-4484-97a0-d9e8f4ba187e)
 
-            console.log('Updating display name for user:', userId);
-            console.log('New display name:', formData.display_name);
+            console.log('Updating display name to:', formData.display_name);
 
-            const response = await fetch(`http://localhost:5000/api/users/${userId}`, {
+            const response = await fetch(`http://localhost:5000/api/users/profile`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -269,7 +267,8 @@ const apiService = {
                 // Update local user data
                 const updatedUser = {
                     ...user,
-                    display_name: formData.display_name
+                    display_name: formData.display_name,
+                    initials: formData.display_name.split(' ').map(n => n[0]).join('').toUpperCase()
                 };
                 onUpdateUser(updatedUser);
                 localStorage.setItem('user', JSON.stringify(updatedUser));
