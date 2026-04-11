@@ -165,23 +165,28 @@ const toggleAvailability = async (req, res, next) => {
 // Get public menu (for students) - only available items from their university
 const getMenu = async (req, res, next) => {
   try {
-    // Get user's university from token (if authenticated)
     let universityId = null;
     if (req.user) {
       universityId = await getUserUniversity(req.user.id);
     }
 
-    // If no user or no university, return empty
     if (!universityId) {
       return success(res, [], 'No menu available');
     }
 
     const { rows } = await query(
-      `SELECT m.*, c.name as category_name
-       FROM menu_items m
-       LEFT JOIN categories c ON m.category_id = c.id
-       WHERE m.university_id = $1 AND m.is_available = true
-       ORDER BY c.sort_order, m.name`,
+      `SELECT id, name, description, price, category, emoji, badge, calories, is_available
+       FROM menu_items
+       WHERE university_id = $1 AND is_available = true
+       ORDER BY
+         CASE category
+           WHEN 'breakfast' THEN 1
+           WHEN 'lunch' THEN 2
+           WHEN 'dinner' THEN 3
+           WHEN 'snacks' THEN 4
+           WHEN 'drinks' THEN 5
+           ELSE 6
+         END, name`,
       [universityId]
     );
     return success(res, rows);
@@ -203,13 +208,22 @@ const getDailyMenu = async (req, res, next) => {
     }
 
     const { rows } = await query(
-      `SELECT m.* FROM menu_items m
+      `SELECT m.id, m.name, m.description, m.price, m.category, m.emoji, m.badge, m.calories, m.is_available
+       FROM menu_items m
        INNER JOIN daily_menus d ON m.id = d.menu_item_id
        WHERE d.date = $1
          AND m.is_available = true
          AND m.university_id = $2
          AND d.university_id = $2
-       ORDER BY m.name`,
+       ORDER BY
+         CASE m.category
+           WHEN 'breakfast' THEN 1
+           WHEN 'lunch' THEN 2
+           WHEN 'dinner' THEN 3
+           WHEN 'snacks' THEN 4
+           WHEN 'drinks' THEN 5
+           ELSE 6
+         END, m.name`,
       [today, universityId]
     );
     return success(res, rows, 'Daily menu retrieved');
