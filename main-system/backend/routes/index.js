@@ -33,12 +33,15 @@ const menuRouter = require('express').Router();
 const {
   getMenu, getAllItems, getItem, createItem, updateItem,
   deleteItem, toggleAvailability, getCategories, setDailyMenu, getDailySummary,
+  getDailyMenu, getDailyMenuIds  // Add these two functions
 } = require('../controllers/menuController');
 const { authenticate: auth, requireAdmin: admin, requireStaff: staff, optionalAuth } = require('../../../shared/middleware/auth');
 
 menuRouter.get('/',          optionalAuth, getMenu);
 menuRouter.get('/categories', getCategories);
 menuRouter.get('/daily-summary', getDailySummary);
+menuRouter.get('/daily',     optionalAuth, getDailyMenu);  // Get today's daily menu (for students)
+menuRouter.get('/daily/ids', auth, admin, getDailyMenuIds);  // Get daily menu IDs (for admin selection)
 menuRouter.get('/items',     auth, admin, getAllItems);
 menuRouter.get('/items/:id', getItem);
 menuRouter.post('/items',    auth, admin, body('name').notEmpty(), body('price').isInt({ min: 1 }), validate, createItem);

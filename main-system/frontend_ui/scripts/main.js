@@ -173,7 +173,440 @@
     function ScannerPage() { const {showToast} = useContext(AppCtx); const [input, setInput] = useState(''); const [result, setResult] = useState(null); const [scanning, setScanning] = useState(false); const handleVerify = (code) => { const c = (code||input).toUpperCase().trim(); if (!c) return; setScanning(true); setResult(null); setTimeout(() => { setScanning(false); const order = SAMPLE_ORDERS.find(o=>o.id===c); if (order) { if (order.status==='served') { setResult({type:'used',order}); showToast('⚠ QR already used', 'error'); } else { setResult({type:'valid',order}); showToast('✓ Valid order — ready to serve', 'success'); } } else { setResult({type:'invalid'}); showToast('✗ Invalid QR code', 'error'); } }, 1200); }; const markServed = () => { if (result?.order) { result.order.status = 'served'; setResult({...result, type:'done'}); showToast('✓ Order marked as served', 'success'); } }; return ( <div className="staff-scanner-layout" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:0,flex:1,overflow:'auto'}}><div style={{padding:28,borderRight:'1px solid var(--border)'}}><div><div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:20}}>QR Scanner</div><div style={{fontSize:12,color:'var(--muted)'}}>Verify student orders</div></div><div style={{background:'#1C1A17',borderRadius:16,padding:20,marginTop:20,position:'relative',aspectRatio:'1',maxWidth:320}}><div style={{position:'absolute',top:0,left:0,right:0,height:2,background:'#C4522A',opacity:.7,animation:'scanline 2s linear infinite'}}/><div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%'}}><div style={{fontSize:40}}>📷</div><div style={{fontSize:11,color:'#6A6050'}}>Camera scanner</div></div></div><div style={{marginTop:20}}><div style={{fontSize:10,fontWeight:600,letterSpacing:1,color:'var(--muted)',marginBottom:8}}>Or enter code manually</div><div style={{display:'flex',gap:8}}><input value={input} onChange={e=>setInput(e.target.value.toUpperCase())} onKeyDown={e=>e.key==='Enter'&&handleVerify()} placeholder="e.g. UNI-AB3X7K" style={{flex:1,padding:'10px 12px',fontSize:13,background:'#fff',border:'1.5px solid var(--border)',borderRadius:9}}/><Btn variant="rust" onClick={()=>handleVerify()}>Verify</Btn></div><div style={{marginTop:10,display:'flex',flexWrap:'wrap',gap:6}}>{SAMPLE_ORDERS.map(o=>(<button key={o.id} onClick={()=>{setInput(o.id);handleVerify(o.id);}} style={{fontSize:10,padding:'4px 9px',borderRadius:6,background:'#EDE8DF'}}>{o.id}</button>))}</div></div></div><div style={{padding:28,display:'flex',justifyContent:'center',alignItems:'center',background:'#FAFAF7'}}>{scanning && (<div style={{textAlign:'center'}}><div style={{width:44,height:44,border:'3px solid var(--border)',borderTopColor:'#C4522A',borderRadius:'50%',margin:'0 auto 16px',animation:'spin .7s linear infinite'}}/><div style={{fontWeight:700}}>Verifying…</div></div>)}{!scanning && !result && (<div style={{textAlign:'center',opacity:.35}}><div style={{fontSize:54}}>🔲</div><div style={{fontWeight:700}}>Awaiting scan</div></div>)}{!scanning && result && (<div style={{width:'100%',maxWidth:340}}>{result.type==='valid' && (<><div style={{background:'#EAF0E8',borderRadius:16,padding:20,textAlign:'center'}}><div style={{width:52,height:52,borderRadius:'50%',background:'#4A6741',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 10px',fontSize:22,color:'#fff'}}>✓</div><div style={{fontWeight:800,fontSize:18}}>Valid Order</div><div>{result.order.id}</div></div><Btn fullWidth variant="sage" onClick={markServed}>✓ Mark as Served</Btn></>)}</div>)}</div></div> ); }
     function QueuePage() { const {showToast} = useContext(AppCtx); const [orders, setOrders] = useState(SAMPLE_ORDERS.map(o=>({...o}))); const pending = orders.filter(o=>o.status==='pending'); const served = orders.filter(o=>o.status==='served'); const markServed = (id) => { setOrders(prev => prev.map(o=>o.id===id?{...o,status:'served'}:o)); showToast('✓ Order marked as served', 'success'); }; const OrderCard = ({o}) => ( <div style={{background:'#fff',border:`1px solid ${o.status==='pending'?'#E2D9CC':'#D3D1C7'}`,borderRadius:12,padding:'12px 14px'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}><div><div style={{fontWeight:700,fontSize:12}}>{o.id}</div><div style={{fontSize:12}}>{o.student}</div></div><Badge color={o.status==='served'?'sage':'amber'}>{o.status==='served'?'Served':'Pending'}</Badge></div><div style={{fontSize:11,color:'var(--muted)',marginBottom:8}}>{o.items.map(it=>`${it.qty}× ${it.name}`).join(' · ')}</div><div style={{display:'flex',justifyContent:'space-between'}}><span style={{fontWeight:700}}>TZS {fmt(o.total)}</span>{o.status==='pending' && <Btn small variant="sage" onClick={()=>markServed(o.id)}>Mark served</Btn>}</div></div> ); return ( <div className="queue-layout" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:0,flex:1,overflow:'auto'}}><div style={{padding:20,borderRight:'1px solid var(--border)',overflowY:'auto'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}><span style={{fontWeight:700}}>Pending</span><span style={{background:'#FEF3DC',color:'#854F0B',borderRadius:10,padding:'2px 8px',fontSize:10}}>{pending.length}</span></div><div style={{display:'flex',flexDirection:'column',gap:10}}>{pending.map(o=><OrderCard key={o.id} o={o}/>)}</div></div><div style={{padding:20,overflowY:'auto',background:'#FAFAF7'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}><span style={{fontWeight:700}}>Served today</span><span style={{background:'#EAF0E8',color:'#4A6741',borderRadius:10,padding:'2px 8px'}}>{served.length}</span></div><div>{served.map(o=><OrderCard key={o.id} o={o}/>)}</div></div></div> ); }
     function DashboardPage() { return ( <div style={{padding:24,overflowY:'auto'}}><div style={{fontWeight:800,fontSize:22}}>Dashboard</div><div style={{fontSize:13,color:'var(--muted)',marginBottom:20}}>{new Date().toLocaleDateString('en-TZ',{weekday:'long',day:'numeric',month:'long'})}</div><div className="admin-dashboard-stats" style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}><StatCard label="Revenue today" value="TZS 143,200" sub="+18%" color="rust" icon="💰"/><StatCard label="Orders placed" value="47" sub="12 pending" color="amber" icon="📋"/><StatCard label="Items sold" value="134" sub="18 types" color="sage" icon="🍽️"/><StatCard label="Avg order" value="TZS 3,047" color="blue" icon="📊"/></div><div className="admin-grid-2col" style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:16,marginBottom:20}}><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Weekly sales</div><MiniBarChart data={SALES_DATA}/></div><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Payment methods</div>{[{label:'M-Pesa',pct:62,col:'#00A651'},{label:'Tigo Pesa',pct:27,col:'#003087'},{label:'HaloPesa',pct:11,col:'#E31837'}].map(p=>(<div key={p.label} style={{marginBottom:12}}><div style={{display:'flex',justifyContent:'space-between',fontSize:12}}><span>{p.label}</span><span>{p.pct}%</span></div><div style={{height:6,background:'#EDE8DF',borderRadius:3}}><div style={{height:'100%',width:p.pct+'%',background:p.col,borderRadius:3}}/></div></div>))}</div></div></div> ); }
-    function MenuMgmtPage() { const {showToast} = useContext(AppCtx); const [meals, setMeals] = useState(MEALS.map(m=>({...m}))); const [editing, setEditing] = useState(null); const [editForm, setEditForm] = useState({}); const [showAdd, setShowAdd] = useState(false); const [newMeal, setNewMeal] = useState({name:'',desc:'',price:'',cat:'lunch',emoji:'🍽️',badge:'',stock:true}); const toggleStock = (id) => { setMeals(prev=>prev.map(m=>m.id===id?{...m,stock:!m.stock}:m)); showToast('Menu updated', 'success'); }; const startEdit = (meal) => { setEditing(meal.id); setEditForm({...meal}); }; const saveEdit = () => { setMeals(prev=>prev.map(m=>m.id===editing?{...editForm,id:m.id,price:Number(editForm.price)}:m)); setEditing(null); showToast('✓ Meal updated', 'success'); }; const addMeal = () => { if(!newMeal.name||!newMeal.price){showToast('Fill in name & price','error');return;} setMeals(prev=>[...prev,{...newMeal,id:Date.now(),price:Number(newMeal.price)}]); setShowAdd(false); setNewMeal({name:'',desc:'',price:'',cat:'lunch',emoji:'🍽️',badge:'',stock:true}); showToast('✓ Meal added', 'success'); }; return ( <div style={{padding:22,overflowY:'auto'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:18}}><div><div style={{fontWeight:800,fontSize:20}}>Menu Management</div><div style={{fontSize:12,color:'var(--muted)'}}>{meals.length} items</div></div><Btn variant="rust" onClick={()=>setShowAdd(true)}>+ Add meal</Btn></div><div className="admin-menu-grid" style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>{meals.map(m=>(<div key={m.id} style={{background:'#fff',border:'1px solid var(--border)',borderRadius:12,padding:'12px 14px'}}><div style={{display:'flex',justifyContent:'space-between'}}><div style={{display:'flex',gap:10}}><span style={{fontSize:26}}>{m.emoji}</span><div><div style={{fontWeight:700,fontSize:13}}>{m.name}</div><div style={{fontSize:10}}>{m.cat} · TZS {fmt(m.price)}</div></div></div><div><button onClick={()=>startEdit(m)} style={{border:'1px solid var(--border)',padding:'4px 7px',borderRadius:6}}>✏️</button><button onClick={()=>setMeals(prev=>prev.filter(x=>x.id!==m.id))} style={{marginLeft:6,border:'1px solid var(--border)',padding:'4px 7px',borderRadius:6}}>🗑️</button></div></div><div style={{marginTop:10,display:'flex',justifyContent:'space-between'}}><div onClick={()=>toggleStock(m.id)} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}><div style={{width:32,height:18,borderRadius:9,background:m.stock?'#4A6741':'#E2D9CC',position:'relative'}}><div style={{width:14,height:14,borderRadius:'50%',background:'#fff',position:'absolute',top:2,left:m.stock?16:2}}/></div><span style={{fontSize:10}}>{m.stock?'Available':'Off menu'}</span></div></div></div>))}</div><Modal open={!!editing} onClose={()=>setEditing(null)} maxW={420} center><div style={{fontWeight:800,fontSize:18}}>Edit meal</div><Input label="Name" value={editForm.name||''} onChange={v=>setEditForm(f=>({...f,name:v}))}/><Input label="Price" type="number" value={editForm.price||''} onChange={v=>setEditForm(f=>({...f,price:v}))}/><Btn fullWidth variant="rust" onClick={saveEdit}>Save</Btn></Modal><Modal open={showAdd} onClose={()=>setShowAdd(false)} maxW={420} center><div style={{fontWeight:800,fontSize:18}}>Add new meal</div><Input label="Name" value={newMeal.name} onChange={v=>setNewMeal(f=>({...f,name:v}))}/><Input label="Price" type="number" value={newMeal.price} onChange={v=>setNewMeal(f=>({...f,price:v}))}/><Btn fullWidth variant="sage" onClick={addMeal}>Add to menu</Btn></Modal></div> ); }
+
+    function MenuMgmtPage() {
+        const { showToast } = useContext(AppCtx);
+        const [meals, setMeals] = useState([]);
+        const [dailyMenu, setDailyMenu] = useState([]);
+        const [loading, setLoading] = useState(true);
+        const [editing, setEditing] = useState(null);
+        const [editForm, setEditForm] = useState({});
+        const [showAdd, setShowAdd] = useState(false);
+        const [showDailyMenuModal, setShowDailyMenuModal] = useState(false);
+        const [selectedForDaily, setSelectedForDaily] = useState([]);
+        const [newMeal, setNewMeal] = useState({ name: '', desc: '', price: '', cat: 'lunch', emoji: '🍽️', badge: '', stock: true, calories: 0 });
+
+        // Load menu items from backend
+        const loadMeals = async () => {
+            setLoading(true);
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch('http://localhost:5000/api/menu/items', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    setMeals(result.data);
+                } else if (result.items) {
+                    setMeals(result.items);
+                } else {
+                    setMeals([]);
+                }
+            } catch (error) {
+                console.error('Failed to load meals:', error);
+                showToast('Failed to load menu', 'error');
+            }
+            setLoading(false);
+        };
+
+        // Load daily menu
+        const loadDailyMenu = async () => {
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch('http://localhost:5000/api/menu/daily', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    setDailyMenu(result.data);
+                    setSelectedForDaily(result.data.map(item => item.id));
+                }
+            } catch (error) {
+                console.error('Failed to load daily menu:', error);
+            }
+        };
+
+        useEffect(() => {
+            loadMeals();
+            loadDailyMenu();
+        }, []);
+
+        // Toggle item availability (stock) - Now also removes from daily menu if toggled OFF
+        const toggleStock = async (id) => {
+            const meal = meals.find(m => m.id === id);
+            const newAvailability = !(meal.is_available !== false);
+
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5000/api/menu/items/${id}/toggle`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    await loadMeals();
+
+                    // If toggling OFF (making unavailable), remove from daily menu
+                    if (!newAvailability) {
+                        // Check if this item was in daily menu
+                        if (selectedForDaily.includes(id)) {
+                            // Remove from daily menu selection
+                            const updatedSelection = selectedForDaily.filter(itemId => itemId !== id);
+                            setSelectedForDaily(updatedSelection);
+
+                            // Also update backend daily menu
+                            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                            await fetch('http://localhost:5000/api/menu/daily', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${token}`
+                                },
+                                body: JSON.stringify({ items: updatedSelection })
+                            });
+                            await loadDailyMenu();
+                            showToast('Item removed from daily menu due to unavailability', 'info');
+                        }
+                    }
+                    showToast('Menu item availability updated', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                console.error('Toggle stock error:', error);
+                showToast('Failed to update availability', 'error');
+            }
+        };
+
+        // Save edited meal
+        const saveEdit = async () => {
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5000/api/menu/items/${editing}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        name: editForm.name,
+                        description: editForm.desc,
+                        price: Number(editForm.price),
+                        category: editForm.cat,
+                        emoji: editForm.emoji,
+                        badge: editForm.badge || '',
+                        calories: editForm.calories || 0
+                    })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    await loadMeals();
+                    setEditing(null);
+                    setEditForm({});
+                    showToast('✓ Meal updated successfully', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                console.error('Save edit error:', error);
+                showToast('Failed to update meal', 'error');
+            }
+        };
+
+        // Add new meal - New items are available by default
+        const addMeal = async () => {
+            if (!newMeal.name || !newMeal.price) {
+                showToast('Fill in name and price', 'error');
+                return;
+            }
+
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch('http://localhost:5000/api/menu/items', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        name: newMeal.name,
+                        description: newMeal.desc,
+                        price: Number(newMeal.price),
+                        category: newMeal.cat,
+                        emoji: newMeal.emoji || '🍽️',
+                        badge: newMeal.badge || '',
+                        calories: newMeal.calories || 0,
+                        is_available: true
+                    })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    await loadMeals();
+                    setShowAdd(false);
+                    setNewMeal({ name: '', desc: '', price: '', cat: 'lunch', emoji: '🍽️', badge: '', stock: true, calories: 0 });
+                    showToast('✓ Meal added successfully', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                console.error('Add meal error:', error);
+                showToast('Failed to add meal', 'error');
+            }
+        };
+
+        // Delete meal - Also removes from daily menu
+        const deleteMeal = async (id) => {
+            if (!confirm('Are you sure you want to delete this meal?')) return;
+
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5000/api/menu/items/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    // Remove from daily menu selection if present
+                    if (selectedForDaily.includes(id)) {
+                        const updatedSelection = selectedForDaily.filter(itemId => itemId !== id);
+                        setSelectedForDaily(updatedSelection);
+                    }
+                    await loadMeals();
+                    await loadDailyMenu();
+                    showToast('Meal deleted successfully', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                console.error('Delete meal error:', error);
+                showToast('Failed to delete meal', 'error');
+            }
+        };
+
+        // Save daily menu selection
+        const saveDailyMenu = async () => {
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch('http://localhost:5000/api/menu/daily', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ items: selectedForDaily })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    await loadDailyMenu();
+                    setShowDailyMenuModal(false);
+                    showToast('Daily menu updated successfully', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                console.error('Save daily menu error:', error);
+                showToast('Failed to update daily menu', 'error');
+            }
+        };
+
+        const toggleDailySelection = (mealId) => {
+            setSelectedForDaily(prev =>
+                prev.includes(mealId)
+                    ? prev.filter(id => id !== mealId)
+                    : [...prev, mealId]
+            );
+        };
+
+        // Get available meals (only those that are in stock/available)
+        const availableMeals = meals.filter(m => m.is_available !== false);
+
+        if (loading) {
+            return (
+                <div style={{ padding: 40, textAlign: 'center' }}>
+                    <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }}></div>
+                    <div>Loading menu...</div>
+                </div>
+            );
+        }
+
+        return (
+            <div style={{ padding: 22, overflowY: 'auto' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
+                    <div>
+                        <div style={{ fontWeight: 800, fontSize: 20 }}>Menu Management</div>
+                        <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                            {meals.length} total items • {availableMeals.length} available • {dailyMenu.length} on today's menu
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        <Btn variant="amber" onClick={() => setShowDailyMenuModal(true)}>
+                            📅 Set Daily Menu ({dailyMenu.length})
+                        </Btn>
+                        <Btn variant="rust" onClick={() => setShowAdd(true)}>
+                            + Add meal
+                        </Btn>
+                    </div>
+                </div>
+
+                <div className="admin-menu-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 12 }}>
+                    {meals.map(m => (
+                        <div key={m.id} style={{
+                            background: '#fff',
+                            border: `1px solid ${m.is_available !== false ? 'var(--border)' : '#E2D9CC'}`,
+                            borderRadius: 12,
+                            padding: '12px 14px',
+                            opacity: m.is_available !== false ? 1 : 0.6,
+                            position: 'relative'
+                        }}>
+                            {dailyMenu.some(d => d.id === m.id) && (
+                                <div style={{
+                                    position: 'absolute',
+                                    top: 8,
+                                    right: 8,
+                                    background: '#D4831A',
+                                    color: '#fff',
+                                    fontSize: 10,
+                                    padding: '2px 8px',
+                                    borderRadius: 4,
+                                    fontWeight: 600
+                                }}>
+                                    Today's Special
+                                </div>
+                            )}
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <div style={{ display: 'flex', gap: 10 }}>
+                                    <span style={{ fontSize: 26 }}>{m.emoji || '🍽️'}</span>
+                                    <div>
+                                        <div style={{ fontWeight: 700, fontSize: 13 }}>{m.name}</div>
+                                        <div style={{ fontSize: 10 }}>{m.category || m.cat} · TZS {fmt(m.price)}</div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <button onClick={() => { setEditing(m.id); setEditForm({ ...m, desc: m.description, cat: m.category || m.cat }); }} style={{ border: '1px solid var(--border)', padding: '4px 7px', borderRadius: 6, cursor: 'pointer' }}>✏️</button>
+                                    <button onClick={() => deleteMeal(m.id)} style={{ marginLeft: 6, border: '1px solid var(--border)', padding: '4px 7px', borderRadius: 6, cursor: 'pointer' }}>🗑️</button>
+                                </div>
+                            </div>
+                            <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div onClick={() => toggleStock(m.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                                    <div style={{ width: 32, height: 18, borderRadius: 9, background: m.is_available !== false ? '#4A6741' : '#E2D9CC', position: 'relative' }}>
+                                        <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2, left: m.is_available !== false ? 16 : 2, transition: 'left .2s' }} />
+                                    </div>
+                                    <span style={{ fontSize: 10 }}>{m.is_available !== false ? 'Available' : 'Off menu'}</span>
+                                </div>
+                                {m.is_available !== false && !dailyMenu.some(d => d.id === m.id) && (
+                                    <span style={{ fontSize: 10, color: '#aaa' }}>Not on today's menu</span>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Edit Modal */}
+                <Modal open={!!editing} onClose={() => setEditing(null)} maxW={420} center>
+                    <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 16 }}>Edit meal</div>
+                    <Input label="Name" value={editForm.name || ''} onChange={v => setEditForm(f => ({ ...f, name: v }))} />
+                    <Input label="Description" value={editForm.desc || ''} onChange={v => setEditForm(f => ({ ...f, desc: v }))} />
+                    <Input label="Price (TZS)" type="number" value={editForm.price || ''} onChange={v => setEditForm(f => ({ ...f, price: v }))} />
+                    <Input label="Emoji" value={editForm.emoji || '🍽️'} onChange={v => setEditForm(f => ({ ...f, emoji: v }))} />
+                    <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 6 }}>Category</div>
+                        <select value={editForm.cat || 'lunch'} onChange={e => setEditForm(f => ({ ...f, cat: e.target.value }))} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, background: '#fff' }}>
+                            {['breakfast', 'lunch', 'dinner', 'snacks'].map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+                        </select>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                        <Btn fullWidth variant="ghost" onClick={() => setEditing(null)}>Cancel</Btn>
+                        <Btn fullWidth variant="rust" onClick={saveEdit}>Save changes</Btn>
+                    </div>
+                </Modal>
+
+                {/* Add Meal Modal */}
+                <Modal open={showAdd} onClose={() => setShowAdd(false)} maxW={420} center>
+                    <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 16 }}>Add new meal</div>
+                    <Input label="Name" value={newMeal.name} onChange={v => setNewMeal(f => ({ ...f, name: v }))} placeholder="e.g., Ugali na Dagaa" />
+                    <Input label="Description" value={newMeal.desc} onChange={v => setNewMeal(f => ({ ...f, desc: v }))} placeholder="Short description" />
+                    <Input label="Price (TZS)" type="number" value={newMeal.price} onChange={v => setNewMeal(f => ({ ...f, price: v }))} placeholder="3000" />
+                    <Input label="Emoji" value={newMeal.emoji} onChange={v => setNewMeal(f => ({ ...f, emoji: v }))} placeholder="🍽️" />
+                    <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 6 }}>Category</div>
+                        <select value={newMeal.cat} onChange={e => setNewMeal(f => ({ ...f, cat: e.target.value }))} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, background: '#fff' }}>
+                            {['breakfast', 'lunch', 'dinner', 'snacks'].map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+                        </select>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                        <Btn fullWidth variant="ghost" onClick={() => setShowAdd(false)}>Cancel</Btn>
+                        <Btn fullWidth variant="sage" onClick={addMeal}>Add to menu</Btn>
+                    </div>
+                </Modal>
+
+                {/* Daily Menu Selection Modal - Only shows available items */}
+                <Modal open={showDailyMenuModal} onClose={() => setShowDailyMenuModal(false)} maxW={600} center>
+                    <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 16 }}>Select Today's Menu</div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
+                        Choose which items will be available for students today
+                    </div>
+                    <div style={{ fontSize: 12, color: '#4A6741', marginBottom: 12, padding: 8, background: '#EAF0E8', borderRadius: 8 }}>
+                        💡 Only items marked as "Available" can be added to today's menu
+                    </div>
+                    <div style={{ maxHeight: 400, overflowY: 'auto', marginBottom: 20 }}>
+                        {availableMeals.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
+                                No available items. Please mark some items as "Available" first.
+                            </div>
+                        ) : (
+                            availableMeals.map(meal => (
+                                <div
+                                    key={meal.id}
+                                    onClick={() => toggleDailySelection(meal.id)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 12,
+                                        padding: '10px 12px',
+                                        marginBottom: 8,
+                                        background: selectedForDaily.includes(meal.id) ? '#EAF0E8' : '#fff',
+                                        border: `1px solid ${selectedForDaily.includes(meal.id) ? '#4A6741' : 'var(--border)'}`,
+                                        borderRadius: 10,
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    <div style={{ fontSize: 28 }}>{meal.emoji || '🍽️'}</div>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontWeight: 600 }}>{meal.name}</div>
+                                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{meal.category || meal.cat} · TZS {fmt(meal.price)}</div>
+                                    </div>
+                                    <div style={{
+                                        width: 22, height: 22, borderRadius: '50%',
+                                        background: selectedForDaily.includes(meal.id) ? '#4A6741' : '#fff',
+                                        border: `2px solid ${selectedForDaily.includes(meal.id) ? '#4A6741' : 'var(--border)'}`,
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                    }}>
+                                        {selectedForDaily.includes(meal.id) && <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#fff' }} />}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                        <Btn variant="ghost" onClick={() => setShowDailyMenuModal(false)}>Cancel</Btn>
+                        <Btn variant="rust" onClick={saveDailyMenu} disabled={availableMeals.length === 0}>Save Daily Menu</Btn>
+                    </div>
+                </Modal>
+            </div>
+        );
+    }
+
     function OrdersMgmtPage() { const [filter, setFilter] = useState('all'); const [orders] = useState(SAMPLE_ORDERS.map(o=>({...o}))); const filtered = filter==='all'?orders:orders.filter(o=>o.status===filter); return ( <div style={{padding:22,overflowY:'auto'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:18}}><div><div style={{fontWeight:800,fontSize:20}}>All Orders</div><div style={{fontSize:12}}>{orders.length} orders today</div></div><div style={{display:'flex',gap:6}}>{['all','pending','served'].map(f=>(<button key={f} onClick={()=>setFilter(f)} style={{padding:'6px 14px',borderRadius:8,background:filter===f?'#1C1A17':'#fff',color:filter===f?'#F5F0E8':'var(--cr)'}}>{f}</button>))}</div></div><div className="order-table" style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse'}}><thead><tr style={{background:'var(--tag)'}}>{['Order ID','Student','Items','Total','Method','Time','Status'].map(h=><th key={h} style={{padding:'10px 14px',fontSize:10,textAlign:'left'}}>{h}</th>)}</tr></thead><tbody>{filtered.map(o=>(<tr key={o.id}><td data-label="Order ID" style={{padding:'12px 14px'}}>{o.id}</td><td data-label="Student">{o.student}</td><td data-label="Items" style={{fontSize:11}}>{o.items.map(it=>`${it.qty}× ${it.name}`).join(', ')}</td><td data-label="Total">TZS {fmt(o.total)}</td><td data-label="Method"><Badge color={o.paid==='mpesa'?'sage':'blue'}>{o.paid}</Badge></td><td data-label="Time">{o.time}</td><td data-label="Status"><Badge color={o.status==='served'?'sage':'amber'}>{o.status}</Badge></td></tr>))}</tbody></table></div></div> ); }
     function ReportsPage() { return ( <div style={{padding:24,overflowY:'auto'}}><div style={{fontWeight:800,fontSize:20}}>Reports</div><div className="admin-dashboard-stats" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}><StatCard label="This month" value="TZS 2.4M" sub="89 hours" color="rust" icon="📅"/><StatCard label="Total orders" value="1,247" color="amber" icon="📋"/><StatCard label="Top payer" value="M-Pesa" color="sage" icon="📱"/></div><div className="admin-grid-2col" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Daily revenue</div><MiniBarChart data={SALES_DATA}/></div><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Category breakdown</div>{[{label:'Lunch',pct:38},{label:'Dinner',pct:29},{label:'Breakfast',pct:18}].map(c=>(<div key={c.label} style={{display:'flex',gap:8,marginBottom:8}}><span style={{width:70}}>{c.label}</span><div style={{flex:1,height:6,background:'#EDE8DF'}}><div style={{width:c.pct+'%',height:'100%',background:'#C4522A'}}/></div><span>{c.pct}%</span></div>))}</div></div></div> ); }
 
@@ -864,6 +1297,19 @@
             role: 'staff'
         });
         const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+        const [adminUniversity, setAdminUniversity] = useState(null);
+
+        const inputStyle = {
+            width: '100%',
+            padding: '10px 12px',
+            background: '#2a2a2a',
+            border: '1px solid #3a3a3a',
+            borderRadius: 8,
+            color: '#fff',
+            fontSize: 13,
+            marginBottom: 12,
+            boxSizing: 'border-box'
+        };
 
         useEffect(() => {
             const handleResize = () => {
@@ -871,6 +1317,24 @@
             };
             window.addEventListener('resize', handleResize);
             return () => window.removeEventListener('resize', handleResize);
+        }, []);
+
+        useEffect(() => {
+            const getUserUniversity = async () => {
+                try {
+                    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                    const response = await fetch('http://localhost:5000/api/auth/me', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await response.json();
+                    if (data.success && data.data.university_id) {
+                        setAdminUniversity(data.data.university_id);
+                    }
+                } catch (error) {
+                    console.error('Failed to get admin university:', error);
+                }
+            };
+            getUserUniversity();
         }, []);
 
         const generatePassword = () => {
@@ -936,10 +1400,15 @@
                 return;
             }
 
+            if (!adminUniversity) {
+                showToast('Unable to determine your university affiliation', 'error');
+                return;
+            }
+
             const newPassword = generatePassword();
 
             try {
-                const token = localStorage.getItem('token');
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
                 const response = await fetch('http://localhost:5000/api/users', {
                     method: 'POST',
                     headers: {
@@ -947,9 +1416,12 @@
                         'Authorization': `Bearer ${token}`
                     },
                     body: JSON.stringify({
-                        ...formData,
+                        name: formData.name,
+                        email: formData.email,
+                        reg_number: formData.reg_number,
                         role: 'staff',
-                        password: newPassword
+                        password: newPassword,
+                        university_id: adminUniversity
                     })
                 });
                 const result = await response.json();
@@ -964,18 +1436,8 @@
                     throw new Error(result.message);
                 }
             } catch (error) {
-                const newUser = {
-                    id: Date.now(),
-                    ...formData,
-                    role: 'staff',
-                    is_active: true,
-                    created_at: new Date().toISOString()
-                };
-                setUsers(prev => [...prev, newUser]);
-                setShowAddModal(false);
-                setFormData({ name: '', email: '', reg_number: '', role: 'staff' });
-                showToast(`Staff added (demo mode)`, 'success');
-                alert(`Demo mode - Staff created!\n\nName: ${formData.name}\nUsername: ${formData.reg_number}\nPassword: ${newPassword}`);
+                console.error('Add user error:', error);
+                showToast(error.message || 'Failed to add staff member', 'error');
             }
         };
 
@@ -983,7 +1445,7 @@
             if (!selectedUser) return;
 
             try {
-                const token = localStorage.getItem('token');
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
                 const response = await fetch(`http://localhost:5000/api/users/${selectedUser.id}`, {
                     method: 'PUT',
                     headers: {
@@ -991,7 +1453,9 @@
                         'Authorization': `Bearer ${token}`
                     },
                     body: JSON.stringify({
-                        ...formData,
+                        name: formData.name,
+                        email: formData.email,
+                        reg_number: formData.reg_number,
                         role: 'staff'
                     })
                 });
@@ -1007,12 +1471,8 @@
                     throw new Error(result.message);
                 }
             } catch (error) {
-                setUsers(prev => prev.map(u =>
-                    u.id === selectedUser.id ? { ...u, ...formData, role: 'staff' } : u
-                ));
-                setShowEditModal(false);
-                setSelectedUser(null);
-                showToast('Staff updated (demo mode)', 'success');
+                console.error('Edit user error:', error);
+                showToast(error.message || 'Failed to update staff member', 'error');
             }
         };
 
@@ -1020,7 +1480,7 @@
             if (!confirm(`Are you sure you want to delete staff member ${user.name}?`)) return;
 
             try {
-                const token = localStorage.getItem('token');
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
                 const response = await fetch(`http://localhost:5000/api/users/${user.id}`, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -1034,14 +1494,14 @@
                     throw new Error(result.message);
                 }
             } catch (error) {
-                setUsers(prev => prev.filter(u => u.id !== user.id));
-                showToast('Staff deleted (demo mode)', 'success');
+                console.error('Delete user error:', error);
+                showToast(error.message || 'Failed to delete staff member', 'error');
             }
         };
 
         const handleToggleStatus = async (user) => {
             try {
-                const token = localStorage.getItem('token');
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
                 const response = await fetch(`http://localhost:5000/api/users/${user.id}/toggle-status`, {
                     method: 'PATCH',
                     headers: {
@@ -1059,10 +1519,8 @@
                     throw new Error(result.message);
                 }
             } catch (error) {
-                setUsers(prev => prev.map(u =>
-                    u.id === user.id ? { ...u, is_active: !u.is_active } : u
-                ));
-                showToast(`Staff ${user.is_active ? 'deactivated' : 'activated'} (demo mode)`, 'success');
+                console.error('Toggle status error:', error);
+                showToast(error.message || 'Failed to toggle status', 'error');
             }
         };
 
@@ -1070,7 +1528,7 @@
             const newPassword = generatePassword();
 
             try {
-                const token = localStorage.getItem('token');
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
                 const response = await fetch(`http://localhost:5000/api/users/${user.id}/reset-password`, {
                     method: 'POST',
                     headers: {
@@ -1088,8 +1546,8 @@
                     throw new Error(result.message);
                 }
             } catch (error) {
-                showToast(`Demo mode - New password would be: ${newPassword}`, 'success');
-                alert(`Demo mode - Password reset for ${user.name}\n\nNew Password: ${newPassword}`);
+                console.error('Reset password error:', error);
+                showToast(error.message || 'Failed to reset password', 'error');
             }
         };
 
@@ -1118,7 +1576,7 @@
                             Staff Management
                         </div>
                         <div style={{ fontSize: isMobile ? 11 : 13, color: 'var(--muted)' }}>
-                            Manage canteen staff accounts (view, add, edit, delete)
+                            Manage canteen staff accounts for your university
                         </div>
                     </div>
                     <Btn variant="rust" onClick={() => setShowAddModal(true)} small={isMobile}>

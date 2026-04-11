@@ -31,7 +31,7 @@ const getUser = async (req, res, next) => {
 
 const createUser = async (req, res, next) => {
   try {
-    const { name, email, reg_number, password, role = 'staff' } = req.body;
+    const { name, email, reg_number, password, role = 'staff', university_id } = req.body;
 
     const existing = await query(
       'SELECT id FROM users WHERE reg_number = $1 OR email = $2',
@@ -43,23 +43,27 @@ const createUser = async (req, res, next) => {
     }
 
     const hash = await bcrypt.hash(password, 12);
+
     const { rows } = await query(
-      `INSERT INTO users (name, email, reg_number, password, role, is_active)
-       VALUES ($1, $2, $3, $4, $5, true)
-       RETURNING id, name, email, reg_number, role, created_at`,
-      [name, email || null, reg_number, hash, role]
+      `INSERT INTO users (name, email, reg_number, password, role, is_active, display_name, university_id)
+       VALUES ($1, $2, $3, $4, $5, true, $1, $6)
+       RETURNING id, name, email, reg_number, role, display_name, university_id, created_at`,
+      [name, email || null, reg_number, hash, role, university_id || null]
     );
 
     return created(res, rows[0], 'User created successfully');
-  } catch (err) { next(err); }
+  } catch (err) {
+    console.error('Create user error:', err);
+    next(err);
+  }
 };
 
 const updateUser = async (req, res, next) => {
   try {
-    const { name, email, role, is_active, display_name } = req.body;
+    const { name, email, reg_number, role, is_active, display_name } = req.body;
     const userId = req.params.id;
 
-    console.log('Update user request:', { userId, display_name, name, email, role, is_active });
+    console.log('Updating user:', { userId, name, email, reg_number, role, display_name });
 
     // Build dynamic update query
     const updates = [];
@@ -73,11 +77,14 @@ const updateUser = async (req, res, next) => {
     if (display_name !== undefined) {
       updates.push(`display_name = $${idx++}`);
       values.push(display_name);
-      console.log('Updating display_name to:', display_name);
     }
     if (email !== undefined) {
       updates.push(`email = $${idx++}`);
       values.push(email);
+    }
+    if (reg_number !== undefined) {
+      updates.push(`reg_number = $${idx++}`);
+      values.push(reg_number);
     }
     if (role !== undefined) {
       updates.push(`role = $${idx++}`);

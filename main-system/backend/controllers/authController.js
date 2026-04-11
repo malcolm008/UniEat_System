@@ -76,16 +76,16 @@ const refresh = async (req, res, next) => {
   }
 };
 
-// GET /auth/me
 const me = async (req, res) => {
-  const { id, name, email, reg_number, role, display_name } = req.user;
+  const { id, name, email, reg_number, role, display_name, university_id } = req.user;
   return success(res, {
     id,
     name,
     display_name: display_name || name,
     email,
     reg_number,
-    role
+    role,
+    university_id  // Add this line
   });
 };
 

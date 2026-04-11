@@ -151,24 +151,63 @@ const getCategories = async (req, res, next) => {
 
 // ── POST /menu/daily — set today's menu ───────────────────────
 const setDailyMenu = async (req, res, next) => {
+    try {
+        const { date, items } = req.body;
+        const menuDate = date || new Date().toISOString().split('T')[0];
+
+        let menuItems = items;
+        if (items.length > 0 && typeof items[0] === 'string') {
+            menuItems = items.map(id => ({ menu_item_id: id, is_available: true }));
+        }
+
+        await withTransaction(async (client) => {
+            await client.query('DELETE FROM daily_menus WHERE date = $1', [menuDate]);
+
+            for (const item of menuItems) {
+                if (item.menu_item_id) {
+                    await client.query(`
+                       INSERT INTO daily_menus (date, menu_item_id, is_available, stock_count, created_by)
+                       VALUES ($1, $2, $3, $4, $5)
+                    `, [menuDate, item.menu_item_id, item.is_available !== false, item.stock_count || null, req.user.id]);
+                }
+            }
+        });
+        return success(res, { date: menuDate, count: menuItems.length }, 'Daily menu updated');
+    } catch (err) {
+        console.error('Set daily menu error:', err);
+        next(err);
+    }
+};
+
+const getDailyMenu = async (req, res, next) => {
   try {
-    const { date, items } = req.body; // items: [{menu_item_id, is_available, stock_count}]
-    const menuDate = date || new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0];
+    const { rows } = await query(
+      `SELECT m.* FROM menu_items m
+       INNER JOIN daily_menus d ON m.id = d.menu_item_id
+       WHERE d.date = $1 AND m.is_available = true
+       ORDER BY m.name`,
+      [today]
+    );
+    return success(res, rows, 'Daily menu retrieved');
+  } catch (err) {
+    console.error('Get daily menu error:', err);
+    next(err);
+  }
+};
 
-    await withTransaction(async (client) => {
-      // Remove old daily entries for this date
-      await client.query('DELETE FROM daily_menus WHERE date = $1', [menuDate]);
-      // Insert new ones
-      for (const item of items) {
-        await client.query(`
-          INSERT INTO daily_menus (date, menu_item_id, is_available, stock_count, created_by)
-          VALUES ($1, $2, $3, $4, $5)
-        `, [menuDate, item.menu_item_id, item.is_available !== false, item.stock_count || null, req.user.id]);
-      }
-    });
-
-    return success(res, { date: menuDate, count: items.length }, 'Daily menu updated');
-  } catch (err) { next(err); }
+const getDailyMenuIds = async (req, res, next) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const { rows } = await query(
+      'SELECT menu_item_id FROM daily_menus WHERE date = $1',
+      [today]
+    );
+    return success(res, rows.map(r => r.menu_item_id), 'Daily menu IDs retrieved');
+  } catch (err) {
+    console.error('Get daily menu IDs error:', err);
+    next(err);
+  }
 };
 
 // ── GET /menu/daily-summary ───────────────────────────────────
@@ -193,5 +232,5 @@ const getDailySummary = async (req, res, next) => {
 
 module.exports = {
   getMenu, getAllItems, getItem, createItem, updateItem,
-  deleteItem, toggleAvailability, getCategories, setDailyMenu, getDailySummary,
+  deleteItem, toggleAvailability, getCategories, setDailyMenu, getDailySummary,  getDailyMenu, getDailyMenuIds
 };
