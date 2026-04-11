@@ -166,7 +166,346 @@
       const startCheckout = () => { const digits = phone.replace(/\D/g,''); if(digits.length<9){showToast('⚠ Enter your phone number','error');return;} if(isEmpty)return; setPayState('processing'); let c=25; setCountdown(25); const t=setInterval(()=>{c--;setCountdown(c);if(c<=0)clearInterval(t);},1000); setTimeout(()=>{clearInterval(t);setQrRef(genRef());setPayState('success');},3000); };
       const payColors = {mpesa:'#00A651',tigo:'#003087',halo:'#E31837'}; const payLabels = {mpesa:'M-Pesa',tigo:'Tigo Pesa',halo:'HaloPesa'};
       return ( <div className={`cart-sidebar ${!isOpen ? 'hide-cart' : ''}`} style={{background:'#FAFAF7',borderLeft:'1px solid var(--border)',display:'flex',flexDirection:'column',height:'100%',overflowY:'auto',position:'relative'}}><div className="cart-handle" onClick={onToggle} style={{display:'none'}}/><div style={{padding:'14px 16px 12px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}><span style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:14}}>Your order</span><span style={{background:isEmpty?'#EDE8DF':'#C4522A',color:isEmpty?'var(--muted)':'#fff',borderRadius:10,padding:'2px 8px',fontSize:10,fontWeight:600}}>{itemCount} item{itemCount!==1?'s':''}</span><button onClick={onToggle} className="close-cart-mobile" style={{display:'none',background:'none',fontSize:20,color:'var(--muted)'}}>✕</button></div>{isEmpty ? ( <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,padding:24,textAlign:'center'}}><div style={{fontSize:38,opacity:.2}}>🍽️</div><div style={{fontSize:12,color:'var(--muted)',lineHeight:1.6}}>Add meals from the menu<br/>to get started</div></div> ) : ( <> <div style={{flex:1,padding:'12px 14px',display:'flex',flexDirection:'column',gap:10,overflowY:'auto'}}>{cartIds.map(k => { const it = cart[k]; return ( <div key={k} style={{display:'flex',alignItems:'center',gap:8,animation:'slideLeft .2s ease'}}><span style={{fontSize:24,flexShrink:0}}>{it.emoji}</span><div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{it.name}</div><div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>{fmt(it.price*it.qty)} TZS</div></div><div style={{display:'flex',alignItems:'center',gap:5,flexShrink:0}}><button onClick={()=>changeQty(k,-1)} style={{width:22,height:22,borderRadius:'50%',border:'1px solid var(--border)',background:'#fff',fontSize:13,display:'flex',alignItems:'center',justifyContent:'center'}}>−</button><span style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:13,minWidth:16,textAlign:'center'}}>{it.qty}</span><button onClick={()=>changeQty(k,1)} style={{width:22,height:22,borderRadius:'50%',border:'1px solid var(--border)',background:'#fff',fontSize:13,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button></div></div> ); })}</div><div style={{borderTop:'1px solid var(--border)',padding:'12px 14px',flexShrink:0}}><div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--muted)',marginBottom:4}}><span>Subtotal</span><span>TZS {fmt(subtotal)}</span></div><div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--muted)'}}><span>Service (2%)</span><span>TZS {fmt(service)}</span></div><div style={{display:'flex',justifyContent:'space-between',fontFamily:'Syne,sans-serif',fontSize:15,fontWeight:700,marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)'}}><span>Total</span><span>TZS {fmt(total)}</span></div></div><div style={{padding:'10px 14px',borderTop:'1px solid var(--border)',flexShrink:0}}><div style={{fontSize:9,fontWeight:600,letterSpacing:1.2,textTransform:'uppercase',color:'var(--muted)',marginBottom:8}}>Pay with</div><div style={{display:'flex',flexDirection:'column',gap:5,marginBottom:9}}>{['mpesa','tigo','halo'].map(m => (<div key={m} onClick={()=>setPayMethod(m)} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',border:`1.5px solid ${payMethod===m?'#C4522A':'var(--border)'}`,borderRadius:8,cursor:'pointer',background:payMethod===m?'#FDF5F2':'#fff'}}><div style={{width:34,height:20,borderRadius:4,background:payColors[m],display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:800,color:'#fff'}}>{payLabels[m]}</div><span style={{fontSize:12,fontWeight:500,flex:1}}>{payLabels[m]}</span><div style={{width:14,height:14,borderRadius:'50%',border:`1.5px solid ${payMethod===m?'#C4522A':'var(--border)'}`,background:payMethod===m?'#C4522A':'transparent',display:'flex',alignItems:'center',justifyContent:'center'}}>{payMethod===m && <div style={{width:5,height:5,borderRadius:'50%',background:'#fff'}}/>}</div></div>))}</div><div style={{display:'flex',border:`1.5px solid ${phone?'#C4522A':'var(--border)'}`,borderRadius:8,overflow:'hidden',background:'#fff'}}><div style={{padding:'8px 10px',fontSize:11,fontWeight:500,color:'var(--muted)',background:'var(--tag)',borderRight:'1px solid var(--border)'}}>🇹🇿 +255</div><input value={phone} onChange={e=>setPhone(e.target.value)} type="tel" maxLength={9} placeholder="7XX XXX XXX" style={{flex:1,padding:'8px 10px',fontSize:12}}/></div></div><div style={{padding:'10px 14px 16px',flexShrink:0}}><button onClick={startCheckout} style={{width:'100%',background:'#1C1A17',color:'#F5F0E8',border:'none',borderRadius:10,padding:'13px 14px',fontFamily:'Syne,sans-serif',fontSize:13,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'space-between'}}><span>Pay now</span><span style={{background:'rgba(255,255,255,.12)',padding:'3px 9px',borderRadius:6,fontSize:12}}>TZS {fmt(total)}</span></button></div></> )}{payState && ( <div style={{position:'fixed',inset:0,background:'rgba(28,26,23,.6)',display:'flex',alignItems:'flex-end',justifyContent:'center',zIndex:600,backdropFilter:'blur(3px)'}}><div style={{background:'#FAFAF7',borderRadius:'20px 20px 0 0',padding:'24px 22px 36px',width:'100%',maxWidth:440,animation:'fadeUp .28s cubic-bezier(.34,1.56,.64,1)'}}><div style={{width:40,height:4,background:'var(--border)',borderRadius:2,margin:'0 auto 22px'}}/>{payState==='processing' ? (<div style={{textAlign:'center'}}><div style={{width:40,height:40,border:'3px solid var(--border)',borderTopColor:'#C4522A',borderRadius:'50%',margin:'0 auto 16px',animation:'spin .7s linear infinite'}}/><div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:18,marginBottom:5}}>Awaiting payment</div><div style={{fontSize:12,color:'var(--muted)',lineHeight:1.7}}>Check your phone for the<br/>{payLabels[payMethod]} STK push</div><div style={{fontSize:10,color:'var(--muted)',opacity:.5,marginTop:12,animation:'pulse 1s ease infinite'}}>Expires in {countdown}s</div></div>) : (<div style={{textAlign:'center'}}><div style={{width:54,height:54,borderRadius:'50%',background:'#4A6741',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 12px',fontSize:24,color:'#fff'}}>✓</div><div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:19,marginBottom:3}}>Payment confirmed!</div><div style={{fontSize:12,color:'var(--muted)',marginBottom:14}}>Show this QR code at the counter</div><div style={{width:180,height:180,background:'#fff',border:'2px solid var(--border)',borderRadius:12,margin:'0 auto 10px',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}><QRCanvas refCode={qrRef} size={180}/></div><div style={{fontFamily:'Syne,sans-serif',fontSize:12,fontWeight:700,letterSpacing:2,color:'var(--muted)',marginBottom:4}}>{qrRef}</div><div style={{fontSize:10,color:'var(--muted)',lineHeight:1.7,maxWidth:240,margin:'0 auto 18px'}}>Show to canteen staff to receive your order.<br/>Valid 30 minutes · one use only.</div><button onClick={()=>{setPayState(null);setCart({});setPhone('');}} style={{background:'#EDE8DF',border:'none',borderRadius:9,padding:'11px 26px',fontFamily:'Syne,sans-serif',fontSize:13,fontWeight:600,cursor:'pointer',color:'#1C1A17'}}>Done — new order</button></div>)}</div></div> )}</div> ); }
-    function MenuPage({cart, setCart, setPage}) { const {showToast} = useContext(AppCtx); const [cat, setCat] = useState('all'); const [modalMeal, setModalMeal] = useState(null); const [modalQty, setModalQty] = useState(1); const [search, setSearch] = useState(''); const [cartOpen, setCartOpen] = useState(true); const addToCart = useCallback((item, qty) => { setCart(prev => { const next = {...prev}; next[item.id] = next[item.id] ? {...next[item.id], qty: next[item.id].qty+qty} : {...item, qty}; return next; }); showToast(`✓ ${item.name.split(' ')[0]} added`, 'success'); if(window.innerWidth<=800) setCartOpen(true); }, [setCart, showToast]); const allItems = [...MEALS, ...DRINKS]; const filtered = useMemo(() => { let items = cat==='all' ? MEALS : cat==='drinks' ? DRINKS : MEALS.filter(m=>m.cat===cat); if (search.trim()) items = [...MEALS,...DRINKS].filter(m=>m.name.toLowerCase().includes(search.toLowerCase())||m.desc.toLowerCase().includes(search.toLowerCase())); return items; }, [cat, search]); const showDrinks = (cat==='all' || cat==='drinks') && !search; const showMeals = cat!=='drinks' || !!search; const mealItems = search ? filtered.filter(m=>m.cat!=='drinks') : (cat==='drinks'?[]:filtered); const drinkItems = search ? filtered.filter(m=>m.cat==='drinks') : DRINKS; const cartCount = Object.values(cart).reduce((s,i)=>s+i.qty,0); return ( <div className="menu-layout" style={{display:'flex',flex:1,minHeight:0,overflow:'hidden'}}><div className="menu-left" style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}><div style={{background:'#2D2520',padding:'20px 20px 16px',flexShrink:0}}><div style={{fontSize:9,letterSpacing:2.5,textTransform:'uppercase',color:'#F0A030',fontWeight:600,marginBottom:3}}>Today's canteen</div><div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:22,color:'#F5F0E8',lineHeight:1.1,marginBottom:2}}>What are you having today?</div><div style={{fontSize:11,color:'#6A6050',marginBottom:14}}>Fresh meals served 07:00 – 20:00</div><div style={{display:'flex',gap:5}}><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search meals & drinks…" style={{flex:1,background:'rgba(255,255,255,.07)',border:'1px solid rgba(255,255,255,.1)',borderRadius:8,padding:'8px 12px',fontSize:12,color:'#F5F0E8'}}/>{search && <button onClick={()=>setSearch('')} style={{background:'rgba(255,255,255,.07)',border:'1px solid rgba(255,255,255,.1)',borderRadius:8,padding:'8px 12px',color:'#9A9080'}}>✕</button>}</div></div>{!search && (<div style={{background:'#FAFAF7',borderBottom:'1px solid var(--border)',flexShrink:0,overflowX:'auto'}}><div style={{display:'flex',padding:'0 16px',gap:2}}>{CATS.map(c => { const count = c.key==='all'?MEALS.length+DRINKS.length:c.key==='drinks'?DRINKS.length:MEALS.filter(m=>m.cat===c.key).length; return (<button key={c.key} onClick={()=>setCat(c.key)} style={{padding:'11px 10px',fontSize:11,fontWeight:500,whiteSpace:'nowrap',color:cat===c.key?'#C4522A':'var(--muted)',borderBottom:`2px solid ${cat===c.key?'#C4522A':'transparent'}`}}>{c.label}<span style={{background:cat===c.key?'#F5E8E2':'#EDE8DF',color:cat===c.key?'#C4522A':'var(--muted)',borderRadius:10,padding:'1px 6px',fontSize:9,marginLeft:5}}>{count}</span></button>);})}</div></div>)}<div style={{overflowY:'auto',padding:18,flex:1}}>{search && filtered.length===0 && (<div style={{textAlign:'center',padding:'60px 20px',color:'var(--muted)'}}><div style={{fontSize:36,marginBottom:12}}>🔍</div><div style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:16,marginBottom:4}}>No results for "{search}"</div><div style={{fontSize:13}}>Try a different search term</div></div>)}{showMeals && mealItems.length>0 && (<><div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}><span style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:15}}>{search?'Meals':(cat==='all'?'All meals':cat.charAt(0).toUpperCase()+cat.slice(1))}</span><span style={{fontSize:11,color:'var(--muted)'}}>{mealItems.length} items</span></div><div className="menu-grid" style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(185px,1fr))',gap:11,marginBottom:22}}>{mealItems.map(m => <MealCard key={m.id} meal={m} onAdd={addToCart} onOpen={m=>{setModalMeal(m);setModalQty(1)}}/>)}</div></>)}{showDrinks && drinkItems.length>0 && (<><div style={{marginBottom:10}}><span style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:15}}>Drinks</span></div><div style={{display:'flex',flexWrap:'wrap',gap:8}}>{drinkItems.map(d => <DrinkChip key={d.id} drink={d} onAdd={addToCart}/>)}</div></>)}</div></div><CartSidebar cart={cart} setCart={setCart} setPage={setPage} isOpen={cartOpen} onToggle={()=>setCartOpen(!cartOpen)}/><button className="cart-toggle" onClick={()=>setCartOpen(true)} style={{display: window.innerWidth <= 800 ? 'flex' : 'none', position:'fixed', bottom:20, right:20, background:'#C4522A', color:'white', borderRadius:40, padding:'10px 18px', zIndex:250, boxShadow:'0 4px 12px rgba(0,0,0,0.2)', alignItems:'center', gap:8, border:'none', fontSize:13, fontWeight:'bold'}}>🛒 {cartCount}</button><Modal open={!!modalMeal} onClose={()=>setModalMeal(null)}>{modalMeal && <>...</>}</Modal></div> ); }
+
+    function MenuPage({ cart, setCart, setPage }) {
+        const { showToast } = useContext(AppCtx);
+        const [cat, setCat] = useState('all');
+        const [modalMeal, setModalMeal] = useState(null);
+        const [modalQty, setModalQty] = useState(1);
+        const [search, setSearch] = useState('');
+        const [cartOpen, setCartOpen] = useState(true);
+        const [menuItems, setMenuItems] = useState([]);
+        const [loading, setLoading] = useState(true);
+
+        // Fetch daily menu from backend
+        useEffect(() => {
+            const fetchDailyMenu = async () => {
+                try {
+                    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                    const response = await fetch('http://localhost:5000/api/menu/daily', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const result = await response.json();
+
+                    if (result.success && result.data) {
+                        // Transform backend data to match frontend expected format
+                        const items = result.data.map(item => ({
+                            id: item.id,
+                            name: item.name,
+                            desc: item.description || '',
+                            price: item.price,
+                            emoji: item.emoji || '🍽️',
+                            badge: item.badge || '',
+                            cat: (item.category_name || item.category || 'other').toLowerCase(),
+                            stock: item.is_available !== false,
+                            calories: item.calories || 0
+                        }));
+                        setMenuItems(items);
+                    } else {
+                        setMenuItems([]);
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch daily menu:', error);
+                    setMenuItems([]);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            fetchDailyMenu();
+        }, []);
+
+        // Separate meals and drinks from fetched data
+        const meals = menuItems.filter(item => {
+            const category = (item.cat || '').toLowerCase();
+            return category !== 'drinks';
+        });
+        const drinks = menuItems.filter(item => {
+            const category = (item.cat || '').toLowerCase();
+            return category === 'drinks';
+        });
+
+        const addToCart = useCallback((item, qty) => {
+            setCart(prev => {
+                const next = { ...prev };
+                next[item.id] = next[item.id]
+                    ? { ...next[item.id], qty: next[item.id].qty + qty }
+                    : { ...item, qty };
+                return next;
+            });
+            showToast(`✓ ${item.name.split(' ')[0]} added`, 'success');
+            if (window.innerWidth <= 800) setCartOpen(true);
+        }, [setCart, showToast]);
+
+        const filtered = useMemo(() => {
+            let items = [];
+
+            if (cat === 'all') {
+                items = menuItems;
+            } else if (cat === 'drinks') {
+                items = drinks;
+            } else {
+                items = meals.filter(m => {
+                    const itemCategory = (m.cat || '').toLowerCase();
+                    return itemCategory === cat;
+                });
+            }
+
+            if (search.trim()) {
+                items = menuItems.filter(m =>
+                    m.name.toLowerCase().includes(search.toLowerCase()) ||
+                    (m.desc && m.desc.toLowerCase().includes(search.toLowerCase()))
+                );
+            }
+
+            return items;
+        }, [cat, search, menuItems, meals, drinks]);
+
+        const showDrinks = (cat === 'all' || cat === 'drinks') && !search;
+        const showMeals = cat !== 'drinks' || !!search;
+
+        const mealItems = search
+            ? filtered.filter(m => {
+                const category = (m.cat || '').toLowerCase();
+                return category !== 'drinks';
+            })
+            : (cat === 'drinks' ? [] : filtered);
+
+        const drinkItems = search
+            ? filtered.filter(m => {
+                const category = (m.cat || '').toLowerCase();
+                return category === 'drinks';
+            })
+            : drinks;
+
+        const cartCount = Object.values(cart).reduce((s, i) => s + i.qty, 0);
+
+        // Category counts - properly map the category from fetched data
+        const getCategoryCount = (categoryKey) => {
+            if (categoryKey === 'all') return menuItems.length;
+            if (categoryKey === 'drinks') {
+                return menuItems.filter(item => {
+                    const catName = (item.cat || '').toLowerCase();
+                    return catName === 'drinks';
+                }).length;
+            }
+            return menuItems.filter(item => {
+                const catName = (item.cat || '').toLowerCase();
+                return catName === categoryKey;
+            }).length;
+        };
+
+        if (loading) {
+            return (
+                <div className="menu-layout" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' }}>
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }}></div>
+                        <div>Loading today's menu...</div>
+                    </div>
+                </div>
+            );
+        }
+
+        return (
+            <div className="menu-layout" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                {/* Rest of your JSX remains exactly the same */}
+                <div className="menu-left" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    {/* Hero Section */}
+                    <div style={{ background: '#2D2520', padding: '20px 20px 16px', flexShrink: 0 }}>
+                        <div style={{ fontSize: 9, letterSpacing: 2.5, textTransform: 'uppercase', color: '#F0A030', fontWeight: 600, marginBottom: 3 }}>
+                            Today's Canteen
+                        </div>
+                        <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 22, color: '#F5F0E8', lineHeight: 1.1, marginBottom: 2 }}>
+                            What are you having today?
+                        </div>
+                        <div style={{ fontSize: 11, color: '#6A6050', marginBottom: 14 }}>
+                            Fresh meals served 07:00 – 20:00
+                        </div>
+                        <div style={{ display: 'flex', gap: 5 }}>
+                            <input
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                placeholder="Search meals & drinks…"
+                                style={{ flex: 1, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#F5F0E8' }}
+                            />
+                            {search && (
+                                <button onClick={() => setSearch('')} style={{ background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 8, padding: '8px 12px', color: '#9A9080' }}>
+                                    ✕
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Category Tabs */}
+                    {!search && (
+                        <div style={{ background: '#FAFAF7', borderBottom: '1px solid var(--border)', flexShrink: 0, overflowX: 'auto' }}>
+                            <div style={{ display: 'flex', padding: '0 16px', gap: 2 }}>
+                                {CATS.map(c => {
+                                    const count = getCategoryCount(c.key);
+                                    return (
+                                        <button
+                                            key={c.key}
+                                            onClick={() => setCat(c.key)}
+                                            style={{
+                                                padding: '11px 10px',
+                                                fontSize: 11,
+                                                fontWeight: 500,
+                                                whiteSpace: 'nowrap',
+                                                color: cat === c.key ? '#C4522A' : 'var(--muted)',
+                                                borderBottom: `2px solid ${cat === c.key ? '#C4522A' : 'transparent'}`,
+                                                transition: 'color .15s,border-color .15s'
+                                            }}
+                                        >
+                                            {c.label}
+                                            <span style={{
+                                                background: cat === c.key ? '#F5E8E2' : '#EDE8DF',
+                                                color: cat === c.key ? '#C4522A' : 'var(--muted)',
+                                                borderRadius: 10,
+                                                padding: '1px 6px',
+                                                fontSize: 9,
+                                                marginLeft: 5
+                                            }}>
+                                                {count}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Rest of your JSX - menu grid, drinks, etc. remains exactly the same */}
+                    <div style={{ overflowY: 'auto', padding: 18, flex: 1 }}>
+                        {menuItems.length === 0 && !loading && (
+                            <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--muted)' }}>
+                                <div style={{ fontSize: 48, marginBottom: 12 }}>🍽️</div>
+                                <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 16, marginBottom: 4 }}>No menu available today</div>
+                                <div style={{ fontSize: 13 }}>Check back later for today's specials</div>
+                            </div>
+                        )}
+
+                        {search && filtered.length === 0 && (
+                            <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--muted)' }}>
+                                <div style={{ fontSize: 36, marginBottom: 12 }}>🔍</div>
+                                <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 16, marginBottom: 4 }}>No results for "{search}"</div>
+                                <div style={{ fontSize: 13 }}>Try a different search term</div>
+                            </div>
+                        )}
+
+                        {showMeals && mealItems.length > 0 && (
+                            <>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                                    <span style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 15 }}>
+                                        {search ? 'Meals' : (cat === 'all' ? 'All Meals' : cat.charAt(0).toUpperCase() + cat.slice(1))}
+                                    </span>
+                                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>{mealItems.length} items</span>
+                                </div>
+                                <div className="menu-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(185px,1fr))', gap: 11, marginBottom: 22 }}>
+                                    {mealItems.map(m => (
+                                        <MealCard
+                                            key={m.id}
+                                            meal={m}
+                                            onAdd={addToCart}
+                                            onOpen={m => { setModalMeal(m); setModalQty(1); }}
+                                        />
+                                    ))}
+                                </div>
+                            </>
+                        )}
+
+                        {showDrinks && drinkItems.length > 0 && (
+                            <>
+                                <div style={{ marginBottom: 10 }}>
+                                    <span style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 15 }}>Drinks</span>
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                    {drinkItems.map(d => (
+                                        <DrinkChip key={d.id} drink={d} onAdd={addToCart} />
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                <CartSidebar
+                    cart={cart}
+                    setCart={setCart}
+                    setPage={setPage}
+                    isOpen={cartOpen}
+                    onToggle={() => setCartOpen(!cartOpen)}
+                />
+
+                <button
+                    className="cart-toggle"
+                    onClick={() => setCartOpen(true)}
+                    style={{
+                        display: window.innerWidth <= 800 ? 'flex' : 'none',
+                        position: 'fixed',
+                        bottom: 20,
+                        right: 20,
+                        background: '#C4522A',
+                        color: 'white',
+                        borderRadius: 40,
+                        padding: '10px 18px',
+                        zIndex: 250,
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                        alignItems: 'center',
+                        gap: 8,
+                        border: 'none',
+                        fontSize: 13,
+                        fontWeight: 'bold'
+                    }}
+                >
+                    🛒 {cartCount}
+                </button>
+
+                <Modal open={!!modalMeal} onClose={() => setModalMeal(null)}>
+                    {modalMeal && (
+                        <>
+                            <div style={{ fontSize: 52, textAlign: 'center', marginBottom: 10 }}>{modalMeal.emoji}</div>
+                            <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 18, marginBottom: 2 }}>{modalMeal.name}</div>
+                            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.5 }}>{modalMeal.desc}</div>
+                            <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                                <span style={{ background: '#F5E8E2', color: '#C4522A', fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 13, padding: '4px 12px', borderRadius: 20 }}>
+                                    {fmt(modalMeal.price)} TZS
+                                </span>
+                                {modalMeal.calories && (
+                                    <span style={{ background: '#EDE8DF', color: 'var(--muted)', fontSize: 11, padding: '4px 10px', borderRadius: 20 }}>
+                                        ~{modalMeal.calories} kcal
+                                    </span>
+                                )}
+                                {modalMeal.badge && (
+                                    <Badge color={modalMeal.badge === 'popular' ? 'rust' : modalMeal.badge === 'new' ? 'amber' : 'sage'}>
+                                        {modalMeal.badge}
+                                    </Badge>
+                                )}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 14, justifyContent: 'center', padding: 14, background: '#EDE8DF', borderRadius: 12, marginBottom: 16 }}>
+                                <button
+                                    onClick={() => setModalQty(q => Math.max(1, q - 1))}
+                                    style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid var(--border)', background: '#fff', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                                >
+                                    −
+                                </button>
+                                <span style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 26, minWidth: 36, textAlign: 'center' }}>{modalQty}</span>
+                                <button
+                                    onClick={() => setModalQty(q => q + 1)}
+                                    style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid var(--border)', background: '#fff', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                                >
+                                    +
+                                </button>
+                            </div>
+                            <Btn fullWidth variant="primary" onClick={() => { addToCart(modalMeal, modalQty); setModalMeal(null); }}>
+                                Add to order — TZS {fmt(modalMeal.price * modalQty)}
+                            </Btn>
+                        </>
+                    )}
+                </Modal>
+            </div>
+        );
+    }
+
     function MealCard({meal, onAdd, onOpen}) { const [added, setAdded] = useState(false); const handleQuickAdd = e => { e.stopPropagation(); onAdd(meal, 1); setAdded(true); setTimeout(()=>setAdded(false), 800); }; return ( <div onClick={()=>meal.stock && onOpen(meal)} style={{background:meal.stock?'#fff':'#F8F6F2',border:`1px solid ${meal.stock?'#E2D9CC':'#EDE8DF'}`,borderRadius:14,overflow:'hidden',cursor:meal.stock?'pointer':'not-allowed',opacity:meal.stock?1:.6,transition:'transform .18s,box-shadow .18s'}}><div style={{height:110,background:CAT_COLORS[meal.cat]||'#EDE8DF',display:'flex',alignItems:'center',justifyContent:'center',fontSize:46,position:'relative'}}>{meal.emoji}{meal.badge && (<span style={{position:'absolute',top:8,left:8,background:meal.badge==='popular'?'#C4522A':meal.badge==='new'?'#D4831A':'#4A6741',color:'#fff',fontSize:8,fontWeight:700,padding:'2px 7px',borderRadius:5}}>{meal.badge}</span>)}{!meal.stock && <span style={{position:'absolute',top:8,right:8,background:'rgba(28,26,23,.65)',color:'#fff',fontSize:8,padding:'2px 7px',borderRadius:5}}>SOLD OUT</span>}</div><div style={{padding:'10px 12px 12px'}}><div style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:13,marginBottom:2}}>{meal.name}</div><div style={{fontSize:10.5,color:'var(--muted)',marginBottom:8,lineHeight:1.4}}>{meal.desc}</div><div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}><div style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:14}}>{fmt(meal.price)} <span style={{fontSize:9,fontWeight:400,color:'var(--muted)'}}>TZS</span></div>{meal.stock && (<button onClick={handleQuickAdd} style={{width:28,height:28,borderRadius:'50%',background:added?'#4A6741':'#1C1A17',color:'#fff',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center',animation:added?'pop .3s ease':'none'}}>{added?'✓':'+'}</button>)}</div></div></div> ); }
     function DrinkChip({drink, onAdd}) { const [added, setAdded] = useState(false); return ( <div style={{display:'flex',alignItems:'center',gap:9,background:'#fff',border:'1px solid var(--border)',borderRadius:50,padding:'7px 13px 7px 9px',cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.borderColor='#1C1A17'}><span style={{fontSize:20}}>{drink.emoji}</span><div><div style={{fontSize:12,fontWeight:500}}>{drink.name}</div><div style={{fontSize:10,color:'var(--muted)'}}>{fmt(drink.price)} TZS</div></div><button onClick={()=>{onAdd(drink,1);setAdded(true);setTimeout(()=>setAdded(false),700)}} style={{width:22,height:22,borderRadius:'50%',background:added?'#4A6741':'#1C1A17',color:'#fff',fontSize:13,display:'flex',alignItems:'center',justifyContent:'center'}}>{added?'✓':'+'}</button></div> ); }
     function OrdersPage() { const myOrders = SAMPLE_ORDERS.slice(0,3); return ( <div style={{padding:24,maxWidth:680,margin:'0 auto'}}><div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:22}}>My Orders</div><div style={{fontSize:13,color:'var(--muted)',marginBottom:20}}>Your recent transactions</div>{myOrders.map(o => (<div key={o.id} style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:'14px 16px',marginBottom:12}}><div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}><div><span style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:13}}>{o.id}</span><span style={{fontSize:10,color:'var(--muted)',marginLeft:8}}>{o.time} today</span></div><Badge color={o.status==='served'?'sage':'amber'}>{o.status==='served'?'Served':'Pending'}</Badge></div><div style={{display:'flex',flexDirection:'column',gap:4,marginBottom:10}}>{o.items.map((it,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:12}}><span style={{color:'var(--muted)'}}>{it.qty}× {it.name}</span><span>{fmt(it.price)} TZS</span></div>))}</div><div style={{display:'flex',justifyContent:'space-between',paddingTop:10,borderTop:'1px solid var(--border)'}}><div style={{fontSize:11,color:'var(--muted)'}}>via {o.paid==='mpesa'?'M-Pesa':o.paid==='tigo'?'Tigo Pesa':'HaloPesa'}</div><span style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:14}}>TZS {fmt(o.total)}</span></div></div>))}</div> ); }
@@ -521,7 +860,7 @@
                     <div style={{ marginBottom: 12 }}>
                         <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 6 }}>Category</div>
                         <select value={editForm.cat || 'lunch'} onChange={e => setEditForm(f => ({ ...f, cat: e.target.value }))} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, background: '#fff' }}>
-                            {['breakfast', 'lunch', 'dinner', 'snacks'].map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+                            {['breakfast', 'lunch', 'dinner', 'snacks', 'drinks'].map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
                         </select>
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
@@ -540,7 +879,7 @@
                     <div style={{ marginBottom: 12 }}>
                         <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 6 }}>Category</div>
                         <select value={newMeal.cat} onChange={e => setNewMeal(f => ({ ...f, cat: e.target.value }))} style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontSize: 13, background: '#fff' }}>
-                            {['breakfast', 'lunch', 'dinner', 'snacks'].map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+                            {['breakfast', 'lunch', 'dinner', 'snacks', 'drinks'].map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
                         </select>
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>

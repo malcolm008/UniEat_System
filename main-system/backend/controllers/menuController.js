@@ -1,4 +1,4 @@
-const { query } = require('../../../shared/db/db');
+const { query, withTransaction } = require('../../../shared/db/db');
 const { success, error, notFound, created } = require('../../../shared/utils/response');
 
 // Helper to get user's university ID from token
@@ -39,47 +39,98 @@ const getItem = async (req, res, next) => {
 // Create new menu item
 const createItem = async (req, res, next) => {
   try {
-    const { name, description, price, category_id, emoji, badge, calories, is_available } = req.body;
+    const { name, description, price, category, emoji, badge, calories, is_available } = req.body;
     const universityId = await getUserUniversity(req.user.id);
 
     if (!universityId) {
       return error(res, 'No university associated with your account', 400);
     }
 
+    // Validate category
+    const validCategories = ['breakfast', 'lunch', 'dinner', 'snacks', 'drinks', 'other'];
+    const finalCategory = validCategories.includes(category) ? category : 'other';
+
     const { rows } = await query(
-      `INSERT INTO menu_items (name, description, price, category_id, emoji, badge, calories, is_available, university_id, created_by)
+      `INSERT INTO menu_items (name, description, price, category, emoji, badge, calories, is_available, university_id, created_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
-      [name, description, price, category_id, emoji || '🍽️', badge || '', calories || null, is_available !== false, universityId, req.user.id]
+      [name, description, price, finalCategory, emoji || '🍽️', badge || '', calories || null, is_available !== false, universityId, req.user.id]
     );
     return created(res, rows[0], 'Menu item created');
-  } catch (err) { next(err); }
+  } catch (err) {
+    console.error('Create item error:', err);
+    next(err);
+  }
 };
 
 // Update menu item
 const updateItem = async (req, res, next) => {
   try {
-    const { name, description, price, category_id, emoji, badge, calories, is_available } = req.body;
+    const { name, description, price, category, emoji, badge, calories, is_available } = req.body;
     const universityId = await getUserUniversity(req.user.id);
 
-    const { rows } = await query(
-      `UPDATE menu_items
-       SET name = COALESCE($1, name),
-           description = COALESCE($2, description),
-           price = COALESCE($3, price),
-           category_id = COALESCE($4, category_id),
-           emoji = COALESCE($5, emoji),
-           badge = COALESCE($6, badge),
-           calories = COALESCE($7, calories),
-           is_available = COALESCE($8, is_available),
-           updated_at = NOW()
-       WHERE id = $9 AND university_id = $10
-       RETURNING *`,
-      [name, description, price, category_id, emoji, badge, calories, is_available, req.params.id, universityId]
-    );
+    if (!universityId) {
+      return error(res, 'No university associated with your account', 400);
+    }
+
+    // Build dynamic update query
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = $${idx++}`);
+      values.push(name);
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${idx++}`);
+      values.push(description);
+    }
+    if (price !== undefined) {
+      updates.push(`price = $${idx++}`);
+      values.push(price);
+    }
+    if (category !== undefined) {
+      const validCategories = ['breakfast', 'lunch', 'dinner', 'snacks', 'drinks', 'other'];
+      const finalCategory = validCategories.includes(category) ? category : 'other';
+      updates.push(`category = $${idx++}`);
+      values.push(finalCategory);
+    }
+    if (emoji !== undefined) {
+      updates.push(`emoji = $${idx++}`);
+      values.push(emoji);
+    }
+    if (badge !== undefined) {
+      updates.push(`badge = $${idx++}`);
+      values.push(badge);
+    }
+    if (calories !== undefined) {
+      updates.push(`calories = $${idx++}`);
+      values.push(calories);
+    }
+    if (is_available !== undefined) {
+      updates.push(`is_available = $${idx++}`);
+      values.push(is_available);
+    }
+
+    if (updates.length === 0) {
+      return error(res, 'No fields to update', 400);
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(req.params.id);
+    values.push(universityId);
+
+    const queryText = `UPDATE menu_items SET ${updates.join(', ')} WHERE id = $${idx++} AND university_id = $${idx} RETURNING *`;
+
+    const { rows } = await query(queryText, values);
+
     if (!rows[0]) return notFound(res, 'Menu item not found');
     return success(res, rows[0], 'Menu item updated');
-  } catch (err) { next(err); }
+  } catch (err) {
+    console.error('Update item error:', err);
+    next(err);
+  }
 };
 
 // Delete menu item
