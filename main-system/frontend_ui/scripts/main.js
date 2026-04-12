@@ -947,6 +947,7 @@
     }
 
     function OrdersMgmtPage() { const [filter, setFilter] = useState('all'); const [orders] = useState(SAMPLE_ORDERS.map(o=>({...o}))); const filtered = filter==='all'?orders:orders.filter(o=>o.status===filter); return ( <div style={{padding:22,overflowY:'auto'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:18}}><div><div style={{fontWeight:800,fontSize:20}}>All Orders</div><div style={{fontSize:12}}>{orders.length} orders today</div></div><div style={{display:'flex',gap:6}}>{['all','pending','served'].map(f=>(<button key={f} onClick={()=>setFilter(f)} style={{padding:'6px 14px',borderRadius:8,background:filter===f?'#1C1A17':'#fff',color:filter===f?'#F5F0E8':'var(--cr)'}}>{f}</button>))}</div></div><div className="order-table" style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse'}}><thead><tr style={{background:'var(--tag)'}}>{['Order ID','Student','Items','Total','Method','Time','Status'].map(h=><th key={h} style={{padding:'10px 14px',fontSize:10,textAlign:'left'}}>{h}</th>)}</tr></thead><tbody>{filtered.map(o=>(<tr key={o.id}><td data-label="Order ID" style={{padding:'12px 14px'}}>{o.id}</td><td data-label="Student">{o.student}</td><td data-label="Items" style={{fontSize:11}}>{o.items.map(it=>`${it.qty}× ${it.name}`).join(', ')}</td><td data-label="Total">TZS {fmt(o.total)}</td><td data-label="Method"><Badge color={o.paid==='mpesa'?'sage':'blue'}>{o.paid}</Badge></td><td data-label="Time">{o.time}</td><td data-label="Status"><Badge color={o.status==='served'?'sage':'amber'}>{o.status}</Badge></td></tr>))}</tbody></table></div></div> ); }
+
     function ReportsPage() { return ( <div style={{padding:24,overflowY:'auto'}}><div style={{fontWeight:800,fontSize:20}}>Reports</div><div className="admin-dashboard-stats" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}><StatCard label="This month" value="TZS 2.4M" sub="89 hours" color="rust" icon="📅"/><StatCard label="Total orders" value="1,247" color="amber" icon="📋"/><StatCard label="Top payer" value="M-Pesa" color="sage" icon="📱"/></div><div className="admin-grid-2col" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Daily revenue</div><MiniBarChart data={SALES_DATA}/></div><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Category breakdown</div>{[{label:'Lunch',pct:38},{label:'Dinner',pct:29},{label:'Breakfast',pct:18}].map(c=>(<div key={c.label} style={{display:'flex',gap:8,marginBottom:8}}><span style={{width:70}}>{c.label}</span><div style={{flex:1,height:6,background:'#EDE8DF'}}><div style={{width:c.pct+'%',height:'100%',background:'#C4522A'}}/></div><span>{c.pct}%</span></div>))}</div></div></div> ); }
 
     function LoginScreen({ onLogin }) {
@@ -2197,6 +2198,610 @@
                     <div style={{ display: 'flex', gap: 12, flexDirection: isMobile ? 'column' : 'row' }}>
                         <Btn fullWidth variant="ghost" onClick={() => setShowEditModal(false)}>Cancel</Btn>
                         <Btn fullWidth variant="rust" onClick={handleEditUser}>Save Changes</Btn>
+                    </div>
+                </Modal>
+            </div>
+        );
+    }
+
+    function PaymentManagementPage() {
+        const { showToast } = useContext(AppCtx);
+        const [paymentMethods, setPaymentMethods] = useState([]);
+        const [loading, setLoading] = useState(true);
+        const [showAddModal, setShowAddModal] = useState(false);
+        const [showEditModal, setShowEditModal] = useState(false);
+        const [selectedMethod, setSelectedMethod] = useState(null);
+        const [formData, setFormData] = useState({
+            provider: 'mpesa',
+            method_type: 'lipa',
+            lipa_number: '',
+            account_name: '',
+            api_key: '',
+            api_secret: '',
+            merchant_id: '',
+            api_endpoint: '',
+            is_active: true,
+            is_default: false
+        });
+        const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+        const providers = [
+            { value: 'mpesa', label: 'M-Pesa', icon: '📱', supports_stk: true },
+            { value: 'tigopesa', label: 'Tigo Pesa', icon: '📱', supports_stk: true },
+            { value: 'airtelmoney', label: 'Airtel Money', icon: '📱', supports_stk: true },
+            { value: 'halopesa', label: 'HaloPesa', icon: '📱', supports_stk: false },
+            { value: 'selcom', label: 'Selcom', icon: '💳', supports_stk: true }
+        ];
+
+        useEffect(() => {
+            const handleResize = () => setIsMobile(window.innerWidth <= 768);
+            window.addEventListener('resize', handleResize);
+            loadPaymentMethods();
+            return () => window.removeEventListener('resize', handleResize);
+        }, []);
+
+        const loadPaymentMethods = async () => {
+            setLoading(true);
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch('http://localhost:5000/api/payments/vendor/methods', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+                if (result.success && result.data) {
+                    setPaymentMethods(result.data);
+                }
+            } catch (error) {
+                console.error('Failed to load payment methods:', error);
+                showToast('Failed to load payment methods', 'error');
+            }
+
+            setLoading(false);
+        };
+
+        const handleAddMethod = async () => {
+            if (formData.method_type === 'lipa' && !formData.lipa_number) {
+                showToast('Please enter lipa number', 'error');
+                return;
+            }
+
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch('http://localhost:5000/api/payments/vendor/methods', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(formData)
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    await loadPaymentMethods();
+                    setShowAddModal(false);
+                    resetForm();
+                    showToast('Payment method added successfully', 'success');
+                } else {
+                    showToast(result.message || 'Failed to add payment method', 'error');
+                }
+            } catch (error) {
+                console.error('Add payment method error:', error);
+                showToast('Network error', 'error');
+            }
+        };
+
+        const handleUpdateMethod = async () => {
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5000/api/payments/vendor/methods/${selectedMethod.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(formData)
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    await loadPaymentMethods();
+                    setShowEditModal(false);
+                    setSelectedMethod(null);
+                    resetForm();
+                    showToast('Payment method updated successfully', 'success');
+                } else {
+                    showToast(result.message || 'Failed to update payment method', 'error');
+                }
+            } catch (error) {
+                console.error('Update payment method error:', error);
+                showToast('Network error', 'error');
+            }
+        };
+
+        const handleDeleteMethod = async (id) => {
+            if (!confirm('Are you sure you want to delete this payment method?')) return;
+
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5000/api/payments/vendor/methods/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    await loadPaymentMethods();
+                    showToast('Payment method deleted successfully', 'success');
+                } else {
+                    showToast(result.message || 'Failed to delete payment method', 'error');
+                }
+            } catch (error) {
+                console.error('Delete payment method error:', error);
+                showToast('Network error', 'error');
+            }
+        };
+
+        const handleToggleStatus = async (id, currentStatus) => {
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5000/api/payments/vendor/methods/${id}/toggle`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ is_active: !currentStatus })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    await loadPaymentMethods();
+                    showToast(`Payment method ${!currentStatus ? 'activated' : 'deactivated'}`, 'success');
+                } else {
+                    showToast(result.message || 'Failed to toggle status', 'error');
+                }
+            } catch (error) {
+                console.error('Toggle status error:', error);
+                showToast('Network error', 'error');
+            }
+        };
+
+        const resetForm = () => {
+            setFormData({
+                provider: 'mpesa',
+                method_type: 'lipa',
+                lipa_number: '',
+                account_name: '',
+                api_key: '',
+                api_secret: '',
+                merchant_id: '',
+                api_endpoint: '',
+                is_active: true,
+                is_default: false
+            });
+        };
+
+        const editMethod = (method) => {
+            setSelectedMethod(method);
+            setFormData({
+                provider: method.provider,
+                method_type: method.method_type,
+                lipa_number: method.lipa_number || '',
+                account_name: method.account_name || '',
+                api_key: method.api_key || '',
+                api_secret: method.api_secret || '',
+                merchant_id: method.merchant_id || '',
+                api_endpoint: method.api_endpoint || '',
+                is_active: method.is_active,
+                is_default: method.is_default
+            });
+            setShowEditModal(true);
+        };
+
+        const inputStyle = {
+            width: '100%',
+            padding: '10px 12px',
+            background: '#2a2a2a',
+            border: '1px solid #3a3a3a',
+            borderRadius: 8,
+            color: '#fff',
+            fontSize: 13,
+            marginBottom: 12,
+            boxSizing: 'border-box'
+        };
+
+        if (loading) {
+            return (
+                <div style={{ padding: 40, textAlign: 'center' }}>
+                    <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }}></div>
+                    <div>Loading payment methods...</div>
+                </div>
+            );
+        }
+
+        return (
+            <div style={{ padding: isMobile ? 16 : 24, overflowY: 'auto', animation: 'fadeIn .25s ease' }}>
+                {/* Header */}
+                <div style={{
+                    display: 'flex',
+                    flexDirection: isMobile ? 'column' : 'row',
+                    justifyContent: 'space-between',
+                    alignItems: isMobile ? 'stretch' : 'center',
+                    gap: isMobile ? 16 : 0,
+                    marginBottom: 24
+                }}>
+                    <div>
+                        <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: isMobile ? 20 : 24, marginBottom: 4 }}>
+                            Payment Management
+                        </div>
+                        <div style={{ fontSize: isMobile ? 11 : 13, color: 'var(--muted)' }}>
+                            Configure payment methods for your business
+                        </div>
+                    </div>
+                    <Btn variant="rust" onClick={() => setShowAddModal(true)} small={isMobile}>
+                        + Add Payment Method
+                    </Btn>
+                </div>
+
+                {/* Info Banner */}
+                <div style={{
+                    background: 'linear-gradient(135deg, #1a3a5a, #0a2a4a)',
+                    borderRadius: 12,
+                    padding: 16,
+                    marginBottom: 24,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    flexWrap: 'wrap'
+                }}>
+                    <div style={{ fontSize: 32 }}>💳</div>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, marginBottom: 4 }}>Upgrade to STK Push</div>
+                        <div style={{ fontSize: 12, color: '#aaa' }}>
+                            Start with Lipa number for manual payments. When you get merchant API access,
+                            simply add your API credentials to automatically upgrade to STK Push payments.
+                        </div>
+                    </div>
+                </div>
+
+                {/* Payment Methods List */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {paymentMethods.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: 60, background: '#1a1a1a', borderRadius: 12, border: '1px solid #2a2a2a' }}>
+                            <div style={{ fontSize: 48, marginBottom: 16 }}>💳</div>
+                            <div style={{ fontSize: 16, marginBottom: 8 }}>No payment methods configured</div>
+                            <div style={{ fontSize: 13, color: '#aaa' }}>Click "Add Payment Method" to set up your first payment option</div>
+                        </div>
+                    ) : (
+                        paymentMethods.map(method => (
+                            <div key={method.id} style={{
+                                background: '#1a1a1a',
+                                border: `1px solid ${method.is_active ? '#2a5a4a' : '#3a3a3a'}`,
+                                borderRadius: 12,
+                                padding: 16,
+                                opacity: method.is_active ? 1 : 0.6
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+                                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                                        <div style={{ fontSize: 32 }}>
+                                            {method.method_type === 'stk' ? '⚡' : '📱'}
+                                        </div>
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                                <div style={{ fontWeight: 700, fontSize: 16 }}>
+                                                    {providers.find(p => p.value === method.provider)?.label || method.provider}
+                                                </div>
+                                                <Badge type={method.method_type === 'stk' ? 'active' : 'pending'}>
+                                                    {method.method_type === 'stk' ? 'STK Push' : 'Lipa Number'}
+                                                </Badge>
+                                                {method.is_default && <Badge type="active">Default</Badge>}
+                                            </div>
+                                            {method.method_type === 'lipa' ? (
+                                                <div style={{ fontSize: 13, color: '#aaa', marginTop: 4 }}>
+                                                    Lipa Number: {method.lipa_number}
+                                                </div>
+                                            ) : (
+                                                <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>
+                                                    API: {method.merchant_id ? `Merchant: ${method.merchant_id}` : 'Configured'}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                        <button
+                                            onClick={() => handleToggleStatus(method.id, method.is_active)}
+                                            style={{
+                                                padding: '6px 12px',
+                                                background: method.is_active ? '#FEF3DC' : '#EAF0E8',
+                                                color: method.is_active ? '#854F0B' : '#4A6741',
+                                                border: 'none',
+                                                borderRadius: 6,
+                                                cursor: 'pointer',
+                                                fontSize: 12
+                                            }}
+                                        >
+                                            {method.is_active ? 'Active' : 'Inactive'}
+                                        </button>
+                                        <button
+                                            onClick={() => editMethod(method)}
+                                            style={{ padding: '6px 12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+                                        >
+                                            Edit
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeleteMethod(method.id)}
+                                            style={{ padding: '6px 12px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                                {method.method_type === 'lipa' && (
+                                    <div style={{ marginTop: 12, padding: 12, background: '#0a2a4a', borderRadius: 8 }}>
+                                        <div style={{ fontSize: 11, color: '#64b5f6', marginBottom: 4 }}>💡 Upgrade to STK Push</div>
+                                        <div style={{ fontSize: 11, color: '#aaa' }}>
+                                            To enable automatic payments, get API credentials from {method.provider.toUpperCase()}
+                                            and add them in edit mode. The system will automatically switch to STK Push.
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))
+                    )}
+                </div>
+
+                {/* Add Payment Method Modal */}
+                <Modal open={showAddModal} onClose={() => { setShowAddModal(false); resetForm(); }} maxW={isMobile ? '95%' : 550} center>
+                    <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: isMobile ? 18 : 20, marginBottom: 20 }}>
+                        Add Payment Method
+                    </div>
+
+                    <div style={{ marginBottom: 16 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                            Provider *
+                        </label>
+                        <select
+                            value={formData.provider}
+                            onChange={e => setFormData({ ...formData, provider: e.target.value })}
+                            style={inputStyle}
+                        >
+                            {providers.map(p => (
+                                <option key={p.value} value={p.value}>{p.label}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div style={{ marginBottom: 16 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                            Payment Type *
+                        </label>
+                        <div style={{ display: 'flex', gap: 12 }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                                <input
+                                    type="radio"
+                                    value="lipa"
+                                    checked={formData.method_type === 'lipa'}
+                                    onChange={e => setFormData({ ...formData, method_type: e.target.value })}
+                                />
+                                <span>Lipa Number (Manual)</span>
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                                <input
+                                    type="radio"
+                                    value="stk"
+                                    checked={formData.method_type === 'stk'}
+                                    onChange={e => setFormData({ ...formData, method_type: e.target.value })}
+                                    disabled={!providers.find(p => p.value === formData.provider)?.supports_stk}
+                                />
+                                <span>STK Push (Automated)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    {formData.method_type === 'lipa' ? (
+                        <>
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                    Lipa Number *
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.lipa_number}
+                                    onChange={e => setFormData({ ...formData, lipa_number: e.target.value })}
+                                    placeholder="e.g., 0712345678"
+                                    style={inputStyle}
+                                />
+                            </div>
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                    Account Name
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.account_name}
+                                    onChange={e => setFormData({ ...formData, account_name: e.target.value })}
+                                    placeholder="Business name as registered"
+                                    style={inputStyle}
+                                />
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                    Merchant ID *
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.merchant_id}
+                                    onChange={e => setFormData({ ...formData, merchant_id: e.target.value })}
+                                    placeholder="Your merchant ID"
+                                    style={inputStyle}
+                                />
+                            </div>
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                    API Key *
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.api_key}
+                                    onChange={e => setFormData({ ...formData, api_key: e.target.value })}
+                                    placeholder="API Key from provider"
+                                    style={inputStyle}
+                                />
+                            </div>
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                    API Secret *
+                                </label>
+                                <input
+                                    type="password"
+                                    value={formData.api_secret}
+                                    onChange={e => setFormData({ ...formData, api_secret: e.target.value })}
+                                    placeholder="API Secret"
+                                    style={inputStyle}
+                                />
+                            </div>
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                    API Endpoint
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.api_endpoint}
+                                    onChange={e => setFormData({ ...formData, api_endpoint: e.target.value })}
+                                    placeholder="https://api.provider.com/v1"
+                                    style={inputStyle}
+                                />
+                            </div>
+                        </>
+                    )}
+
+                    <div style={{ marginBottom: 16 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                            <input
+                                type="checkbox"
+                                checked={formData.is_default}
+                                onChange={e => setFormData({ ...formData, is_default: e.target.checked })}
+                            />
+                            <span style={{ fontSize: 13 }}>Set as default payment method</span>
+                        </label>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 12, flexDirection: isMobile ? 'column' : 'row' }}>
+                        <Btn fullWidth variant="ghost" onClick={() => { setShowAddModal(false); resetForm(); }}>Cancel</Btn>
+                        <Btn fullWidth variant="rust" onClick={handleAddMethod}>Add Payment Method</Btn>
+                    </div>
+                </Modal>
+
+                {/* Edit Payment Method Modal */}
+                <Modal open={showEditModal} onClose={() => { setShowEditModal(false); resetForm(); }} maxW={isMobile ? '95%' : 550} center>
+                    <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: isMobile ? 18 : 20, marginBottom: 20 }}>
+                        Edit Payment Method
+                    </div>
+
+                    {/* Similar fields as Add modal */}
+                    <div style={{ marginBottom: 16 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                            Provider
+                        </label>
+                        <select
+                            value={formData.provider}
+                            onChange={e => setFormData({ ...formData, provider: e.target.value })}
+                            style={inputStyle}
+                            disabled
+                        >
+                            {providers.map(p => (
+                                <option key={p.value} value={p.value}>{p.label}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {formData.method_type === 'lipa' ? (
+                        <>
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                    Lipa Number
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.lipa_number}
+                                    onChange={e => setFormData({ ...formData, lipa_number: e.target.value })}
+                                    style={inputStyle}
+                                />
+                            </div>
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                    Account Name
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.account_name}
+                                    onChange={e => setFormData({ ...formData, account_name: e.target.value })}
+                                    style={inputStyle}
+                                />
+                            </div>
+                            <div style={{ padding: 12, background: '#1a3a5a', borderRadius: 8, marginBottom: 16 }}>
+                                <div style={{ fontSize: 11, color: '#64b5f6', marginBottom: 4 }}>⚡ Upgrade to STK Push</div>
+                                <div style={{ fontSize: 11, color: '#aaa' }}>
+                                    To enable automatic payments, switch to STK Push type and add your API credentials.
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                    Merchant ID
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.merchant_id}
+                                    onChange={e => setFormData({ ...formData, merchant_id: e.target.value })}
+                                    style={inputStyle}
+                                />
+                            </div>
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                    API Key
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.api_key}
+                                    onChange={e => setFormData({ ...formData, api_key: e.target.value })}
+                                    style={inputStyle}
+                                />
+                            </div>
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                    API Secret
+                                </label>
+                                <input
+                                    type="password"
+                                    value={formData.api_secret}
+                                    onChange={e => setFormData({ ...formData, api_secret: e.target.value })}
+                                    style={inputStyle}
+                                />
+                            </div>
+                        </>
+                    )}
+
+                    <div style={{ marginBottom: 16 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                            <input
+                                type="checkbox"
+                                checked={formData.is_default}
+                                onChange={e => setFormData({ ...formData, is_default: e.target.checked })}
+                            />
+                            <span style={{ fontSize: 13 }}>Set as default payment method</span>
+                        </label>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 12, flexDirection: isMobile ? 'column' : 'row' }}>
+                        <Btn fullWidth variant="ghost" onClick={() => { setShowEditModal(false); resetForm(); }}>Cancel</Btn>
+                        <Btn fullWidth variant="rust" onClick={handleUpdateMethod}>Save Changes</Btn>
                     </div>
                 </Modal>
             </div>
