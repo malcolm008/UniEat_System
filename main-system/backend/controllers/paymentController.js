@@ -84,72 +84,74 @@ const upsertPaymentMethod = async (req, res, next) => {
     }
 };
 
-// Delete payment method
 const deletePaymentMethod = async (req, res, next) => {
     try {
         const { id } = req.params;
         const vendorId = req.user.id;
+        const universityId = await getUserUniversity(vendorId);
+
+        if (!universityId) {
+            return error(res, 'No university with your account', 400);
+        }
 
         const { rows } = await query(
-            `DELETE FROM vendor_payment_methods WHERE id = $1 AND vendor_id = $2 RETURNING id`,
-            [id, vendorId]
+            `DELETE FROM vendor_payment_methods WHERE id = $1 AND vendor_id = $2 AND university_id = $3 RETURNING id`
         );
 
         if (!rows[0]) return notFound(res, 'Payment method not found');
 
-        logger.info(`Payment method ${id} deleted by vendor ${vendorId}`);
+        console.log(`Payment method ${id} deleted by vendor ${vendorId}`);
         return success(res, null, 'Payment method deleted');
     } catch (err) {
-        logger.error('Delete payment method error:', err);
+        console.error('Delete payment method error:', err);
         next(err);
     }
-};
+}
 
-// Toggle payment method status
 const togglePaymentMethodStatus = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { is_active } = req.body;
         const vendorId = req.user.id;
+        const universityId = await getUserUniversity(vendorId);
+
+        if (!universityId) {
+            return error(res, 'No university associated with your account', 400);
+        }
 
         const { rows } = await query(
-            `UPDATE vendor_payment_methods
-             SET is_active = $1, updated_at = NOW()
-             WHERE id = $2 AND vendor_id = $3
-             RETURNING *`,
-            [is_active, id, vendorId]
+            `UPDATE vendor_payment_methods SET is_active = $1, updated_at = NOW() WHERE id = $2 AND vendor_id = $3 AND university_id = $4 RETURNING *`,
+            [is_active, id, vendorId, universityId]
         );
 
         if (!rows[0]) return notFound(res, 'Payment method not found');
 
-        logger.info(`Payment method ${id} ${is_active ? 'activated' : 'deactivated'} by vendor ${vendorId}`);
-        return success(res, rows[0], `Payment method ${is_active ? 'activated' : 'deactivated'}`);
+        console.log(`Payment method ${id} ${is_active ? 'activated' : 'deactivated'} by vendor ${vendorId}`);
+        return success(res, rows[0], `Payment method ${is_active ? 'activated' :  'deactivated'}`);
     } catch (err) {
-        logger.error('Toggle payment method error:', err);
+        console.error('Toggle payment method error:', err);
         next(err);
     }
 };
 
-// Get vendor's active payment method for checkout
+
 const getActivePaymentMethod = async (req, res, next) => {
     try {
         const vendorId = req.params.vendorId || req.user.id;
+        const universityId = await getUserUniversity(vendorId);
 
-        const { rows } = await query(
-            `SELECT * FROM vendor_payment_methods
-             WHERE vendor_id = $1 AND is_active = true
-             ORDER BY is_default DESC, created_at DESC
-             LIMIT 1`,
-            [vendorId]
-        );
-
-        if (!rows[0]) {
+        if (!universityId) {
             return success(res, null, 'No active payment method found');
         }
 
-        return success(res, rows[0]);
+        const { rows } = await query(
+            `SELECT * FROM vendor_payment_methods WHERE vendor_id = $1 AND university_id = $2 AND is_active = true ORDER BY is_default DESC, created_at DESC LIMIT 1`,
+            [vendorId, universityId]
+        );
+
+        return success(res, rows[0] || null);
     } catch (err) {
-        logger.error('Get active payment method error:', err);
+        console.error('Get active payment method error:', err);
         next(err);
     }
 };
