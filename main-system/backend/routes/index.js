@@ -79,6 +79,7 @@ const {
     deletePaymentMethod,
     togglePaymentMethodStatus,
     getActivePaymentMethod,
+    getActivePaymentMethodByUniversity,
     confirmManualPayment,
     verifyPayment,
     getVendorTransactions,

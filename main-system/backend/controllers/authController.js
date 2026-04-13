@@ -46,6 +46,7 @@ const login = async (req, res, next) => {
         email: user.email,
         reg_number: user.reg_number,
         role: user.role,
+        university_id: user.university_id
       },
     }, 'Login successful');
   } catch (err) {

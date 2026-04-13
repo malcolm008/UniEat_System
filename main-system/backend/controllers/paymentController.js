@@ -25,7 +25,9 @@ const getVendorPaymentMethods = async (req, res, next) => {
         }
 
         const { rows } = await query(
-            `SELECT * FROM vendor_payment_methods WHERE vendor_id = $1 AND university_id = $2 ORDER BY is_default DESC, created_at DESC`,
+            `SELECT * FROM vendor_payment_methods
+             WHERE vendor_id = $1 AND university_id = $2
+             ORDER BY is_default DESC, created_at DESC`,
             [vendorId, universityId]
         );
 
@@ -57,7 +59,8 @@ const upsertPaymentMethod = async (req, res, next) => {
 
         if (is_default) {
             await query(
-                `UPDATE vendor_payment_methods SET is_default = false WHERE vendor_id = $1 AND university_id = $2`,
+                `UPDATE vendor_payment_methods SET is_default = false
+                 WHERE vendor_id = $1 AND university_id = $2`,
                 [vendorId, universityId]
             );
         }
@@ -65,18 +68,29 @@ const upsertPaymentMethod = async (req, res, next) => {
         let result;
         if (id) {
             result = await query(
-                `UPDATE vendor_payment_methods SET provider = $1, method_type = $2, lipa_number = $3, account_name = $4, api_key = $5, api_secret = $6, merchant_id = $7, api_endpoint = $8, is_active = $9, is_default = $10, updated_at = NOW() WHERE id = $11 AND university_id = $13 RETURNING *`,
+                `UPDATE vendor_payment_methods
+                 SET provider = $1, method_type = $2, lipa_number = $3, account_name = $4,
+                     api_key = $5, api_secret = $6, merchant_id = $7, api_endpoint = $8,
+                     is_active = $9, is_default = $10, updated_at = NOW()
+                 WHERE id = $11 AND vendor_id = $12 AND university_id = $13
+                 RETURNING *`,
                 [provider, method_type, lipa_number, account_name, api_key, api_secret, merchant_id, api_endpoint, is_active, is_default, id, vendorId, universityId]
             );
         } else {
             result = await query(
-                `INSERT INTO vendor_payment_methods (vendor_id, university_id, provider, method_type, lipa_number, account_name, api_key, api_secret, merchant_id, api_endpoint, is_active, is_default) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
-                [vendorId, universityId, provider, method_type, lipa_number, account_name, api_key, api_secret, merchant_id, api_endpoint, is_active, is_default]
+                `INSERT INTO vendor_payment_methods
+                 (vendor_id, university_id, provider, method_type, lipa_number, account_name,
+                  api_key, api_secret, merchant_id, api_endpoint, is_active, is_default)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                 RETURNING *`,
+                [vendorId, universityId, provider, method_type, lipa_number, account_name,
+                 api_key, api_secret, merchant_id, api_endpoint, is_active, is_default]
             );
         }
 
-        if (!result.row[0]) return notFound(res, 'Payment not found');
-        console.log(`Payment method ${id ? 'updated' : 'added' } for vendor ${vendorId} (university: ${universityId}): ${provider} (${method_type})`);
+        if (!result.rows[0]) return notFound(res, 'Payment method not found');
+
+        console.log(`Payment method ${id ? 'updated' : 'added'} for vendor ${vendorId} (university: ${universityId}): ${provider} (${method_type})`);
         return success(res, result.rows[0], `Payment method ${id ? 'updated' : 'added'} successfully`);
     } catch (err) {
         console.error('Upsert payment method error:', err);
@@ -152,6 +166,34 @@ const getActivePaymentMethod = async (req, res, next) => {
         return success(res, rows[0] || null);
     } catch (err) {
         console.error('Get active payment method error:', err);
+        next(err);
+    }
+};
+
+const getActivePaymentMethodByUniversity = async (req, res, next) => {
+    try {
+        const { university_id } = req.query;
+
+        if (!university_id) {
+            return error(res, 'University ID is required', 400);
+        }
+
+        const { rows } = await query(
+            `SELECT vpm.* FROM vendor_payment_methods vpm
+             JOIN users u ON vpm.vendor_id = u.id
+             WHERE u.university_id = $1 AND vpm.is_active = true
+             ORDER BY vpm.is_default DESC, vpm.created_at DESC
+             LIMIT 1`,
+            [university_id]
+        );
+
+        if (!rows[0]) {
+            return success(res, null, 'No active payment method found for this university');
+        }
+
+        return success(res, rows[0]);
+    } catch (err) {
+        console.error('Get active payment method by university error:', err);
         next(err);
     }
 };
@@ -665,6 +707,7 @@ module.exports = {
     deletePaymentMethod,
     togglePaymentMethodStatus,
     getActivePaymentMethod,
+    getActivePaymentMethodByUniversity,
     confirmManualPayment,
     verifyPayment,
     getVendorTransactions,
