@@ -49,6 +49,7 @@ const upsertPaymentMethod = async (req, res, next) => {
 
         const { id, provider, method_type, lipa_number, account_name, api_key, api_secret, merchant_id, api_endpoint, is_active, is_default } = req.body;
 
+        // Validate required fields based on method type
         if (method_type === 'lipa' && !lipa_number) {
             return error(res, 'Lipa number is required for manual payment method', 400);
         }
@@ -57,6 +58,7 @@ const upsertPaymentMethod = async (req, res, next) => {
             return error(res, 'API credentials are required for STK Push method', 400);
         }
 
+        // If setting as default, unset other defaults for this university
         if (is_default) {
             await query(
                 `UPDATE vendor_payment_methods SET is_default = false
@@ -66,34 +68,99 @@ const upsertPaymentMethod = async (req, res, next) => {
         }
 
         let result;
+
+        // If an ID is provided, try to update first
         if (id) {
-            result = await query(
-                `UPDATE vendor_payment_methods
-                 SET provider = $1, method_type = $2, lipa_number = $3, account_name = $4,
-                     api_key = $5, api_secret = $6, merchant_id = $7, api_endpoint = $8,
-                     is_active = $9, is_default = $10, updated_at = NOW()
-                 WHERE id = $11 AND vendor_id = $12 AND university_id = $13
-                 RETURNING *`,
-                [provider, method_type, lipa_number, account_name, api_key, api_secret, merchant_id, api_endpoint, is_active, is_default, id, vendorId, universityId]
+            // Check if the record exists
+            const existing = await query(
+                `SELECT id FROM vendor_payment_methods
+                 WHERE id = $1 AND vendor_id = $2 AND university_id = $3`,
+                [id, vendorId, universityId]
             );
+
+            if (existing.rows.length > 0) {
+                // Update existing record
+                result = await query(
+                    `UPDATE vendor_payment_methods
+                     SET provider = $1,
+                         method_type = $2,
+                         lipa_number = $3,
+                         account_name = $4,
+                         api_key = $5,
+                         api_secret = $6,
+                         merchant_id = $7,
+                         api_endpoint = $8,
+                         is_active = $9,
+                         is_default = $10,
+                         updated_at = NOW()
+                     WHERE id = $11 AND vendor_id = $12 AND university_id = $13
+                     RETURNING *`,
+                    [provider, method_type, lipa_number, account_name,
+                     api_key, api_secret, merchant_id, api_endpoint,
+                     is_active, is_default, id, vendorId, universityId]
+                );
+            } else {
+                // ID provided but doesn't exist, treat as insert
+                result = await query(
+                    `INSERT INTO vendor_payment_methods
+                     (vendor_id, university_id, provider, method_type, lipa_number, account_name,
+                      api_key, api_secret, merchant_id, api_endpoint, is_active, is_default)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                     ON CONFLICT (vendor_id, provider, university_id)
+                     DO UPDATE SET
+                         method_type = EXCLUDED.method_type,
+                         lipa_number = EXCLUDED.lipa_number,
+                         account_name = EXCLUDED.account_name,
+                         api_key = EXCLUDED.api_key,
+                         api_secret = EXCLUDED.api_secret,
+                         merchant_id = EXCLUDED.merchant_id,
+                         api_endpoint = EXCLUDED.api_endpoint,
+                         is_active = EXCLUDED.is_active,
+                         is_default = EXCLUDED.is_default,
+                         updated_at = NOW()
+                     RETURNING *`,
+                    [vendorId, universityId, provider, method_type, lipa_number, account_name,
+                     api_key, api_secret, merchant_id, api_endpoint, is_active, is_default]
+                );
+            }
         } else {
+            // No ID provided, insert new with conflict handling
             result = await query(
                 `INSERT INTO vendor_payment_methods
                  (vendor_id, university_id, provider, method_type, lipa_number, account_name,
                   api_key, api_secret, merchant_id, api_endpoint, is_active, is_default)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                 ON CONFLICT (vendor_id, provider, university_id)
+                 DO UPDATE SET
+                     method_type = EXCLUDED.method_type,
+                     lipa_number = EXCLUDED.lipa_number,
+                     account_name = EXCLUDED.account_name,
+                     api_key = EXCLUDED.api_key,
+                     api_secret = EXCLUDED.api_secret,
+                     merchant_id = EXCLUDED.merchant_id,
+                     api_endpoint = EXCLUDED.api_endpoint,
+                     is_active = EXCLUDED.is_active,
+                     is_default = EXCLUDED.is_default,
+                     updated_at = NOW()
                  RETURNING *`,
                 [vendorId, universityId, provider, method_type, lipa_number, account_name,
                  api_key, api_secret, merchant_id, api_endpoint, is_active, is_default]
             );
         }
 
-        if (!result.rows[0]) return notFound(res, 'Payment method not found');
+        if (!result || !result.rows[0]) {
+            return error(res, 'Failed to save payment method', 500);
+        }
 
         console.log(`Payment method ${id ? 'updated' : 'added'} for vendor ${vendorId} (university: ${universityId}): ${provider} (${method_type})`);
         return success(res, result.rows[0], `Payment method ${id ? 'updated' : 'added'} successfully`);
     } catch (err) {
         console.error('Upsert payment method error:', err);
+
+        // Handle duplicate key error gracefully
+        if (err.code === '23505') {
+            return error(res, 'A payment method for this provider already exists. Please edit the existing one instead.', 409);
+        }
         next(err);
     }
 };

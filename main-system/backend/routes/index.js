@@ -79,7 +79,7 @@ const {
     deletePaymentMethod,
     togglePaymentMethodStatus,
     getActivePaymentMethod,
-    getActivePaymentMethodByUniversity,
+    getActivePaymentMethodByUniversity, // Import here
     confirmManualPayment,
     verifyPayment,
     getVendorTransactions,
@@ -87,21 +87,23 @@ const {
 } = require('../controllers/paymentController');
 const pAuth = require('../../../shared/middleware/auth');
 
-paymentRouter.post('/initiate',  pAuth.optionalAuth, initiatePayment);
-paymentRouter.post('/confirm',   confirmPayment);
+// Existing routes
+paymentRouter.post('/initiate', pAuth.optionalAuth, initiatePayment);
+paymentRouter.post('/confirm', confirmPayment);
 paymentRouter.post('/verify-qr', pAuth.authenticate, pAuth.requireStaff, verifyQR);
 paymentRouter.post('/redeem-qr', pAuth.authenticate, pAuth.requireStaff, redeemQR);
 paymentRouter.get('/:orderId/qr', pAuth.optionalAuth, getQR);
 
-// Vendor payment method management
+// Payment management routes
 paymentRouter.get('/vendor/methods', pAuth.authenticate, getVendorPaymentMethods);
 paymentRouter.post('/vendor/methods', pAuth.authenticate, upsertPaymentMethod);
 paymentRouter.put('/vendor/methods/:id', pAuth.authenticate, upsertPaymentMethod);
 paymentRouter.delete('/vendor/methods/:id', pAuth.authenticate, deletePaymentMethod);
 paymentRouter.patch('/vendor/methods/:id/toggle', pAuth.authenticate, togglePaymentMethodStatus);
-paymentRouter.get('/vendor/methods/active/:vendorId', pAuth.authenticate, getActivePaymentMethod);
+paymentRouter.get('/vendor/methods/active', pAuth.authenticate, getActivePaymentMethod);
+paymentRouter.get('/vendor/methods/by-university', pAuth.authenticate, getActivePaymentMethodByUniversity); // Add this line
 
-// Transaction management
+// Transaction routes
 paymentRouter.get('/vendor/transactions', pAuth.authenticate, getVendorTransactions);
 paymentRouter.get('/status/:orderId', pAuth.authenticate, getPaymentStatus);
 
