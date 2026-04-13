@@ -8,7 +8,7 @@
     "dev": "nodemon server.js",
     "db:migrate": "node ../../shared/db/migrate.js",
     "db:seed": "node ../../shared/db/seed.js",
-    "db:reset": "node ../../shared/db/migrate.js --reset && node ../../shared/db/seed.js"
+    "db:reset": "node ../../shared/db/migrate.js --reset"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

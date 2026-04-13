@@ -177,7 +177,7 @@ userRouter.patch('/:id/toggle-status', uAuth.authenticate, uAuth.requireAdmin,
 userRouter.post('/:id/change-password', uAuth.authenticate,
   body('currentPassword').notEmpty(),
   body('newPassword').isLength({ min: 6 }),
-  validate, changePassword  // ✅ Now changePassword is defined
+  validate, changePassword
 );
 
 

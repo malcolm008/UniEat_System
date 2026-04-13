@@ -4,41 +4,49 @@ const QRCode = require('qrcode');
 const crypto = require('crypto');
 const { logger } = require('../../../shared/utils/logger');
 
-// Helper to get vendor ID from user
+const getUserUniversity = async (userId) => {
+    const { rows } = await query('SELECT university_id FROM users WHERE id = $1', [userId]);
+    return rows[0]?.university_id;
+};
+
 const getVendorId = async (userId) => {
     const { rows } = await query('SELECT id FROM users WHERE id = $1 AND role IN ($2, $3)',
         [userId, 'vendor', 'admin']);
     return rows[0]?.id;
 };
 
-// ── VENDOR PAYMENT METHOD MANAGEMENT ───────────────────────────
-
-// Get vendor's payment methods
 const getVendorPaymentMethods = async (req, res, next) => {
     try {
         const vendorId = req.user.id;
+        const universityId = await getUserUniversity(vendorId);
+
+        if (!universityId) {
+            return error(res, 'No university associated with your account', 400);
+        }
 
         const { rows } = await query(
-            `SELECT * FROM vendor_payment_methods
-             WHERE vendor_id = $1
-             ORDER BY is_default DESC, created_at DESC`,
-            [vendorId]
+            `SELECT * FROM vendor_payment_methods WHERE vendor_id = $1 AND university_id = $2 ORDER BY is_default DESC, created_at DESC`,
+            [vendorId, universityId]
         );
 
         return success(res, rows);
     } catch (err) {
-        logger.error('Get vendor payment methods error:', err);
+        console.error('Get vendor payment methods error:', err);
         next(err);
     }
 };
 
-// Add or update payment method
 const upsertPaymentMethod = async (req, res, next) => {
     try {
         const vendorId = req.user.id;
+        const universityId = await getUserUniversity(vendorId);
+
+        if (!universityId) {
+            return error(res, 'No university associated with your account. Please contact administrator.', 400);
+        }
+
         const { id, provider, method_type, lipa_number, account_name, api_key, api_secret, merchant_id, api_endpoint, is_active, is_default } = req.body;
 
-        // Validate required fields based on method type
         if (method_type === 'lipa' && !lipa_number) {
             return error(res, 'Lipa number is required for manual payment method', 400);
         }
@@ -47,43 +55,31 @@ const upsertPaymentMethod = async (req, res, next) => {
             return error(res, 'API credentials are required for STK Push method', 400);
         }
 
-        // If setting as default, unset other defaults
         if (is_default) {
             await query(
-                `UPDATE vendor_payment_methods SET is_default = false WHERE vendor_id = $1`,
-                [vendorId]
+                `UPDATE vendor_payment_methods SET is_default = false WHERE vendor_id = $1 AND university_id = $2`,
+                [vendorId, universityId]
             );
         }
 
         let result;
         if (id) {
-            // Update existing
             result = await query(
-                `UPDATE vendor_payment_methods
-                 SET provider = $1, method_type = $2, lipa_number = $3, account_name = $4,
-                     api_key = $5, api_secret = $6, merchant_id = $7, api_endpoint = $8,
-                     is_active = $9, is_default = $10, updated_at = NOW()
-                 WHERE id = $11 AND vendor_id = $12
-                 RETURNING *`,
-                [provider, method_type, lipa_number, account_name, api_key, api_secret, merchant_id, api_endpoint, is_active, is_default, id, vendorId]
+                `UPDATE vendor_payment_methods SET provider = $1, method_type = $2, lipa_number = $3, account_name = $4, api_key = $5, api_secret = $6, merchant_id = $7, api_endpoint = $8, is_active = $9, is_default = $10, updated_at = NOW() WHERE id = $11 AND university_id = $13 RETURNING *`,
+                [provider, method_type, lipa_number, account_name, api_key, api_secret, merchant_id, api_endpoint, is_active, is_default, id, vendorId, universityId]
             );
         } else {
-            // Insert new
             result = await query(
-                `INSERT INTO vendor_payment_methods
-                 (vendor_id, provider, method_type, lipa_number, account_name, api_key, api_secret, merchant_id, api_endpoint, is_active, is_default)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                 RETURNING *`,
-                [vendorId, provider, method_type, lipa_number, account_name, api_key, api_secret, merchant_id, api_endpoint, is_active, is_default]
+                `INSERT INTO vendor_payment_methods (vendor_id, university_id, provider, method_type, lipa_number, account_name, api_key, api_secret, merchant_id, api_endpoint, is_active, is_default) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+                [vendorId, universityId, provider, method_type, lipa_number, account_name, api_key, api_secret, merchant_id, api_endpoint, is_active, is_default]
             );
         }
 
-        if (!result.rows[0]) return notFound(res, 'Payment method not found');
-
-        logger.info(`Payment method ${id ? 'updated' : 'added'} for vendor ${vendorId}: ${provider} (${method_type})`);
+        if (!result.row[0]) return notFound(res, 'Payment not found');
+        console.log(`Payment method ${id ? 'updated' : 'added' } for vendor ${vendorId} (university: ${universityId}): ${provider} (${method_type})`);
         return success(res, result.rows[0], `Payment method ${id ? 'updated' : 'added'} successfully`);
     } catch (err) {
-        logger.error('Upsert payment method error:', err);
+        console.error('Upsert payment method error:', err);
         next(err);
     }
 };
