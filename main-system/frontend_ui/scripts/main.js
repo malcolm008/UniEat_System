@@ -104,7 +104,7 @@
             ? [{key:'menu',label:'Menu',icon:'🍽️'},{key:'orders',label:'My Orders',icon:'📋'}]
             : user.role === 'staff'
             ? [{key:'scanner',label:'Scanner',icon:'📷'},{key:'queue',label:'Queue',icon:'📋'}]
-            : [{key:'dashboard',label:'Dashboard',icon:'📊'},{key:'menu-mgmt',label:'Menu',icon:'🍽️'},{key:'orders-mgmt',label:'Orders',icon:'📋'},{key:'users',label:'Users',icon:'👥'},{key:'reports',label:'Reports',icon:'📈'}];
+            : [{key:'dashboard',label:'Dashboard',icon:'📊'},{key:'menu-mgmt',label:'Menu',icon:'🍽️'},{key:'orders-mgmt',label:'Orders',icon:'📋'},{key:'users',label:'Users',icon:'👥'},{key:'payments', label:'Payments', icon:'💳'},{key:'reports',label:'Reports',icon:'📈'}];
 
         // Create user object for UserMenu with display values
         const menuUser = {
@@ -3011,6 +3011,7 @@
                 if (page === 'menu-mgmt') return <MenuMgmtPage />;
                 if (page === 'orders-mgmt') return <OrdersMgmtPage />;
                 if (page === 'users') return <UserManagementPage />;
+                if (page === 'payments') return <PaymentManagementPage />;
                 if (page === 'reports') return <ReportsPage />;
             }
             if (page === 'settings') return <SettingsPage user={user} onUpdateUser={handleUpdateUser} />;

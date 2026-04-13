@@ -2,7 +2,7 @@ const { query, withTransaction } = require('../../../shared/db/db');
 const { success, created, notFound, error } = require('../../../shared/utils/response');
 const QRCode = require('qrcode');
 const crypto = require('crypto');
-const logger = require('../../../shared/utils/logger');
+const { logger } = require('../../../shared/utils/logger');
 
 // Helper to get vendor ID from user
 const getVendorId = async (userId) => {

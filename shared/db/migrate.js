@@ -90,6 +90,7 @@ const migrations = [
     role        VARCHAR(20)  NOT NULL DEFAULT 'student'
                 CHECK (role IN ('student','staff','admin')),
     is_active   BOOLEAN NOT NULL DEFAULT true,
+    university_id UUID REFERENCES universities(id) ON DELETE CASCADE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
@@ -105,32 +106,35 @@ const migrations = [
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
 
-  // ── MENU ITEMS ─────────────────────────────────────────────────
+  // ── MENU ITEMS (updated with category field instead of category_id) ──
   `CREATE TABLE IF NOT EXISTS menu_items (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name          VARCHAR(180) NOT NULL,
     description   TEXT,
     price         INTEGER NOT NULL CHECK (price > 0),
-    category_id   INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+    category      VARCHAR(50) DEFAULT 'other',
     emoji         VARCHAR(10)  DEFAULT '🍽️',
     badge         VARCHAR(20)  CHECK (badge IN ('popular','new','')),
     calories      INTEGER,
     is_available  BOOLEAN NOT NULL DEFAULT true,
     image_url     VARCHAR(500),
     sort_order    INTEGER NOT NULL DEFAULT 0,
+    university_id UUID REFERENCES universities(id) ON DELETE CASCADE,
     created_by    UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
 
-  // ── ORDERS ─────────────────────────────────────────────────────
+  // ── ORDERS (with vendor_id and university_id) ─────────────────────
   `CREATE TABLE IF NOT EXISTS orders (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID REFERENCES users(id) ON DELETE SET NULL,
+    vendor_id       UUID REFERENCES users(id),
+    university_id   UUID REFERENCES universities(id) ON DELETE CASCADE,
     guest_name      VARCHAR(120),
     guest_phone     VARCHAR(20),
     status          VARCHAR(30) NOT NULL DEFAULT 'pending'
-                    CHECK (status IN ('pending','paid','preparing','ready','served','cancelled','refunded')),
+                    CHECK (status IN ('pending','pending_verification','paid','preparing','ready','served','cancelled','refunded','completed')),
     subtotal        INTEGER NOT NULL DEFAULT 0,
     service_charge  INTEGER NOT NULL DEFAULT 0,
     total           INTEGER NOT NULL DEFAULT 0,
@@ -150,26 +154,29 @@ const migrations = [
     subtotal      INTEGER NOT NULL DEFAULT 0
   )`,
 
-  // ── PAYMENTS ───────────────────────────────────────────────────
+  // ── PAYMENTS (with university_id) ───────────────────────────────────
   `CREATE TABLE IF NOT EXISTS payments (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id            UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    university_id       UUID REFERENCES universities(id) ON DELETE CASCADE,
     provider            VARCHAR(30) NOT NULL
-                        CHECK (provider IN ('mpesa','tigopesa','halopesa','cash')),
+                        CHECK (provider IN ('mpesa','tigopesa','airtelmoney','halopesa','selcom','cash')),
     phone_number        VARCHAR(20),
     amount              INTEGER NOT NULL CHECK (amount > 0),
     status              VARCHAR(20) NOT NULL DEFAULT 'pending'
-                        CHECK (status IN ('pending','processing','success','failed','refunded')),
+                        CHECK (status IN ('pending','pending_verification','processing','success','failed','refunded')),
+    payment_method      VARCHAR(20) DEFAULT 'lipa',
     provider_ref        VARCHAR(120),
     provider_response   JSONB,
     initiated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at        TIMESTAMPTZ
   )`,
 
-  // ── QR TOKENS ──────────────────────────────────────────────────
+  // ── QR TOKENS (with university_id) ──────────────────────────────────
   `CREATE TABLE IF NOT EXISTS qr_tokens (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id      UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    university_id UUID REFERENCES universities(id) ON DELETE CASCADE,
     token         VARCHAR(64)  NOT NULL UNIQUE,
     qr_image_url  TEXT,
     is_used       BOOLEAN NOT NULL DEFAULT false,
@@ -179,16 +186,79 @@ const migrations = [
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
 
-  // ── DAILY MENUS ────────────────────────────────────────────────
+  // ── DAILY MENUS (with university_id) ────────────────────────────────
   `CREATE TABLE IF NOT EXISTS daily_menus (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     date          DATE NOT NULL,
     menu_item_id  UUID NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
+    university_id UUID REFERENCES universities(id) ON DELETE CASCADE,
     is_available  BOOLEAN NOT NULL DEFAULT true,
     stock_count   INTEGER,
     created_by    UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(date, menu_item_id)
+    UNIQUE(date, menu_item_id, university_id)
+  )`,
+
+  // ── VENDOR PAYMENT METHODS (with university_id) ─────────────────
+  `CREATE TABLE IF NOT EXISTS vendor_payment_methods (
+      id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      vendor_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      university_id       UUID NOT NULL REFERENCES universities(id) ON DELETE CASCADE,
+      method_type         VARCHAR(20) NOT NULL DEFAULT 'lipa'
+                          CHECK (method_type IN ('lipa', 'stk')),
+      provider            VARCHAR(30) NOT NULL
+                          CHECK (provider IN ('mpesa', 'tigopesa', 'airtelmoney', 'halopesa', 'selcom')),
+      lipa_number         VARCHAR(20),
+      account_name        VARCHAR(100),
+      api_key             TEXT,
+      api_secret          TEXT,
+      merchant_id         VARCHAR(100),
+      api_endpoint        VARCHAR(255),
+      is_active           BOOLEAN NOT NULL DEFAULT true,
+      is_default          BOOLEAN NOT NULL DEFAULT false,
+      settings            JSONB DEFAULT '{}',
+      created_by          UUID REFERENCES users(id),
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(vendor_id, provider, university_id)
+  )`,
+
+  // ── TRANSACTIONS (with university_id) ───────────────────────────
+  `CREATE TABLE IF NOT EXISTS transactions (
+      id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      order_id            UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      vendor_id           UUID NOT NULL REFERENCES users(id),
+      customer_id         UUID REFERENCES users(id),
+      university_id       UUID NOT NULL REFERENCES universities(id) ON DELETE CASCADE,
+      amount              INTEGER NOT NULL,
+      phone_number        VARCHAR(20),
+      transaction_code    VARCHAR(100) UNIQUE,
+      provider            VARCHAR(30),
+      payment_method      VARCHAR(20),
+      status              VARCHAR(30) NOT NULL DEFAULT 'pending'
+                          CHECK (status IN ('pending', 'pending_verification', 'processing', 'success', 'failed', 'refunded', 'cancelled')),
+      provider_reference  VARCHAR(200),
+      provider_response   JSONB,
+      verified_by         UUID REFERENCES users(id),
+      verified_at         TIMESTAMPTZ,
+      notes               TEXT,
+      metadata            JSONB DEFAULT '{}',
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+
+  // ── QR CODES (with university_id) ───────────────────────────────
+  `CREATE TABLE IF NOT EXISTS qr_codes (
+      id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      order_id            UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      university_id       UUID NOT NULL REFERENCES universities(id) ON DELETE CASCADE,
+      token               VARCHAR(100) NOT NULL UNIQUE,
+      qr_image_url        TEXT,
+      is_used             BOOLEAN NOT NULL DEFAULT false,
+      used_by             UUID REFERENCES users(id),
+      used_at             TIMESTAMPTZ,
+      expires_at          TIMESTAMPTZ NOT NULL,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
 
   // ── AUDIT LOG ──────────────────────────────────────────────────
@@ -203,9 +273,6 @@ const migrations = [
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
 
-  // ── ADD university_id TO USERS table ────────────────────────────
-  `ALTER TABLE users ADD COLUMN IF NOT EXISTS university_id UUID REFERENCES universities(id) ON DELETE CASCADE`,
-
   // ── INDEXES ────────────────────────────────────────────────────
   `CREATE INDEX IF NOT EXISTS idx_users_university_id ON users(university_id)`,
   `CREATE INDEX IF NOT EXISTS idx_users_university_subscription ON users(university_id, is_active)`,
@@ -218,14 +285,43 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_orders_status        ON orders(status)`,
   `CREATE INDEX IF NOT EXISTS idx_orders_created_at    ON orders(created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_orders_user_id       ON orders(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_orders_vendor_id     ON orders(vendor_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_orders_university_id ON orders(university_id)`,
   `CREATE INDEX IF NOT EXISTS idx_payments_order_id    ON payments(order_id)`,
   `CREATE INDEX IF NOT EXISTS idx_payments_status      ON payments(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_payments_university  ON payments(university_id)`,
   `CREATE INDEX IF NOT EXISTS idx_qr_tokens_token      ON qr_tokens(token)`,
   `CREATE INDEX IF NOT EXISTS idx_qr_tokens_order_id   ON qr_tokens(order_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_menu_items_category  ON menu_items(category_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_qr_tokens_university ON qr_tokens(university_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_menu_items_category  ON menu_items(category)`,
+  `CREATE INDEX IF NOT EXISTS idx_menu_items_university ON menu_items(university_id)`,
   `CREATE INDEX IF NOT EXISTS idx_daily_menus_date     ON daily_menus(date)`,
+  `CREATE INDEX IF NOT EXISTS idx_daily_menus_university ON daily_menus(university_id)`,
   `CREATE INDEX IF NOT EXISTS idx_audit_log_user       ON audit_log(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_audit_log_entity     ON audit_log(entity, entity_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_vendor_payment_methods_university ON vendor_payment_methods(university_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_transactions_university ON transactions(university_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_transactions_order ON transactions(order_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_transactions_code ON transactions(transaction_code)`,
+
+  // ── ADD missing columns to existing tables ─────────────────────
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS university_id UUID REFERENCES universities(id) ON DELETE CASCADE`,
+  `ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS university_id UUID REFERENCES universities(id) ON DELETE CASCADE`,
+  `ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS category VARCHAR(50) DEFAULT 'other'`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS vendor_id UUID REFERENCES users(id)`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS university_id UUID REFERENCES universities(id) ON DELETE CASCADE`,
+  `ALTER TABLE payments ADD COLUMN IF NOT EXISTS university_id UUID REFERENCES universities(id) ON DELETE CASCADE`,
+  `ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_method VARCHAR(20) DEFAULT 'lipa'`,
+  `ALTER TABLE qr_tokens ADD COLUMN IF NOT EXISTS university_id UUID REFERENCES universities(id) ON DELETE CASCADE`,
+  `ALTER TABLE daily_menus ADD COLUMN IF NOT EXISTS university_id UUID REFERENCES universities(id) ON DELETE CASCADE`,
+
+  // ── DROP old category_id if exists ─────────────────────────────
+  `DO $$
+   BEGIN
+     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'menu_items' AND column_name = 'category_id') THEN
+       ALTER TABLE menu_items DROP COLUMN category_id;
+     END IF;
+   END $$`,
 
   // ── AUTO-UPDATE updated_at ─────────────────────────────────────
   `CREATE OR REPLACE FUNCTION update_updated_at()
@@ -248,6 +344,18 @@ const migrations = [
   `DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='trg_orders_updated_at')
     THEN CREATE TRIGGER trg_orders_updated_at BEFORE UPDATE ON orders
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at(); END IF;
+   END $$`,
+
+  `DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='trg_vendor_payment_methods_updated_at')
+    THEN CREATE TRIGGER trg_vendor_payment_methods_updated_at BEFORE UPDATE ON vendor_payment_methods
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at(); END IF;
+   END $$`,
+
+  `DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='trg_transactions_updated_at')
+    THEN CREATE TRIGGER trg_transactions_updated_at BEFORE UPDATE ON transactions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at(); END IF;
    END $$`,
 
@@ -278,8 +386,9 @@ async function migrate() {
     if (RESET) {
       console.log('⚠️  Dropping all tables...');
       await client.query(`
-        DROP TABLE IF EXISTS audit_log, qr_tokens, payments, order_items,
-        orders, daily_menus, menu_items, categories, users CASCADE
+        DROP TABLE IF EXISTS audit_log, qr_codes, qr_tokens, transactions, vendor_payment_methods,
+        payments, order_items, orders, daily_menus, menu_items, categories, users,
+        universities, super_admins, subscriptions, subscription_logs, system_settings CASCADE
       `);
       console.log('✓ Tables dropped');
     }
@@ -287,8 +396,10 @@ async function migrate() {
     console.log('Running migrations...');
     for (const sql of migrations) {
       await client.query(sql);
+      console.log('✓ Executed migration step');
     }
     console.log(`✓ ${migrations.length} migration steps completed`);
+    console.log('✅ Database migration completed successfully!');
   } catch (err) {
     console.error('Migration failed:', err.message);
     process.exit(1);
