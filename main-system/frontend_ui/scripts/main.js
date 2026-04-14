@@ -492,486 +492,648 @@
     }
 
     function CartSidebar({ cart, setCart, setPage, isOpen, onToggle }) {
-    const { showToast } = useContext(AppCtx);
-    const [phone, setPhone] = useState('');
-    const [payState, setPayState] = useState(null);
-    const [qrRef, setQrRef] = useState('');
-    const [countdown, setCountdown] = useState(25);
-    const [paymentMethod, setPaymentMethod] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [transactionId, setTransactionId] = useState('');
-    const [accountName, setAccountName] = useState('');
+        const { showToast } = useContext(AppCtx);
+        const [phone, setPhone] = useState('');
+        const [payState, setPayState] = useState(null);
+        const [qrRef, setQrRef] = useState('');
+        const [countdown, setCountdown] = useState(25);
+        const [paymentMethods, setPaymentMethods] = useState([]);
+        const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
+        const [isLoading, setIsLoading] = useState(false);
+        const [transactionId, setTransactionId] = useState('');
+        const [accountName, setAccountName] = useState('');
 
-    const cartIds = Object.keys(cart);
-    const subtotal = cartIds.reduce((s, k) => s + cart[k].price * cart[k].qty, 0);
-    const service = Math.round(subtotal * 0.02);
-    const total = subtotal + service;
-    const itemCount = cartIds.reduce((s, k) => s + cart[k].qty, 0);
-    const isEmpty = cartIds.length === 0;
+        const cartIds = Object.keys(cart);
+        const subtotal = cartIds.reduce((s, k) => s + cart[k].price * cart[k].qty, 0);
+        const service = Math.round(subtotal * 0.02);
+        const total = subtotal + service;
+        const itemCount = cartIds.reduce((s, k) => s + cart[k].qty, 0);
+        const isEmpty = cartIds.length === 0;
 
-    // Get user data from localStorage
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    const universityId = user.university_id;
+        // Get user data from localStorage
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const universityId = user.university_id;
 
-    const changeQty = (id, d) => setCart(prev => {
-        const next = { ...prev };
-        if (!next[id]) return prev;
-        next[id] = { ...next[id], qty: next[id].qty + d };
-        if (next[id].qty <= 0) delete next[id];
-        return next;
-    });
+        const changeQty = (id, d) => setCart(prev => {
+            const next = { ...prev };
+            if (!next[id]) return prev;
+            next[id] = { ...next[id], qty: next[id].qty + d };
+            if (next[id].qty <= 0) delete next[id];
+            return next;
+        });
 
-    // Fetch payment method when cart has items
-    useEffect(() => {
-        const fetchPaymentMethod = async () => {
-            if (isEmpty || !universityId) return;
+        // Fetch ALL payment methods when cart has items
+        useEffect(() => {
+            const fetchPaymentMethods = async () => {
+                if (isEmpty || !universityId) return;
 
+                try {
+                    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                    const response = await fetch(`http://localhost:5000/api/payments/vendor/methods/by-university/all?university_id=${universityId}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const result = await response.json();
+                    if (result.success && result.data) {
+                        setPaymentMethods(result.data);
+                        // Select default method if available
+                        const defaultMethod = result.data.find(m => m.is_default === true);
+                        if (defaultMethod) {
+                            setSelectedPaymentMethod(defaultMethod);
+                        } else if (result.data.length > 0) {
+                            setSelectedPaymentMethod(result.data[0]);
+                        }
+                    } else {
+                        setPaymentMethods([]);
+                    }
+                } catch (error) {
+                    console.error('Error fetching payment methods:', error);
+                    setPaymentMethods([]);
+                }
+            };
+
+            fetchPaymentMethods();
+        }, [isEmpty, universityId]);
+
+        // Create order
+        const createOrder = async () => {
             try {
                 const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-                const response = await fetch(`http://localhost:5000/api/payments/vendor/methods/by-university?university_id=${universityId}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const result = await response.json();
-                if (result.success && result.data) {
-                    setPaymentMethod(result.data);
-                } else {
-                    setPaymentMethod(null);
+
+                // Get cart items and validate
+                const cartItems = Object.values(cart);
+
+                // Debug: Log cart items to see their structure
+                console.log('Cart items in createOrder:', cartItems);
+
+                if (cartItems.length === 0) {
+                    throw new Error('Cart is empty');
                 }
+
+                // Validate each cart item has an id
+                for (const item of cartItems) {
+                    if (!item.id) {
+                        console.error('Invalid cart item missing id:', item);
+                        throw new Error(`Item "${item.name || 'unknown'}" has no valid ID`);
+                    }
+                }
+
+                const orderData = {
+                    items: cartItems.map(item => ({
+                        menu_item_id: item.id,  // Make sure this is the UUID
+                        name: item.name,
+                        price: item.price,
+                        quantity: item.qty,
+                        subtotal: item.price * item.qty
+                    })),
+                    total: total,
+                    subtotal: subtotal,
+                    service_charge: service,
+                    guest_name: accountName || undefined,
+                    guest_phone: phone || undefined
+                };
+
+                console.log('Order data being sent:', JSON.stringify(orderData, null, 2));
+
+                const response = await fetch('http://localhost:5000/api/orders', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(orderData)
+                });
+
+                const result = await response.json();
+                console.log('Order creation response:', result);
+
+                if (result.success && result.data) {
+                    return result.data.id;
+                }
+                throw new Error(result.message || 'Failed to create order');
             } catch (error) {
-                console.error('Error fetching payment method:', error);
-                setPaymentMethod(null);
+                console.error('Error creating order:', error);
+                throw error;
             }
         };
 
-        fetchPaymentMethod();
-    }, [isEmpty, universityId]);
-
-    // Create order
-    const createOrder = async () => {
-        try {
-            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-            const orderData = {
-                items: Object.values(cart).map(item => ({
-                    id: item.id,
-                    name: item.name,
-                    price: item.price,
-                    quantity: item.qty
-                })),
-                total: total,
-                subtotal: subtotal,
-                service_charge: service
-            };
-
-            const response = await fetch('http://localhost:5000/api/orders', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify(orderData)
-            });
-            const result = await response.json();
-            if (result.success && result.data) {
-                return result.data.id;
+        // Handle payment based on selected method
+        const handlePayment = async () => {
+            if (!selectedPaymentMethod) {
+                showToast('Please select a payment method', 'error');
+                return;
             }
-            throw new Error(result.message || 'Failed to create order');
-        } catch (error) {
-            console.error('Error creating order:', error);
-            throw error;
-        }
-    };
 
-    // Handle STK Push payment
-    const handleSTKPayment = async () => {
-        const digits = phone.replace(/\D/g, '');
-        if (digits.length < 9) {
-            showToast('⚠ Enter your phone number', 'error');
-            return;
-        }
-        if (isEmpty) return;
+            const digits = phone.replace(/\D/g, '');
+            if (digits.length < 9) {
+                showToast('⚠ Enter your phone number', 'error');
+                return;
+            }
 
-        setIsLoading(true);
+            if (selectedPaymentMethod.method_type === 'lipa') {
+                // For Lipa, we need transaction ID and name
+                if (!transactionId) {
+                    showToast('⚠ Please enter transaction ID', 'error');
+                    return;
+                }
+                if (!accountName) {
+                    showToast('⚠ Please enter your name', 'error');
+                    return;
+                }
+            }
 
-        try {
-            const orderId = await createOrder();
-            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+            if (isEmpty) return;
+            setIsLoading(true);
 
-            const response = await fetch('http://localhost:5000/api/payments/initiate', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    order_id: orderId,
-                    phone_number: digits
-                })
-            });
+            try {
+                const orderId = await createOrder();
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
 
-            const result = await response.json();
+                const response = await fetch('http://localhost:5000/api/payments/initiate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        order_id: orderId,
+                        phone_number: digits,
+                        payment_method_id: selectedPaymentMethod.id
+                    })
+                });
 
-            if (result.success) {
-                setPayState('processing');
-                let c = 25;
-                setCountdown(25);
-                const t = setInterval(() => {
-                    c--;
-                    setCountdown(c);
-                    if (c <= 0) clearInterval(t);
-                }, 1000);
+                const result = await response.json();
 
-                // Poll for payment status
-                const checkStatus = setInterval(async () => {
-                    try {
-                        const statusResponse = await fetch(`http://localhost:5000/api/payments/status/${orderId}`, {
-                            headers: { 'Authorization': `Bearer ${token}` }
-                        });
-                        const statusResult = await statusResponse.json();
-                        if (statusResult.success && statusResult.data.payment_status === 'success') {
+                if (result.success) {
+                    if (selectedPaymentMethod.method_type === 'lipa') {
+                        // Show instructions with the specific payment method details
+                        setPayState('instructions');
+                    } else {
+                        // STK Push flow
+                        setPayState('processing');
+                        let c = 25;
+                        setCountdown(25);
+                        const t = setInterval(() => {
+                            c--;
+                            setCountdown(c);
+                            if (c <= 0) clearInterval(t);
+                        }, 1000);
+
+                        const checkStatus = setInterval(async () => {
+                            try {
+                                const statusResponse = await fetch(`http://localhost:5000/api/payments/status/${orderId}`, {
+                                    headers: { 'Authorization': `Bearer ${token}` }
+                                });
+                                const statusResult = await statusResponse.json();
+                                if (statusResult.success && statusResult.data.payment_status === 'success') {
+                                    clearInterval(checkStatus);
+                                    clearInterval(t);
+                                    setQrRef(result.data.transaction_code);
+                                    setPayState('success');
+                                }
+                            } catch (err) {
+                                console.error('Status check error:', err);
+                            }
+                        }, 3000);
+
+                        setTimeout(() => {
                             clearInterval(checkStatus);
                             clearInterval(t);
-                            setQrRef(result.data.transaction_code);
-                            setPayState('success');
-                        }
-                    } catch (err) {
-                        console.error('Status check error:', err);
+                            if (payState === 'processing') {
+                                setPayState('success');
+                                setQrRef(result.data.transaction_code);
+                            }
+                        }, 30000);
                     }
-                }, 3000);
-
-                setTimeout(() => {
-                    clearInterval(checkStatus);
-                    clearInterval(t);
-                    if (payState === 'processing') {
-                        setPayState('success');
-                        setQrRef(result.data.transaction_code);
-                    }
-                }, 30000);
-            } else {
-                showToast(result.message || 'Payment failed', 'error');
+                } else {
+                    showToast(result.message || 'Payment initiation failed', 'error');
+                    setIsLoading(false);
+                }
+            } catch (error) {
+                console.error('Payment error:', error);
+                showToast('Failed to process payment', 'error');
                 setIsLoading(false);
             }
-        } catch (error) {
-            console.error('STK Payment error:', error);
-            showToast('Failed to process payment', 'error');
-            setIsLoading(false);
-        }
-    };
+        };
 
-    // Handle Manual Lipa payment
-    const handleManualPayment = async () => {
-        const digits = phone.replace(/\D/g, '');
-        if (digits.length < 9) {
-            showToast('⚠ Enter your phone number', 'error');
-            return;
-        }
-        if (!transactionId) {
-            showToast('⚠ Please enter transaction ID', 'error');
-            return;
-        }
-        if (!accountName) {
-            showToast('⚠ Please enter your name', 'error');
-            return;
-        }
-        if (isEmpty) return;
+        const confirmManualPayment = async () => {
+            if (!transactionId) {
+                showToast('Please enter transaction ID', 'error');
+                return;
+            }
 
-        setIsLoading(true);
+            setIsLoading(true);
 
-        try {
-            const orderId = await createOrder();
-            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-
-            const response = await fetch('http://localhost:5000/api/payments/initiate', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    order_id: orderId,
-                    phone_number: digits
-                })
-            });
-
-            const result = await response.json();
-
-            if (result.success) {
-                // Show instructions first, then confirm after user pays
-                setPayState('instructions');
-            } else {
-                showToast(result.message || 'Payment initiation failed', 'error');
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch('http://localhost:5000/api/payments/confirm-manual', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        transaction_code: transactionId,
+                        phone_number: phone
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    setPayState('pending_verification');
+                    showToast('Payment confirmation submitted. Waiting for vendor verification.', 'success');
+                } else {
+                    showToast(result.message || 'Failed to confirm payment', 'error');
+                }
+            } catch (error) {
+                console.error('Confirm payment error:', error);
+                showToast('Network error', 'error');
+            } finally {
                 setIsLoading(false);
             }
-        } catch (error) {
-            console.error('Manual payment error:', error);
-            showToast('Failed to process payment', 'error');
-            setIsLoading(false);
-        }
-    };
+        };
 
-    const confirmManualPayment = async () => {
-        if (!transactionId) {
-            showToast('Please enter transaction ID', 'error');
-            return;
-        }
+        const payLabels = { mpesa: 'M-Pesa', tigo: 'Tigo Pesa', halo: 'HaloPesa', airtelmoney: 'Airtel Money', selcom: 'Selcom' };
 
-        setIsLoading(true);
+        return (
+            <div className={`cart-sidebar ${!isOpen ? 'hide-cart' : ''}`} style={{ background: '#FAFAF7', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto', position: 'relative' }}>
+                <div className="cart-handle" onClick={onToggle} style={{ display: 'none' }} />
 
-        try {
-            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-            const response = await fetch('http://localhost:5000/api/payments/confirm-manual', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    transaction_code: transactionId,
-                    phone_number: phone
-                })
-            });
-            const result = await response.json();
-            if (result.success) {
-                setPayState('pending_verification');
-                showToast('Payment confirmation submitted. Waiting for vendor verification.', 'success');
-            } else {
-                showToast(result.message || 'Failed to confirm payment', 'error');
-            }
-        } catch (error) {
-            console.error('Confirm payment error:', error);
-            showToast('Network error', 'error');
-        } finally {
-            setIsLoading(false);
-        }
-    };
+                {/* Header */}
+                <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+                    <span style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 14 }}>Your order</span>
+                    <span style={{ background: isEmpty ? '#EDE8DF' : '#C4522A', color: isEmpty ? 'var(--muted)' : '#fff', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 600 }}>
+                        {itemCount} item{itemCount !== 1 ? 's' : ''}
+                    </span>
+                    <button onClick={onToggle} className="close-cart-mobile" style={{ display: 'none', background: 'none', fontSize: 20, color: 'var(--muted)' }}>✕</button>
+                </div>
 
-    const payLabels = { mpesa: 'M-Pesa', tigo: 'Tigo Pesa', halo: 'HaloPesa', airtelmoney: 'Airtel Money', selcom: 'Selcom' };
+                {isEmpty ? (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24, textAlign: 'center' }}>
+                        <div style={{ fontSize: 38, opacity: 0.2 }}>🍽️</div>
+                        <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.6 }}>Add meals from the menu<br />to get started</div>
+                    </div>
+                ) : (
+                    <>
+                        {/* Cart Items - Responsive */}
+                        <div style={{ flex: 1, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
+                            {cartIds.map(k => {
+                                const it = cart[k];
+                                return (
+                                    <div key={k} style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 'clamp(6px, 3vw, 8px)',
+                                        animation: 'slideLeft .2s ease',
+                                        padding: '8px 0',
+                                        borderBottom: '1px solid #EDE8DF'
+                                    }}>
+                                        <span style={{ fontSize: 'clamp(22px, 6vw, 24px)', flexShrink: 0 }}>{it.emoji}</span>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{
+                                                fontSize: 'clamp(11px, 4vw, 12px)',
+                                                fontWeight: 500,
+                                                whiteSpace: 'normal',
+                                                wordBreak: 'break-word',
+                                                lineHeight: 1.3
+                                            }}>
+                                                {it.name}
+                                            </div>
+                                            <div style={{ fontSize: 'clamp(10px, 3vw, 11px)', color: 'var(--muted)', marginTop: 2 }}>
+                                                {fmt(it.price * it.qty)} TZS
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(3px, 2vw, 5px)', flexShrink: 0 }}>
+                                            <button
+                                                onClick={() => changeQty(k, -1)}
+                                                style={{
+                                                    width: 'clamp(26px, 7vw, 32px)',
+                                                    height: 'clamp(26px, 7vw, 32px)',
+                                                    borderRadius: '50%',
+                                                    border: '1px solid var(--border)',
+                                                    background: '#fff',
+                                                    fontSize: 'clamp(14px, 5vw, 18px)',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                −
+                                            </button>
+                                            <span style={{
+                                                fontFamily: 'Syne,sans-serif',
+                                                fontWeight: 700,
+                                                fontSize: 'clamp(13px, 4vw, 14px)',
+                                                minWidth: 'clamp(24px, 7vw, 32px)',
+                                                textAlign: 'center'
+                                            }}>
+                                                {it.qty}
+                                            </span>
+                                            <button
+                                                onClick={() => changeQty(k, 1)}
+                                                style={{
+                                                    width: 'clamp(26px, 7vw, 32px)',
+                                                    height: 'clamp(26px, 7vw, 32px)',
+                                                    borderRadius: '50%',
+                                                    border: '1px solid var(--border)',
+                                                    background: '#fff',
+                                                    fontSize: 'clamp(14px, 5vw, 18px)',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                +
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
 
-    return (
-        <div className={`cart-sidebar ${!isOpen ? 'hide-cart' : ''}`} style={{ background: '#FAFAF7', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto', position: 'relative' }}>
-            <div className="cart-handle" onClick={onToggle} style={{ display: 'none' }} />
-            <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-                <span style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 14 }}>Your order</span>
-                <span style={{ background: isEmpty ? '#EDE8DF' : '#C4522A', color: isEmpty ? 'var(--muted)' : '#fff', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 600 }}>
-                    {itemCount} item{itemCount !== 1 ? 's' : ''}
-                </span>
-                <button onClick={onToggle} className="close-cart-mobile" style={{ display: 'none', background: 'none', fontSize: 20, color: 'var(--muted)' }}>✕</button>
+                        {/* Order Summary */}
+                        <div style={{ borderTop: '1px solid var(--border)', padding: '12px 14px', flexShrink: 0 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>
+                                <span>Subtotal</span><span>TZS {fmt(subtotal)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--muted)' }}>
+                                <span>Service (2%)</span><span>TZS {fmt(service)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'Syne,sans-serif', fontSize: 15, fontWeight: 700, marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+                                <span>Total</span><span>TZS {fmt(total)}</span>
+                            </div>
+                        </div>
+
+                        {/* Payment Method Selection - Responsive */}
+                        {paymentMethods.length > 0 && (
+                            <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)' }}>
+                                <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 8 }}>
+                                    Select Payment Method
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {paymentMethods.map(method => (
+                                        <div
+                                            key={method.id}
+                                            onClick={() => setSelectedPaymentMethod(method)}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 'clamp(8px, 3vw, 12px)',
+                                                padding: 'clamp(10px, 3vw, 12px)',
+                                                background: selectedPaymentMethod?.id === method.id ? '#EAF0E8' : '#fff',
+                                                border: `1.5px solid ${selectedPaymentMethod?.id === method.id ? '#4A6741' : 'var(--border)'}`,
+                                                borderRadius: 8,
+                                                cursor: 'pointer',
+                                                flexWrap: 'wrap'
+                                            }}
+                                        >
+                                            <div style={{ fontSize: 'clamp(18px, 5vw, 20px)' }}>
+                                                {method.provider === 'mpesa' ? '📱' : method.provider === 'tigopesa' ? '📱' : '💳'}
+                                            </div>
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ fontWeight: 600, fontSize: 'clamp(12px, 4vw, 13px)' }}>
+                                                    {payLabels[method.provider] || method.provider}
+                                                </div>
+                                                {method.method_type === 'lipa' && method.lipa_number && (
+                                                    <div style={{ fontSize: 'clamp(10px, 3vw, 11px)', color: '#4A6741' }}>
+                                                        Lipa: {method.lipa_number}
+                                                    </div>
+                                                )}
+                                                {method.account_name && (
+                                                    <div style={{ fontSize: 'clamp(9px, 2.5vw, 10px)', color: 'var(--muted)' }}>
+                                                        Account: {method.account_name}
+                                                    </div>
+                                                )}
+                                                <div style={{ fontSize: 'clamp(9px, 2.5vw, 10px)', color: 'var(--muted)' }}>
+                                                    {method.method_type === 'lipa' ? 'Manual Payment' : 'STK Push (Automated)'}
+                                                </div>
+                                            </div>
+                                            {selectedPaymentMethod?.id === method.id && (
+                                                <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#4A6741', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#fff' }} />
+                                                </div>
+                                            )}
+                                            {method.is_default && (
+                                                <div style={{ fontSize: 9, background: '#FEF3DC', color: '#854F0B', padding: '2px 6px', borderRadius: 4 }}>Default</div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Phone Number Input - Responsive */}
+                        <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+                            <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 8 }}>
+                                Phone Number
+                            </div>
+                            <div style={{
+                                display: 'flex',
+                                border: `1.5px solid ${phone ? '#C4522A' : 'var(--border)'}`,
+                                borderRadius: 8,
+                                overflow: 'hidden',
+                                background: '#fff',
+                                flexWrap: 'wrap'
+                            }}>
+                                <div style={{
+                                    padding: 'clamp(8px, 3vw, 10px) clamp(10px, 3vw, 12px)',
+                                    fontSize: 'clamp(11px, 3.5vw, 12px)',
+                                    fontWeight: 500,
+                                    color: 'var(--muted)',
+                                    background: 'var(--tag)',
+                                    borderRight: '1px solid var(--border)',
+                                    whiteSpace: 'nowrap'
+                                }}>
+                                    🇹🇿 +255
+                                </div>
+                                <input
+                                    value={phone}
+                                    onChange={e => setPhone(e.target.value)}
+                                    type="tel"
+                                    maxLength={9}
+                                    placeholder="7XX XXX XXX"
+                                    style={{
+                                        flex: 1,
+                                        padding: 'clamp(8px, 3vw, 10px) clamp(10px, 3vw, 12px)',
+                                        fontSize: 'clamp(12px, 4vw, 14px)',
+                                        minWidth: '150px'
+                                    }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Dynamic Payment Fields for Lipa */}
+                        {selectedPaymentMethod && selectedPaymentMethod.method_type === 'lipa' && (
+                            <>
+                                <div style={{ padding: '10px 14px', flexShrink: 0 }}>
+                                    <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 8 }}>Transaction ID</div>
+                                    <input
+                                        value={transactionId}
+                                        onChange={e => setTransactionId(e.target.value)}
+                                        placeholder="Enter transaction ID from your payment"
+                                        style={{ width: '100%', padding: 'clamp(10px, 3vw, 12px)', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 'clamp(12px, 4vw, 13px)' }}
+                                    />
+                                </div>
+                                <div style={{ padding: '10px 14px', flexShrink: 0 }}>
+                                    <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 8 }}>Your Name</div>
+                                    <input
+                                        value={accountName}
+                                        onChange={e => setAccountName(e.target.value)}
+                                        placeholder="Enter your full name"
+                                        style={{ width: '100%', padding: 'clamp(10px, 3vw, 12px)', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 'clamp(12px, 4vw, 13px)' }}
+                                    />
+                                </div>
+                            </>
+                        )}
+
+                        {/* Pay Button */}
+                        <div style={{ padding: '10px 14px 16px', flexShrink: 0 }}>
+                            <button
+                                onClick={handlePayment}
+                                disabled={isLoading || !selectedPaymentMethod}
+                                style={{
+                                    width: '100%',
+                                    background: isLoading || !selectedPaymentMethod ? '#3A3530' : '#1C1A17',
+                                    color: '#F5F0E8',
+                                    border: 'none',
+                                    borderRadius: 10,
+                                    padding: 'clamp(12px, 4vw, 13px) clamp(14px, 4vw, 14px)',
+                                    fontFamily: 'Syne,sans-serif',
+                                    fontSize: 'clamp(12px, 4vw, 13px)',
+                                    fontWeight: 700,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    cursor: isLoading || !selectedPaymentMethod ? 'not-allowed' : 'pointer'
+                                }}
+                            >
+                                <span>{isLoading ? 'Processing...' : `Pay with ${selectedPaymentMethod ? payLabels[selectedPaymentMethod.provider] : 'Select Method'}`}</span>
+                                <span style={{ background: 'rgba(255,255,255,.12)', padding: '3px 9px', borderRadius: 6, fontSize: 'clamp(11px, 3.5vw, 12px)' }}>
+                                    TZS {fmt(total)}
+                                </span>
+                            </button>
+                        </div>
+                    </>
+                )}
+
+                {/* Modals remain the same but with responsive padding */}
+                {payState === 'instructions' && selectedPaymentMethod && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 600, backdropFilter: 'blur(3px)' }}>
+                        <div style={{ background: '#FAFAF7', borderRadius: '20px 20px 0 0', padding: 'clamp(20px, 5vw, 24px) clamp(16px, 4vw, 22px) clamp(30px, 6vw, 36px)', width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto' }}>
+                            <div style={{ width: 40, height: 4, background: 'var(--border)', borderRadius: 2, margin: '0 auto 22px' }} />
+                            <div style={{ textAlign: 'center' }}>
+                                <div style={{ fontSize: 'clamp(40px, 10vw, 48px)', marginBottom: 12 }}>💳</div>
+                                <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 'clamp(18px, 5vw, 19px)', marginBottom: 5 }}>Payment Instructions</div>
+                                <div style={{ fontSize: 'clamp(11px, 3.5vw, 12px)', color: 'var(--muted)', marginBottom: 16 }}>Please send payment to complete your order</div>
+
+                                <div style={{ background: '#EAF0E8', borderRadius: 12, padding: 'clamp(12px, 4vw, 16px)', marginBottom: 20, textAlign: 'left' }}>
+                                    <div style={{ marginBottom: 12 }}>
+                                        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>Provider</div>
+                                        <div style={{ fontSize: 'clamp(13px, 4vw, 14px)', fontWeight: 600 }}>{payLabels[selectedPaymentMethod.provider]}</div>
+                                    </div>
+                                    <div style={{ marginBottom: 12 }}>
+                                        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>Lipa Number</div>
+                                        <div style={{ fontSize: 'clamp(13px, 4vw, 14px)', fontWeight: 600 }}>{selectedPaymentMethod.lipa_number}</div>
+                                    </div>
+                                    <div style={{ marginBottom: 12 }}>
+                                        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>Account Name</div>
+                                        <div style={{ fontSize: 'clamp(13px, 4vw, 14px)', fontWeight: 600 }}>{selectedPaymentMethod.account_name || 'N/A'}</div>
+                                    </div>
+                                    <div style={{ marginBottom: 12 }}>
+                                        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>Amount</div>
+                                        <div style={{ fontSize: 'clamp(15px, 5vw, 16px)', fontWeight: 700, color: '#C4522A' }}>TZS {fmt(total)}</div>
+                                    </div>
+                                </div>
+
+                                <div style={{ marginBottom: 16 }}>
+                                    <label style={{ fontSize: 'clamp(11px, 3.5vw, 12px)', fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>Transaction ID</label>
+                                    <input
+                                        type="text"
+                                        id="manualTransactionId"
+                                        placeholder="Enter the transaction ID from your payment"
+                                        style={{ width: '100%', padding: 'clamp(10px, 3vw, 12px)', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 'clamp(12px, 4vw, 13px)' }}
+                                    />
+                                </div>
+
+                                <div style={{ display: 'flex', gap: 12, flexDirection: window.innerWidth <= 480 ? 'column' : 'row' }}>
+                                    <button onClick={() => { setPayState(null); }} style={{ flex: 1, background: '#EDE8DF', border: 'none', borderRadius: 9, padding: 'clamp(10px, 3vw, 12px)', fontSize: 'clamp(12px, 4vw, 13px)', fontWeight: 600, cursor: 'pointer' }}>
+                                        Cancel
+                                    </button>
+                                    <button onClick={async () => {
+                                        const txId = document.getElementById('manualTransactionId').value;
+                                        if (!txId) {
+                                            showToast('Please enter transaction ID', 'error');
+                                            return;
+                                        }
+                                        setTransactionId(txId);
+                                        await confirmManualPayment();
+                                    }} style={{ flex: 1, background: '#C4522A', color: '#fff', border: 'none', borderRadius: 9, padding: 'clamp(10px, 3vw, 12px)', fontSize: 'clamp(12px, 4vw, 13px)', fontWeight: 600, cursor: 'pointer' }}>
+                                        I've Sent Payment
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Pending Verification Modal */}
+                {payState === 'pending_verification' && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 600, backdropFilter: 'blur(3px)' }}>
+                        <div style={{ background: '#FAFAF7', borderRadius: '20px 20px 0 0', padding: '24px 22px 36px', width: '100%', maxWidth: 440 }}>
+                            <div style={{ width: 40, height: 4, background: 'var(--border)', borderRadius: 2, margin: '0 auto 22px' }} />
+                            <div style={{ textAlign: 'center' }}>
+                                <div style={{ fontSize: 48, marginBottom: 12 }}>⏳</div>
+                                <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 19, marginBottom: 5 }}>Payment Pending Verification</div>
+                                <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>
+                                    Your payment confirmation has been submitted. The vendor will verify your payment shortly.
+                                </div>
+                                <button onClick={() => { setPayState(null); setCart({}); setPhone(''); setTransactionId(''); setAccountName(''); }} style={{ width: '100%', background: '#4A6741', color: '#fff', border: 'none', borderRadius: 9, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                                    Done
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Processing/STK Push Modal */}
+                {payState === 'processing' && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 600, backdropFilter: 'blur(3px)' }}>
+                        <div style={{ background: '#FAFAF7', borderRadius: '20px 20px 0 0', padding: '24px 22px 36px', width: '100%', maxWidth: 440 }}>
+                            <div style={{ width: 40, height: 4, background: 'var(--border)', borderRadius: 2, margin: '0 auto 22px' }} />
+                            <div style={{ textAlign: 'center' }}>
+                                <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }} />
+                                <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 18, marginBottom: 5 }}>Awaiting payment</div>
+                                <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>Check your phone for the STK push</div>
+                                <div style={{ fontSize: 10, color: 'var(--muted)', opacity: 0.5, marginTop: 12, animation: 'pulse 1s ease infinite' }}>Expires in {countdown}s</div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Success Modal */}
+                {payState === 'success' && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 600, backdropFilter: 'blur(3px)' }}>
+                        <div style={{ background: '#FAFAF7', borderRadius: '20px 20px 0 0', padding: '24px 22px 36px', width: '100%', maxWidth: 440 }}>
+                            <div style={{ width: 40, height: 4, background: 'var(--border)', borderRadius: 2, margin: '0 auto 22px' }} />
+                            <div style={{ textAlign: 'center' }}>
+                                <div style={{ width: 54, height: 54, borderRadius: '50%', background: '#4A6741', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: 24, color: '#fff' }}>✓</div>
+                                <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 19, marginBottom: 3 }}>Payment confirmed!</div>
+                                <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>Show this QR code at the counter</div>
+                                <div style={{ width: 180, height: 180, background: '#fff', border: '2px solid var(--border)', borderRadius: 12, margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                    <QRCanvas refCode={qrRef} size={180} />
+                                </div>
+                                <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 12, fontWeight: 700, letterSpacing: 2, color: 'var(--muted)', marginBottom: 4 }}>{qrRef}</div>
+                                <div style={{ fontSize: 10, color: 'var(--muted)', lineHeight: 1.7, maxWidth: 240, margin: '0 auto 18px' }}>Show to canteen staff to receive your order.<br />Valid 30 minutes · one use only.</div>
+                                <button onClick={() => { setPayState(null); setCart({}); setPhone(''); setTransactionId(''); setAccountName(''); }} style={{ background: '#EDE8DF', border: 'none', borderRadius: 9, padding: '11px 26px', fontFamily: 'Syne,sans-serif', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#1C1A17' }}>
+                                    Done — new order
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
-
-            {isEmpty ? (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24, textAlign: 'center' }}>
-                    <div style={{ fontSize: 38, opacity: 0.2 }}>🍽️</div>
-                    <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.6 }}>Add meals from the menu<br />to get started</div>
-                </div>
-            ) : (
-                <>
-                    <div style={{ flex: 1, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
-                        {cartIds.map(k => {
-                            const it = cart[k];
-                            return (
-                                <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, animation: 'slideLeft .2s ease' }}>
-                                    <span style={{ fontSize: 24, flexShrink: 0 }}>{it.emoji}</span>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
-                                        <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>{fmt(it.price * it.qty)} TZS</div>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-                                        <button onClick={() => changeQty(k, -1)} style={{ width: 22, height: 22, borderRadius: '50%', border: '1px solid var(--border)', background: '#fff', fontSize: 13 }}>−</button>
-                                        <span style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 13, minWidth: 16, textAlign: 'center' }}>{it.qty}</span>
-                                        <button onClick={() => changeQty(k, 1)} style={{ width: 22, height: 22, borderRadius: '50%', border: '1px solid var(--border)', background: '#fff', fontSize: 13 }}>+</button>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-
-                    <div style={{ borderTop: '1px solid var(--border)', padding: '12px 14px', flexShrink: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>
-                            <span>Subtotal</span><span>TZS {fmt(subtotal)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--muted)' }}>
-                            <span>Service (2%)</span><span>TZS {fmt(service)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'Syne,sans-serif', fontSize: 15, fontWeight: 700, marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
-                            <span>Total</span><span>TZS {fmt(total)}</span>
-                        </div>
-                    </div>
-
-                    {/* Payment Method Display */}
-                    {paymentMethod && (
-                        <div style={{ padding: '10px 14px', background: '#EAF0E8', margin: '0 14px', borderRadius: 8 }}>
-                            <div style={{ fontSize: 11, color: '#4A6741', marginBottom: 4 }}>Payment Method</div>
-                            <div style={{ fontSize: 13, fontWeight: 600 }}>{payLabels[paymentMethod.provider] || paymentMethod.provider}</div>
-                            <div style={{ fontSize: 11, color: '#4A6741', marginTop: 2 }}>
-                                {paymentMethod.method_type === 'lipa' ? 'Manual Payment (Lipa Number)' : 'Automated (STK Push)'}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Phone Number Input */}
-                    <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-                        <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 8 }}>Phone Number</div>
-                        <div style={{ display: 'flex', border: `1.5px solid ${phone ? '#C4522A' : 'var(--border)'}`, borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
-                            <div style={{ padding: '8px 10px', fontSize: 11, fontWeight: 500, color: 'var(--muted)', background: 'var(--tag)', borderRight: '1px solid var(--border)' }}>🇹🇿 +255</div>
-                            <input value={phone} onChange={e => setPhone(e.target.value)} type="tel" maxLength={9} placeholder="7XX XXX XXX" style={{ flex: 1, padding: '8px 10px', fontSize: 12 }} />
-                        </div>
-                    </div>
-
-                    {/* Dynamic Payment Fields based on method type */}
-                    {paymentMethod && paymentMethod.method_type === 'lipa' && (
-                        <>
-                            <div style={{ padding: '10px 14px', flexShrink: 0 }}>
-                                <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 8 }}>Transaction ID</div>
-                                <input
-                                    value={transactionId}
-                                    onChange={e => setTransactionId(e.target.value)}
-                                    placeholder="Enter transaction ID from your payment"
-                                    style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-                                />
-                            </div>
-                            <div style={{ padding: '10px 14px', flexShrink: 0 }}>
-                                <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 8 }}>Registered Name</div>
-                                <input
-                                    value={accountName}
-                                    onChange={e => setAccountName(e.target.value)}
-                                    placeholder="Enter your full name"
-                                    style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-                                />
-                            </div>
-                        </>
-                    )}
-
-                    {/* Pay Button */}
-                    <div style={{ padding: '10px 14px 16px', flexShrink: 0 }}>
-                        <button
-                            onClick={paymentMethod?.method_type === 'lipa' ? handleManualPayment : handleSTKPayment}
-                            disabled={isLoading}
-                            style={{
-                                width: '100%', background: isLoading ? '#3A3530' : '#1C1A17', color: '#F5F0E8', border: 'none', borderRadius: 10,
-                                padding: '13px 14px', fontFamily: 'Syne,sans-serif', fontSize: 13, fontWeight: 700,
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: isLoading ? 'not-allowed' : 'pointer'
-                            }}
-                        >
-                            <span>{isLoading ? 'Processing...' : `Pay with ${paymentMethod ? payLabels[paymentMethod.provider] : 'Payment'}`}</span>
-                            <span style={{ background: 'rgba(255,255,255,.12)', padding: '3px 9px', borderRadius: 6, fontSize: 12 }}>TZS {fmt(total)}</span>
-                        </button>
-                    </div>
-                </>
-            )}
-
-            {/* Payment Instructions Modal (Manual Lipa) */}
-            {payState === 'instructions' && paymentMethod && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 600, backdropFilter: 'blur(3px)' }}>
-                    <div style={{ background: '#FAFAF7', borderRadius: '20px 20px 0 0', padding: '24px 22px 36px', width: '100%', maxWidth: 440 }}>
-                        <div style={{ width: 40, height: 4, background: 'var(--border)', borderRadius: 2, margin: '0 auto 22px' }} />
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: 48, marginBottom: 12 }}>💳</div>
-                            <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 19, marginBottom: 5 }}>Payment Instructions</div>
-                            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>Please send payment to complete your order</div>
-
-                            <div style={{ background: '#EAF0E8', borderRadius: 12, padding: 16, marginBottom: 20, textAlign: 'left' }}>
-                                <div style={{ marginBottom: 12 }}>
-                                    <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>Provider</div>
-                                    <div style={{ fontSize: 14, fontWeight: 600 }}>{payLabels[paymentMethod.provider]}</div>
-                                </div>
-                                <div style={{ marginBottom: 12 }}>
-                                    <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>Lipa Number</div>
-                                    <div style={{ fontSize: 14, fontWeight: 600 }}>{paymentMethod.lipa_number}</div>
-                                </div>
-                                <div style={{ marginBottom: 12 }}>
-                                    <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>Amount</div>
-                                    <div style={{ fontSize: 16, fontWeight: 700, color: '#C4522A' }}>TZS {fmt(total)}</div>
-                                </div>
-                            </div>
-
-                            <div style={{ marginBottom: 16 }}>
-                                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>Transaction ID</label>
-                                <input
-                                    type="text"
-                                    id="manualTransactionId"
-                                    placeholder="Enter the transaction ID from your payment"
-                                    style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13 }}
-                                />
-                            </div>
-
-                            <div style={{ display: 'flex', gap: 12 }}>
-                                <button onClick={() => { setPayState(null); }} style={{ flex: 1, background: '#EDE8DF', border: 'none', borderRadius: 9, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                                    Cancel
-                                </button>
-                                <button onClick={async () => {
-                                    const txId = document.getElementById('manualTransactionId').value;
-                                    if (!txId) {
-                                        showToast('Please enter transaction ID', 'error');
-                                        return;
-                                    }
-                                    setTransactionId(txId);
-                                    await confirmManualPayment();
-                                }} style={{ flex: 1, background: '#C4522A', color: '#fff', border: 'none', borderRadius: 9, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                                    I've Sent Payment
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Pending Verification Modal */}
-            {payState === 'pending_verification' && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 600, backdropFilter: 'blur(3px)' }}>
-                    <div style={{ background: '#FAFAF7', borderRadius: '20px 20px 0 0', padding: '24px 22px 36px', width: '100%', maxWidth: 440 }}>
-                        <div style={{ width: 40, height: 4, background: 'var(--border)', borderRadius: 2, margin: '0 auto 22px' }} />
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: 48, marginBottom: 12 }}>⏳</div>
-                            <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 19, marginBottom: 5 }}>Payment Pending Verification</div>
-                            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>
-                                Your payment confirmation has been submitted. The vendor will verify your payment shortly.
-                            </div>
-                            <button onClick={() => { setPayState(null); setCart({}); setPhone(''); setTransactionId(''); setAccountName(''); }} style={{ width: '100%', background: '#4A6741', color: '#fff', border: 'none', borderRadius: 9, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                                Done
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Processing/STK Push Modal */}
-            {payState === 'processing' && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 600, backdropFilter: 'blur(3px)' }}>
-                    <div style={{ background: '#FAFAF7', borderRadius: '20px 20px 0 0', padding: '24px 22px 36px', width: '100%', maxWidth: 440 }}>
-                        <div style={{ width: 40, height: 4, background: 'var(--border)', borderRadius: 2, margin: '0 auto 22px' }} />
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }} />
-                            <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 18, marginBottom: 5 }}>Awaiting payment</div>
-                            <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>Check your phone for the STK push</div>
-                            <div style={{ fontSize: 10, color: 'var(--muted)', opacity: 0.5, marginTop: 12, animation: 'pulse 1s ease infinite' }}>Expires in {countdown}s</div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Success Modal */}
-            {payState === 'success' && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 600, backdropFilter: 'blur(3px)' }}>
-                    <div style={{ background: '#FAFAF7', borderRadius: '20px 20px 0 0', padding: '24px 22px 36px', width: '100%', maxWidth: 440 }}>
-                        <div style={{ width: 40, height: 4, background: 'var(--border)', borderRadius: 2, margin: '0 auto 22px' }} />
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ width: 54, height: 54, borderRadius: '50%', background: '#4A6741', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: 24, color: '#fff' }}>✓</div>
-                            <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 19, marginBottom: 3 }}>Payment confirmed!</div>
-                            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>Show this QR code at the counter</div>
-                            <div style={{ width: 180, height: 180, background: '#fff', border: '2px solid var(--border)', borderRadius: 12, margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                                <QRCanvas refCode={qrRef} size={180} />
-                            </div>
-                            <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 12, fontWeight: 700, letterSpacing: 2, color: 'var(--muted)', marginBottom: 4 }}>{qrRef}</div>
-                            <div style={{ fontSize: 10, color: 'var(--muted)', lineHeight: 1.7, maxWidth: 240, margin: '0 auto 18px' }}>Show to canteen staff to receive your order.<br />Valid 30 minutes · one use only.</div>
-                            <button onClick={() => { setPayState(null); setCart({}); setPhone(''); setTransactionId(''); setAccountName(''); }} style={{ background: '#EDE8DF', border: 'none', borderRadius: 9, padding: '11px 26px', fontFamily: 'Syne,sans-serif', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#1C1A17' }}>
-                                Done — new order
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
+        );
+    }
 
     function MealCard({meal, onAdd, onOpen}) { const [added, setAdded] = useState(false); const handleQuickAdd = e => { e.stopPropagation(); onAdd(meal, 1); setAdded(true); setTimeout(()=>setAdded(false), 800); }; return ( <div onClick={()=>meal.stock && onOpen(meal)} style={{background:meal.stock?'#fff':'#F8F6F2',border:`1px solid ${meal.stock?'#E2D9CC':'#EDE8DF'}`,borderRadius:14,overflow:'hidden',cursor:meal.stock?'pointer':'not-allowed',opacity:meal.stock?1:.6,transition:'transform .18s,box-shadow .18s'}}><div style={{height:110,background:CAT_COLORS[meal.cat]||'#EDE8DF',display:'flex',alignItems:'center',justifyContent:'center',fontSize:46,position:'relative'}}>{meal.emoji}{meal.badge && (<span style={{position:'absolute',top:8,left:8,background:meal.badge==='popular'?'#C4522A':meal.badge==='new'?'#D4831A':'#4A6741',color:'#fff',fontSize:8,fontWeight:700,padding:'2px 7px',borderRadius:5}}>{meal.badge}</span>)}{!meal.stock && <span style={{position:'absolute',top:8,right:8,background:'rgba(28,26,23,.65)',color:'#fff',fontSize:8,padding:'2px 7px',borderRadius:5}}>SOLD OUT</span>}</div><div style={{padding:'10px 12px 12px'}}><div style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:13,marginBottom:2}}>{meal.name}</div><div style={{fontSize:10.5,color:'var(--muted)',marginBottom:8,lineHeight:1.4}}>{meal.desc}</div><div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}><div style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:14}}>{fmt(meal.price)} <span style={{fontSize:9,fontWeight:400,color:'var(--muted)'}}>TZS</span></div>{meal.stock && (<button onClick={handleQuickAdd} style={{width:28,height:28,borderRadius:'50%',background:added?'#4A6741':'#1C1A17',color:'#fff',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center',animation:added?'pop .3s ease':'none'}}>{added?'✓':'+'}</button>)}</div></div></div> ); }
     function DrinkChip({drink, onAdd}) { const [added, setAdded] = useState(false); return ( <div style={{display:'flex',alignItems:'center',gap:9,background:'#fff',border:'1px solid var(--border)',borderRadius:50,padding:'7px 13px 7px 9px',cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.borderColor='#1C1A17'}><span style={{fontSize:20}}>{drink.emoji}</span><div><div style={{fontSize:12,fontWeight:500}}>{drink.name}</div><div style={{fontSize:10,color:'var(--muted)'}}>{fmt(drink.price)} TZS</div></div><button onClick={()=>{onAdd(drink,1);setAdded(true);setTimeout(()=>setAdded(false),700)}} style={{width:22,height:22,borderRadius:'50%',background:added?'#4A6741':'#1C1A17',color:'#fff',fontSize:13,display:'flex',alignItems:'center',justifyContent:'center'}}>{added?'✓':'+'}</button></div> ); }

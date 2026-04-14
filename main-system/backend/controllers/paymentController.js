@@ -265,6 +265,29 @@ const getActivePaymentMethodByUniversity = async (req, res, next) => {
     }
 };
 
+const getAllPaymentMethodsByUniversity = async (req, res, next) => {
+    try {
+        const { university_id } = req.query;
+
+        if (!university_id) {
+            return error(res, 'University ID is required', 400);
+        }
+
+        const { rows } = await query(
+            `SELECT vpm.* FROM vendor_payment_methods vpm
+             JOIN users u ON vpm.vendor_id = u.id
+             WHERE u.university_id = $1 AND vpm.is_active = true
+             ORDER BY vpm.is_default DESC, vpm.created_at DESC`,
+            [university_id]
+        );
+
+        return success(res, rows);
+    } catch (err) {
+        console.error('Get all payment methods by university error:', err);
+        next(err);
+    }
+};
+
 // ── POST /payments/initiate ────────────────────────────────────
 // Now supports both Lipa and STK Push based on vendor configuration
 const initiatePayment = async (req, res, next) => {
@@ -775,6 +798,7 @@ module.exports = {
     togglePaymentMethodStatus,
     getActivePaymentMethod,
     getActivePaymentMethodByUniversity,
+    getAllPaymentMethodsByUniversity,
     confirmManualPayment,
     verifyPayment,
     getVendorTransactions,

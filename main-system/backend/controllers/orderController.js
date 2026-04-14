@@ -1,6 +1,6 @@
 const { query, withTransaction } = require('../../../shared/db/db');
 const { success, created, notFound, error, paginate } = require('../../../shared/utils/response');
-const logger = require('../../../shared/utils/logger');
+const { logger } = require('../../../shared/utils/logger');
 
 // ── POST /orders — create order (student or guest) ─────────────
 const createOrder = async (req, res, next) => {
