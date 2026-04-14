@@ -169,25 +169,37 @@ const deletePaymentMethod = async (req, res, next) => {
     try {
         const { id } = req.params;
         const vendorId = req.user.id;
+
+        console.log('Delete payment method request:', { id, vendorId });
+
+        // Get user's university ID
         const universityId = await getUserUniversity(vendorId);
 
         if (!universityId) {
-            return error(res, 'No university with your account', 400);
+            return error(res, 'No university associated with your account', 400);
         }
 
-        const { rows } = await query(
-            `DELETE FROM vendor_payment_methods WHERE id = $1 AND vendor_id = $2 AND university_id = $3 RETURNING id`
+        console.log('University ID:', universityId);
+
+        // Delete the payment method with all three conditions
+        const result = await query(
+            `DELETE FROM vendor_payment_methods
+             WHERE id = $1 AND vendor_id = $2 AND university_id = $3
+             RETURNING id`,
+            [id, vendorId, universityId]
         );
 
-        if (!rows[0]) return notFound(res, 'Payment method not found');
+        if (result.rows.length === 0) {
+            return notFound(res, 'Payment method not found or you do not have permission to delete it');
+        }
 
-        console.log(`Payment method ${id} deleted by vendor ${vendorId}`);
-        return success(res, null, 'Payment method deleted');
+        console.log(`Payment method ${id} deleted successfully by vendor ${vendorId}`);
+        return success(res, null, 'Payment method deleted successfully');
     } catch (err) {
         console.error('Delete payment method error:', err);
         next(err);
     }
-}
+};
 
 const togglePaymentMethodStatus = async (req, res, next) => {
     try {
@@ -215,6 +227,45 @@ const togglePaymentMethodStatus = async (req, res, next) => {
     }
 };
 
+const getServiceFee = async (req, res, next) => {
+    try {
+        const { rows } = await query(`SELECT setting_value FROM system_settings WHERE setting_key = 'service_fee_percentage'`);
+        let percentage = 2;
+        if (rows.length > 0) {
+            percentage = parseFloat(rows[0].setting_value);
+        }
+        return success(res, { percentage });
+    } catch (err) {
+        console.error('Get service fee error:', err);
+        next(err);
+    }
+};
+
+const updateServiceFee = async (req, res, next) => {
+    try {
+        const { percentage } = req.body;
+
+        if (percentage === undefined || percentage < 0 || percentage > 100) {
+            return error(res, 'Percentage must be between 0 and 100', 400);
+        }
+
+        await query(
+            `INSERT INTO system_settings (setting_key, setting_value, setting_type, updated_at, updated_by)
+             VALUES ('service_fee_percentage', $1, 'number', NOW(), $2)
+             ON CONFLICT (setting_key)
+             DO UPDATE SET setting_value = EXCLUDED.setting_value,
+                           setting_type = EXCLUDED.setting_type,
+                           updated_at = NOW(),
+                           updated_by = EXCLUDED.updated_by`,
+            [percentage.toString(), req.user?.id]
+        );
+
+        return success(res, { percentage }, 'Service fee updated');
+    } catch (err) {
+        console.error('Update service fee error:', err);
+        next(err);
+    }
+};
 
 const getActivePaymentMethod = async (req, res, next) => {
     try {
@@ -799,6 +850,8 @@ module.exports = {
     getActivePaymentMethod,
     getActivePaymentMethodByUniversity,
     getAllPaymentMethodsByUniversity,
+    getServiceFee,
+    updateServiceFee,
     confirmManualPayment,
     verifyPayment,
     getVendorTransactions,

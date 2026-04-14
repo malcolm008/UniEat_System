@@ -751,7 +751,7 @@
             }
         };
 
-        const payLabels = { mpesa: 'M-Pesa', tigo: 'Tigo Pesa', halo: 'HaloPesa', airtelmoney: 'Airtel Money', selcom: 'Selcom' };
+        const payLabels = { mpesa: 'M-Pesa', tigopesa: 'TigoPesa', halopesa: 'HaloPesa', airtelmoney: 'Airtel-Money', selcom: 'Selcom' };
 
         return (
             <div className={`cart-sidebar ${!isOpen ? 'hide-cart' : ''}`} style={{ background: '#FAFAF7', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto', position: 'relative' }}>
@@ -888,7 +888,7 @@
                                             }}
                                         >
                                             <div style={{ fontSize: 'clamp(18px, 5vw, 20px)' }}>
-                                                {method.provider === 'mpesa' ? '📱' : method.provider === 'tigopesa' ? '📱' : '💳'}
+                                                {method.provider === 'mpesa' ? '📱' : method.provider === 'tigopesa' ? '📱' : method.provider === 'airtelmoney' ? '📱' : method.provider === 'halopesa' ? '📱' : '💳'}
                                             </div>
                                             <div style={{ flex: 1 }}>
                                                 <div style={{ fontWeight: 600, fontSize: 'clamp(12px, 4vw, 13px)' }}>
@@ -2839,6 +2839,8 @@
         const [showAddModal, setShowAddModal] = useState(false);
         const [showEditModal, setShowEditModal] = useState(false);
         const [selectedMethod, setSelectedMethod] = useState(null);
+        const [serviceFeePercentage, setServiceFeePercentage] = useState(2);
+        const [isUpdatingServiceFee, setIsUpdatingServiceFee] = useState(false);
         const [formData, setFormData] = useState({
             provider: 'mpesa',
             method_type: 'lipa',
@@ -2855,8 +2857,8 @@
 
         const providers = [
             { value: 'mpesa', label: 'M-Pesa', icon: '📱', supports_stk: true },
-            { value: 'tigopesa', label: 'Tigo Pesa', icon: '📱', supports_stk: true },
-            { value: 'airtelmoney', label: 'Airtel Money', icon: '📱', supports_stk: true },
+            { value: 'tigopesa', label: 'TigoPesa', icon: '📱', supports_stk: true },
+            { value: 'airtelmoney', label: 'Airtel-Money', icon: '📱', supports_stk: true },
             { value: 'halopesa', label: 'HaloPesa', icon: '📱', supports_stk: false },
             { value: 'selcom', label: 'Selcom', icon: '💳', supports_stk: true }
         ];
@@ -2865,6 +2867,7 @@
             const handleResize = () => setIsMobile(window.innerWidth <= 768);
             window.addEventListener('resize', handleResize);
             loadPaymentMethods();
+            loadServiceFee();
             return () => window.removeEventListener('resize', handleResize);
         }, []);
 
@@ -2886,6 +2889,53 @@
 
             setLoading(false);
         };
+
+        const loadServiceFee = async () => {
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch('http://localhost:5000/api/settings/service-fee', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+                if (result.success && result.data) {
+                    setServiceFeePercentage(result.data.percentage);
+                }
+            } catch (error) {
+                console.error('Failed to load service fee:', error);
+            }
+        };
+
+        const updateServiceFee = async () => {
+            if (serviceFeePercentage < 0 || serviceFeePercentage > 100) {
+                showToast('Service fee must be between 0 and 100', 'error');
+                return;
+            }
+
+            setIsUpdatingServiceFee(true);
+
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch('http://localhost:5000/api/settings/service-fee', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ percentage: serviceFeePercentage })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    showToast('Service fee updated successfully', 'success')
+                } else {
+                    showToast(result.message || 'Failed to update service fee', 'error');
+                }
+            } catch (error) {
+                console.error('Update service fee error:', error);
+                showToast('Network error', 'error');
+            } finally {
+                setIsUpdatingServiceFee(false);
+            }
+        }
 
         const handleAddMethod = async () => {
             if (formData.method_type === 'lipa' && !formData.lipa_number) {
@@ -3072,6 +3122,61 @@
                     </Btn>
                 </div>
 
+                {/* Service Fee configuration section */}
+                <div style={{
+                    background: 'linear-gradient(135deg, #2a2a2a, #1a1a1a)',
+                    borderRadius: 12,
+                    padding: 20,
+                    marginBottom: 24,
+                    border: '1px solid #3a3a3a'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                        <div style={{ fontSize: 28 }}>💰</div>
+                        <div>
+                            <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>Service Fee Configuration</div>
+                            <div style={{ fontSize: 12, color: '#aaa' }}>
+                                Set the service fee percentage charged on each order
+                            </div>
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                        <div style={{ flex: 1, minWidth: 200 }}>
+                            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>
+                                Service Fee Percentage (%)
+                            </label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <input
+                                    type="number"
+                                    value={serviceFeePercentage}
+                                    onChange={e => setServiceFeePercentage(parseFloat(e.target.value))}
+                                    min="0"
+                                    max="100"
+                                    step="0.5"
+                                    style={{
+                                        width: '120px',
+                                        padding: '10px 12px',
+                                        background: '#2a2a2a',
+                                        border: '1px solid #3a3a3a',
+                                        borderRadius: 8,
+                                        color: '#fff',
+                                        fontSize: 14
+                                    }}
+                                />
+                                <span style={{ fontSize: 14, color: '#aaa' }}>% of subtotal</span>
+                                <Btn variant="primary" onClick={updateServiceFee} disabled={isUpdatingServiceFee} small>
+                                    {isUpdatingServiceFee ? 'Saving...' : 'Save'}
+                                </Btn>
+                            </div>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 200 }}>
+                            <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>
+                                Example: For a TZS 10,000 order, service fee will be TZS {Math.round(10000 * serviceFeePercentage / 100)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
                 {/* Info Banner */}
                 <div style={{
                     background: 'linear-gradient(135deg, #1a3a5a, #0a2a4a)',
@@ -3094,7 +3199,7 @@
                 </div>
 
                 {/* Payment Methods List */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12}}>
                     {paymentMethods.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: 60, background: '#1a1a1a', borderRadius: 12, border: '1px solid #2a2a2a' }}>
                             <div style={{ fontSize: 48, marginBottom: 16 }}>💳</div>
@@ -3110,14 +3215,14 @@
                                 padding: 16,
                                 opacity: method.is_active ? 1 : 0.6
                             }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12}}>
                                     <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                                         <div style={{ fontSize: 32 }}>
                                             {method.method_type === 'stk' ? '⚡' : '📱'}
                                         </div>
                                         <div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                                <div style={{ fontWeight: 700, fontSize: 16 }}>
+                                                <div style={{ fontWeight: 700, fontSize: 16 , color: '#CBC1AE'}}>
                                                     {providers.find(p => p.value === method.provider)?.label || method.provider}
                                                 </div>
                                                 <Badge type={method.method_type === 'stk' ? 'active' : 'pending'}>
@@ -3169,8 +3274,7 @@
                                     <div style={{ marginTop: 12, padding: 12, background: '#0a2a4a', borderRadius: 8 }}>
                                         <div style={{ fontSize: 11, color: '#64b5f6', marginBottom: 4 }}>💡 Upgrade to STK Push</div>
                                         <div style={{ fontSize: 11, color: '#aaa' }}>
-                                            To enable automatic payments, get API credentials from {method.provider.toUpperCase()}
-                                            and add them in edit mode. The system will automatically switch to STK Push.
+                                            To enable automatic payments, get API credentials from <b>{method.provider.toUpperCase()}</b> and add them in edit mode. The system will automatically switch to STK Push.
                                         </div>
                                     </div>
                                 )}

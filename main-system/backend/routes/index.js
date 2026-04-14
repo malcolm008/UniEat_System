@@ -79,6 +79,8 @@ orderRouter.patch('/:id/status', authMw.authenticate, authMw.requireStaff,
      deletePaymentMethod,
      togglePaymentMethodStatus,
      getActivePaymentMethod,
+     getServiceFee,
+     updateServiceFee,
      getActivePaymentMethodByUniversity,
      getAllPaymentMethodsByUniversity,
      confirmManualPayment,
@@ -104,6 +106,8 @@ orderRouter.patch('/:id/status', authMw.authenticate, authMw.requireStaff,
  paymentRouter.get('/vendor/methods/active', pAuth.authenticate, getActivePaymentMethod);
  paymentRouter.get('/vendor/methods/by-university', pAuth.authenticate, getActivePaymentMethodByUniversity);
  paymentRouter.get('/vendor/methods/by-university/all', authenticate, getAllPaymentMethodsByUniversity);
+ paymentRouter.get('/settings/service-fee', authenticate, getServiceFee);
+ paymentRouter.put('/settings/service-fee', authenticate, updateServiceFee);
 
  // Transaction routes
  paymentRouter.get('/vendor/transactions', pAuth.authenticate, getVendorTransactions);
