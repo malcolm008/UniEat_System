@@ -68,7 +68,7 @@ const migrations = [
       created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
 
-  // ── SYSTEM-SETTINGS  ─────────────────────────────
+  // ── SYSTEM-SETTINGS (FIXED: removed foreign key constraint) ─────────────
   `CREATE TABLE IF NOT EXISTS system_settings (
       id SERIAL PRIMARY KEY,
       setting_key VARCHAR(100) UNIQUE NOT NULL,
@@ -76,7 +76,7 @@ const migrations = [
       setting_type VARCHAR(20) DEFAULT 'string',
       description TEXT,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_by UUID REFERENCES super_admins(id)
+      updated_by UUID
   )`,
 
   // ── USERS ──────────────────────────────────────────────────────

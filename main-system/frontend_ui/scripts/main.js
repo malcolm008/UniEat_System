@@ -2910,7 +2910,7 @@
         const loadServiceFee = async () => {
             try {
                 const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-                const response = await fetch('http://localhost:5000/api/settings/service-fee', {
+                const response = await fetch('http://localhost:5000/api/payments/settings/service-fee', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const result = await response.json();
@@ -2932,7 +2932,7 @@
 
             try {
                 const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-                const response = await fetch('http://localhost:5000/api/settings/service-fee', {
+                const response = await fetch('http://localhost:5000/api/payments/settings/service-fee', {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',

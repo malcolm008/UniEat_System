@@ -229,11 +229,15 @@ const togglePaymentMethodStatus = async (req, res, next) => {
 
 const getServiceFee = async (req, res, next) => {
     try {
-        const { rows } = await query(`SELECT setting_value FROM system_settings WHERE setting_key = 'service_fee_percentage'`);
-        let percentage = 2;
+        const { rows } = await query(
+            `SELECT setting_value FROM system_settings WHERE setting_key = 'service_fee_percentage'`
+        );
+
+        let percentage = 2; // default
         if (rows.length > 0) {
             percentage = parseFloat(rows[0].setting_value);
         }
+
         return success(res, { percentage });
     } catch (err) {
         console.error('Get service fee error:', err);

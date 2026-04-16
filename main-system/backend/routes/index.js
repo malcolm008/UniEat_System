@@ -67,58 +67,57 @@ orderRouter.patch('/:id/status', authMw.authenticate, authMw.requireStaff,
 
 
 // ── PAYMENT ROUTES ─────────────────────────────────────────────
- const paymentRouter = require('express').Router();
- const {
-     initiatePayment,
-     confirmPayment,
-     verifyQR,
-     redeemQR,
-     getQR,
-     getVendorPaymentMethods,
-     upsertPaymentMethod,
-     deletePaymentMethod,
-     togglePaymentMethodStatus,
-     getActivePaymentMethod,
-     getServiceFee,
-     updateServiceFee,
-     getActivePaymentMethodByUniversity,
-     getAllPaymentMethodsByUniversity,
-     confirmManualPayment,
-     verifyPayment,
-     getVendorTransactions,
-     getPaymentStatus
- } = require('../controllers/paymentController');
- const pAuth = require('../../../shared/middleware/auth');
+const paymentRouter = require('express').Router();
+const {
+    initiatePayment,
+    confirmPayment,
+    verifyQR,
+    redeemQR,
+    getQR,
+    getVendorPaymentMethods,
+    upsertPaymentMethod,
+    deletePaymentMethod,
+    togglePaymentMethodStatus,
+    getActivePaymentMethod,
+    getServiceFee,
+    updateServiceFee,
+    getActivePaymentMethodByUniversity,
+    getAllPaymentMethodsByUniversity,
+    confirmManualPayment,
+    verifyPayment,
+    getVendorTransactions,
+    getPaymentStatus
+} = require('../controllers/paymentController');
+const pAuth = require('../../../shared/middleware/auth');
 
- // Existing routes
- paymentRouter.post('/initiate', pAuth.optionalAuth, initiatePayment);
- paymentRouter.post('/confirm', confirmPayment);
- paymentRouter.post('/verify-qr', pAuth.authenticate, pAuth.requireStaff, verifyQR);
- paymentRouter.post('/redeem-qr', pAuth.authenticate, pAuth.requireStaff, redeemQR);
- paymentRouter.get('/:orderId/qr', pAuth.optionalAuth, getQR);
+// Existing routes
+paymentRouter.post('/initiate', pAuth.optionalAuth, initiatePayment);
+paymentRouter.post('/confirm', confirmPayment);
+paymentRouter.post('/verify-qr', pAuth.authenticate, pAuth.requireStaff, verifyQR);
+paymentRouter.post('/redeem-qr', pAuth.authenticate, pAuth.requireStaff, redeemQR);
+paymentRouter.get('/:orderId/qr', pAuth.optionalAuth, getQR);
 
- // Payment management routes
- paymentRouter.get('/vendor/methods', pAuth.authenticate, getVendorPaymentMethods);
- paymentRouter.post('/vendor/methods', pAuth.authenticate, upsertPaymentMethod);
- paymentRouter.put('/vendor/methods/:id', pAuth.authenticate, upsertPaymentMethod);
- paymentRouter.delete('/vendor/methods/:id', pAuth.authenticate, deletePaymentMethod);
- paymentRouter.patch('/vendor/methods/:id/toggle', pAuth.authenticate, togglePaymentMethodStatus);
- paymentRouter.get('/vendor/methods/active', pAuth.authenticate, getActivePaymentMethod);
- paymentRouter.get('/vendor/methods/by-university', pAuth.authenticate, getActivePaymentMethodByUniversity);
- paymentRouter.get('/vendor/methods/by-university/all', authenticate, getAllPaymentMethodsByUniversity);
- paymentRouter.get('/settings/service-fee', authenticate, getServiceFee);
- paymentRouter.put('/settings/service-fee', authenticate, updateServiceFee);
+// Payment management routes
+paymentRouter.get('/vendor/methods', pAuth.authenticate, getVendorPaymentMethods);
+paymentRouter.post('/vendor/methods', pAuth.authenticate, upsertPaymentMethod);
+paymentRouter.put('/vendor/methods/:id', pAuth.authenticate, upsertPaymentMethod);
+paymentRouter.delete('/vendor/methods/:id', pAuth.authenticate, deletePaymentMethod);
+paymentRouter.patch('/vendor/methods/:id/toggle', pAuth.authenticate, togglePaymentMethodStatus);
+paymentRouter.get('/vendor/methods/active', pAuth.authenticate, getActivePaymentMethod);
+paymentRouter.get('/vendor/methods/by-university', pAuth.authenticate, getActivePaymentMethodByUniversity);
+paymentRouter.get('/vendor/methods/by-university/all', pAuth.authenticate, getAllPaymentMethodsByUniversity);  // Fixed: pAuth.authenticate
+paymentRouter.get('/settings/service-fee', pAuth.authenticate, getServiceFee);  // Fixed: pAuth.authenticate
+paymentRouter.put('/settings/service-fee', pAuth.authenticate, updateServiceFee);  // Fixed: pAuth.authenticate
 
- // Transaction routes
- paymentRouter.get('/vendor/transactions', pAuth.authenticate, getVendorTransactions);
- paymentRouter.get('/status/:orderId', pAuth.authenticate, getPaymentStatus);
+// Transaction routes
+paymentRouter.get('/vendor/transactions', pAuth.authenticate, getVendorTransactions);
+paymentRouter.get('/status/:orderId', pAuth.authenticate, getPaymentStatus);
 
- // Manual payment flows
- paymentRouter.post('/confirm-manual', pAuth.authenticate, confirmManualPayment);
- paymentRouter.post('/verify-payment', pAuth.authenticate, verifyPayment);
+// Manual payment flows
+paymentRouter.post('/confirm-manual', pAuth.authenticate, confirmManualPayment);
+paymentRouter.post('/verify-payment', pAuth.authenticate, verifyPayment);
 
- module.exports = paymentRouter;
-
+module.exports = paymentRouter;
 
 // ── USER ROUTES (Complete CRUD for staff management) ───────────
 const userRouter = require('express').Router();
