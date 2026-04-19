@@ -2,17 +2,40 @@ const { query, withTransaction } = require('../../../shared/db/db');
 const { success, created, notFound, error, paginate } = require('../../../shared/utils/response');
 const { logger } = require('../../../shared/utils/logger');
 
-// ── POST /orders — create order (student or guest) ─────────────
 const createOrder = async (req, res, next) => {
   try {
-    const { items, guest_name, guest_phone, notes } = req.body;
+    const { items, guest_name, guest_phone, notes, vendor_id, university_id } = req.body;
     if (!items?.length) return error(res, 'Order must contain at least one item');
 
+    let finalVendorId = vendor_id;
+    let finalUniversityId = university_id;
+
+    if (!finalVendorId && items.length > 0) {
+      const firstItemId = items[0].menu_item_id;
+      const { rows: vendorRows } = await query(
+        `SELECT created_by as vendor_id, university_id FROM menu_items WHERE id = $1`,
+        [firstItemId]
+      );
+      if (vendorRows[0]) {
+        finalVendorId = vendorRows[0].vendor_id;
+        finalUniversityId = vendorRows[0].university_id;
+      }
+    }
+
+    if (!finalVendorId && req.user) {
+      finalVendorId = req.user.id;
+      finalUniversityId = req.user.university_id;
+    }
+
+    const { rows: feeRows } = await query(
+      `SELECT setting_value FROM system_settings WHERE setting_key = 'service_fee_percentage'`
+    );
+    const serviceFeePercentage = feeRows.length > 0 ? parseFloat(feeRows[0].setting_value) : 2;
+
     const result = await withTransaction(async (client) => {
-      // Fetch menu items & validate
       const ids = items.map(i => i.menu_item_id);
       const { rows: menuItems } = await client.query(
-        `SELECT id, name, price, is_available FROM menu_items WHERE id = ANY($1::uuid[])`,
+        `SELECT id, name, price, is_available, created_by as vendor_id, university_id FROM menu_items WHERE id = ANY($1::uuid[])`,
         [ids]
       );
 
@@ -26,20 +49,26 @@ const createOrder = async (req, res, next) => {
         if (!mi.is_available) throw Object.assign(new Error(`"${mi.name}" is not available`), { statusCode: 400 });
         const lineTotal = mi.price * item.quantity;
         subtotal += lineTotal;
-        orderLines.push({ menu_item_id: mi.id, name: mi.name, quantity: item.quantity, unit_price: mi.price, subtotal: lineTotal });
+        orderLines.push({
+          menu_item_id: mi.id,
+          name: mi.name,
+          quantity: item.quantity,
+          unit_price: mi.price,
+          subtotal: lineTotal
+        });
+        if (!finalVendorId) finalVendorId = mi.vendor_id;
+        if (!finalUniversityId) finalUniversityId = mi.university_id;
       }
 
-      const service_charge = Math.round(subtotal * 0.02);
+      const service_charge = Math.round(subtotal * (serviceFeePercentage / 100));
       const total = subtotal + service_charge;
 
-      // Create order
       const { rows: [order] } = await client.query(`
-        INSERT INTO orders (user_id, guest_name, guest_phone, status, subtotal, service_charge, total, notes)
-        VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
+        INSERT INTO orders (user_id, vendor_id, university_id, guest_name, guest_phone, status, subtotal, service_charge, total, notes)
+        VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, $9)
         RETURNING *
-      `, [req.user?.id || null, guest_name || null, guest_phone || null, subtotal, service_charge, total, notes || null]);
+      `, [req.user?.id || null, finalVendorId, finalUniversityId, guest_name || null, guest_phone || null, subtotal, service_charge, total, notes || null]);
 
-      // Insert order items
       for (const line of orderLines) {
         await client.query(`
           INSERT INTO order_items (order_id, menu_item_id, name, quantity, unit_price, subtotal)
@@ -50,7 +79,7 @@ const createOrder = async (req, res, next) => {
       return { order, orderLines };
     });
 
-    logger.info(`Order created: ${result.order.id} total=${result.order.total}`);
+    logger.info(`Order created: ${result.order.id} total=${result.order.total} (service fee: ${serviceFeePercentage}%)`);
     return created(res, result.order, 'Order created');
   } catch (err) {
     if (err.statusCode) return error(res, err.message, err.statusCode);

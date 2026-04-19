@@ -229,11 +229,18 @@ const togglePaymentMethodStatus = async (req, res, next) => {
 
 const getServiceFee = async (req, res, next) => {
     try {
+        const universityId = await getUserUniversity(req.user.id);
+
+        if (!universityId) {
+            return error(res, 'No university associated with your account', 400);
+        }
+
         const { rows } = await query(
-            `SELECT setting_value FROM system_settings WHERE setting_key = 'service_fee_percentage'`
+            `SELECT setting_value FROM system_settings WHERE setting_key = 'service_fee_percentage' AND university_id = $1`,
+            [universityId]
         );
 
-        let percentage = 2; // default
+        let percentage = 2;
         if (rows.length > 0) {
             percentage = parseFloat(rows[0].setting_value);
         }
@@ -248,20 +255,25 @@ const getServiceFee = async (req, res, next) => {
 const updateServiceFee = async (req, res, next) => {
     try {
         const { percentage } = req.body;
+        const universityId = await getUserUniversity(req.user.id);
+
+        if (!universityId) {
+            return error(res, 'No university associated with your account', 400);
+        }
 
         if (percentage === undefined || percentage < 0 || percentage > 100) {
             return error(res, 'Percentage must be between 0 and 100', 400);
         }
 
         await query(
-            `INSERT INTO system_settings (setting_key, setting_value, setting_type, updated_at, updated_by)
-             VALUES ('service_fee_percentage', $1, 'number', NOW(), $2)
-             ON CONFLICT (setting_key)
+            `INSERT INTO system_settings (setting_key, setting_value, setting_type, updated_at, updated_by, university_id)
+             VALUES ('service_fee_percentage', $1, 'number', NOW(), $2, $3)
+             ON CONFLICT (setting_key, university_id)
              DO UPDATE SET setting_value = EXCLUDED.setting_value,
                            setting_type = EXCLUDED.setting_type,
                            updated_at = NOW(),
                            updated_by = EXCLUDED.updated_by`,
-            [percentage.toString(), req.user?.id]
+            [percentage.toString(), req.user?.id, universityId]
         );
 
         return success(res, { percentage }, 'Service fee updated');
@@ -344,7 +356,6 @@ const getAllPaymentMethodsByUniversity = async (req, res, next) => {
 };
 
 // ── POST /payments/initiate ────────────────────────────────────
-// Now supports both Lipa and STK Push based on vendor configuration
 const initiatePayment = async (req, res, next) => {
     try {
         const { order_id, phone_number } = req.body;
