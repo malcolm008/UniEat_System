@@ -4,40 +4,52 @@ const { logger } = require('../../../shared/utils/logger');
 
 const createOrder = async (req, res, next) => {
   try {
-    const { items, guest_name, guest_phone, notes, vendor_id, university_id } = req.body;
+    const { items, guest_name, guest_phone, notes, university_id } = req.body;
     if (!items?.length) return error(res, 'Order must contain at least one item');
 
-    let finalVendorId = vendor_id;
-    let finalUniversityId = university_id;
+    let finalUniversityId = university_id || req.user?.university_id;
 
-    if (!finalVendorId && items.length > 0) {
+    if (!finalUniversityId && items.length > 0) {
       const firstItemId = items[0].menu_item_id;
-      const { rows: vendorRows } = await query(
-        `SELECT created_by as vendor_id, university_id FROM menu_items WHERE id = $1`,
+      const { rows: itemRows } = await query(
+        `SELECT university_id FROM menu_items WHERE id = $1`,
         [firstItemId]
       );
-      if (vendorRows[0]) {
-        finalVendorId = vendorRows[0].vendor_id;
-        finalUniversityId = vendorRows[0].university_id;
+      if (itemRows[0]) {
+        finalUniversityId = itemRows[0].university_id;
       }
     }
 
-    if (!finalVendorId && req.user) {
-      finalVendorId = req.user.id;
-      finalUniversityId = req.user.university_id;
+    if (!finalUniversityId) {
+      return error(res, 'Unable to determine university for this order', 400);
     }
 
+    const { rows: vendorRows } = await query(
+      `SELECT vendor_id FROM vendor_payment_methods
+       WHERE university_id = $1 AND is_active = true
+       LIMIT 1`,
+      [finalUniversityId]
+    );
+
+    const vendorId = vendorRows.length > 0 ? vendorRows[0].vendor_id : null;
+
     const { rows: feeRows } = await query(
-      `SELECT setting_value FROM system_settings WHERE setting_key = 'service_fee_percentage'`
+      `SELECT setting_value FROM system_settings
+       WHERE setting_key = 'service_fee_percentage' AND university_id = $1`,
+      [finalUniversityId]
     );
     const serviceFeePercentage = feeRows.length > 0 ? parseFloat(feeRows[0].setting_value) : 2;
 
     const result = await withTransaction(async (client) => {
       const ids = items.map(i => i.menu_item_id);
       const { rows: menuItems } = await client.query(
-        `SELECT id, name, price, is_available, created_by as vendor_id, university_id FROM menu_items WHERE id = ANY($1::uuid[])`,
-        [ids]
+        `SELECT id, name, price, is_available FROM menu_items WHERE id = ANY($1::uuid[]) AND university_id = $2`,
+        [ids, finalUniversityId]
       );
+
+      if (menuItems.length !== ids.length) {
+        throw new Error('Some items are not available in this university');
+      }
 
       const itemMap = menuItems.reduce((m, i) => ({ ...m, [i.id]: i }), {});
       let subtotal = 0;
@@ -56,8 +68,6 @@ const createOrder = async (req, res, next) => {
           unit_price: mi.price,
           subtotal: lineTotal
         });
-        if (!finalVendorId) finalVendorId = mi.vendor_id;
-        if (!finalUniversityId) finalUniversityId = mi.university_id;
       }
 
       const service_charge = Math.round(subtotal * (serviceFeePercentage / 100));
@@ -67,7 +77,7 @@ const createOrder = async (req, res, next) => {
         INSERT INTO orders (user_id, vendor_id, university_id, guest_name, guest_phone, status, subtotal, service_charge, total, notes)
         VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, $9)
         RETURNING *
-      `, [req.user?.id || null, finalVendorId, finalUniversityId, guest_name || null, guest_phone || null, subtotal, service_charge, total, notes || null]);
+      `, [req.user?.id || null, vendorId, finalUniversityId, guest_name || null, guest_phone || null, subtotal, service_charge, total, notes || null]);
 
       for (const line of orderLines) {
         await client.query(`
@@ -79,7 +89,7 @@ const createOrder = async (req, res, next) => {
       return { order, orderLines };
     });
 
-    logger.info(`Order created: ${result.order.id} total=${result.order.total} (service fee: ${serviceFeePercentage}%)`);
+    logger.info(`Order created: ${result.order.id} total=${result.order.total} for university ${finalUniversityId}`);
     return created(res, result.order, 'Order created');
   } catch (err) {
     if (err.statusCode) return error(res, err.message, err.statusCode);
