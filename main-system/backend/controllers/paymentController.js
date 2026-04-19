@@ -360,9 +360,9 @@ const initiatePayment = async (req, res, next) => {
     try {
         const { order_id, phone_number } = req.body;
 
-        // Get order with vendor info
         const { rows: [order] } = await query(
-            `SELECT o.*, u.id as vendor_id FROM orders o
+            `SELECT o.*, u.id as vendor_id, o.university_id
+             FROM orders o
              JOIN users u ON o.vendor_id = u.id
              WHERE o.id = $1`,
             [order_id]
@@ -370,7 +370,6 @@ const initiatePayment = async (req, res, next) => {
         if (!order) return notFound(res, 'Order not found');
         if (order.status !== 'pending') return error(res, `Order is already ${order.status}`);
 
-        // Get vendor's active payment method
         const { rows: [paymentMethod] } = await query(
             `SELECT * FROM vendor_payment_methods
              WHERE vendor_id = $1 AND is_active = true
@@ -382,26 +381,22 @@ const initiatePayment = async (req, res, next) => {
             return error(res, 'Vendor has no active payment method configured', 400);
         }
 
-        // Create payment record
         const { rows: [payment] } = await query(`
-            INSERT INTO payments (order_id, provider, phone_number, amount, status, payment_method)
-            VALUES ($1, $2, $3, $4, 'processing', $5)
+            INSERT INTO payments (order_id, provider, phone_number, amount, status, payment_method, university_id)
+            VALUES ($1, $2, $3, $4, 'processing', $5, $6)
             RETURNING *
-        `, [order_id, paymentMethod.provider, phone_number, order.total, paymentMethod.method_type]);
+        `, [order_id, paymentMethod.provider, phone_number, order.total, paymentMethod.method_type, order.university_id]);
 
-        // Create transaction record
         const transactionCode = 'TXN-' + Date.now() + '-' + crypto.randomBytes(4).toString('hex').toUpperCase();
         const { rows: [transaction] } = await query(`
-            INSERT INTO transactions (order_id, vendor_id, customer_id, amount, phone_number, transaction_code, provider, payment_method, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'processing')
+            INSERT INTO transactions (order_id, vendor_id, customer_id, university_id, amount, phone_number, transaction_code, provider, payment_method, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'processing')
             RETURNING *
-        `, [order_id, order.vendor_id, req.user.id, order.total, phone_number, transactionCode, paymentMethod.provider, paymentMethod.method_type]);
+        `, [order_id, order.vendor_id, req.user.id, order.university_id, order.total, phone_number, transactionCode, paymentMethod.provider, paymentMethod.method_type]);
 
         logger.info(`Payment initiated: ${payment.id} for order ${order_id} using ${paymentMethod.method_type} (${paymentMethod.provider})`);
 
-        // Determine flow based on payment method type
         if (paymentMethod.method_type === 'lipa') {
-            // Manual Lipa flow - return instructions
             return success(res, {
                 payment_id: payment.id,
                 transaction_id: transaction.id,
@@ -420,12 +415,8 @@ const initiatePayment = async (req, res, next) => {
                 message: `Please complete payment to ${paymentMethod.lipa_number} using reference ${transaction.transaction_code}`
             });
         } else {
-            // STK Push flow - integrate with payment gateway
-            // TODO: Implement actual STK Push integration with Selcom/other provider
-            // For now, simulate STK push
             logger.info(`STK Push simulation: ${paymentMethod.provider} - ${phone_number} - TZS ${order.total}`);
 
-            // Simulate callback after 5 seconds (in production, this would be a webhook)
             setTimeout(async () => {
                 try {
                     await query(`
@@ -448,9 +439,9 @@ const initiatePayment = async (req, res, next) => {
                     });
 
                     await query(`
-                        INSERT INTO qr_tokens (order_id, token, qr_image_url, expires_at)
-                        VALUES ($1, $2, $3, $4)
-                    `, [order_id, token, qrImage, expiresAt]);
+                        INSERT INTO qr_tokens (order_id, token, qr_image_url, expires_at, university_id)
+                        VALUES ($1, $2, $3, $4, $5)
+                    `, [order_id, token, qrImage, expiresAt, order.university_id]);
 
                     logger.info(`STK Push payment confirmed for order ${order_id}`);
                 } catch (err) {
@@ -477,14 +468,12 @@ const initiatePayment = async (req, res, next) => {
 };
 
 // ── POST /payments/confirm-manual ──────────────────────────────
-// User confirms manual Lipa payment with transaction ID
 const confirmManualPayment = async (req, res, next) => {
     try {
         const { transaction_id, transaction_code, phone_number } = req.body;
 
-        // Find transaction
         const { rows: [transaction] } = await query(
-            `SELECT t.*, o.id as order_id, o.status as order_status
+            `SELECT t.*, o.id as order_id, o.status as order_status, o.university_id
              FROM transactions t
              JOIN orders o ON t.order_id = o.id
              WHERE t.id = $1 OR t.transaction_code = $2`,
@@ -497,7 +486,6 @@ const confirmManualPayment = async (req, res, next) => {
             return error(res, `Payment already ${transaction.status}`, 400);
         }
 
-        // Update transaction to pending_verification
         await query(
             `UPDATE transactions
              SET status = 'pending_verification',
@@ -507,7 +495,6 @@ const confirmManualPayment = async (req, res, next) => {
             [phone_number, transaction.id]
         );
 
-        // Update payment record
         await query(
             `UPDATE payments
              SET status = 'pending_verification', updated_at = NOW()
@@ -515,7 +502,6 @@ const confirmManualPayment = async (req, res, next) => {
             [transaction.order_id]
         );
 
-        // Update order status
         await query(
             `UPDATE orders SET status = 'pending_verification', updated_at = NOW() WHERE id = $1`,
             [transaction.order_id]
@@ -536,14 +522,13 @@ const confirmManualPayment = async (req, res, next) => {
 };
 
 // ── POST /payments/verify-payment ──────────────────────────────
-// Vendor verifies manual payment
 const verifyPayment = async (req, res, next) => {
     try {
         const { transaction_id, is_verified, notes } = req.body;
         const vendorId = req.user.id;
 
         const { rows: [transaction] } = await query(
-            `SELECT t.*, o.vendor_id
+            `SELECT t.*, o.vendor_id, o.university_id
              FROM transactions t
              JOIN orders o ON t.order_id = o.id
              WHERE t.id = $1 AND o.vendor_id = $2`,
@@ -558,7 +543,6 @@ const verifyPayment = async (req, res, next) => {
 
         if (is_verified) {
             await withTransaction(async (client) => {
-                // Update transaction to success
                 await client.query(
                     `UPDATE transactions
                      SET status = 'success',
@@ -570,7 +554,6 @@ const verifyPayment = async (req, res, next) => {
                     [vendorId, notes, transaction.id]
                 );
 
-                // Update payment record
                 await client.query(
                     `UPDATE payments
                      SET status = 'success', completed_at = NOW()
@@ -578,13 +561,11 @@ const verifyPayment = async (req, res, next) => {
                     [transaction.order_id]
                 );
 
-                // Update order status to paid
                 await client.query(
                     `UPDATE orders SET status = 'paid', updated_at = NOW() WHERE id = $1`,
                     [transaction.order_id]
                 );
 
-                // Generate QR code for order pickup
                 const token = crypto.randomBytes(24).toString('hex');
                 const expiryMins = parseInt(process.env.QR_EXPIRY_MINUTES) || 30;
                 const expiresAt = new Date(Date.now() + expiryMins * 60 * 1000);
@@ -596,9 +577,9 @@ const verifyPayment = async (req, res, next) => {
                 });
 
                 await client.query(
-                    `INSERT INTO qr_tokens (order_id, token, qr_image_url, expires_at)
-                     VALUES ($1, $2, $3, $4)`,
-                    [transaction.order_id, token, qrImage, expiresAt]
+                    `INSERT INTO qr_tokens (order_id, token, qr_image_url, expires_at, university_id)
+                     VALUES ($1, $2, $3, $4, $5)`,
+                    [transaction.order_id, token, qrImage, expiresAt, transaction.university_id]
                 );
             });
 
@@ -609,7 +590,6 @@ const verifyPayment = async (req, res, next) => {
                 message: 'Payment verified successfully'
             });
         } else {
-            // Mark as failed
             await query(
                 `UPDATE transactions
                  SET status = 'failed',

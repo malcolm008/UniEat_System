@@ -566,6 +566,7 @@
                 for (const item of cartItems) {
                     if (!item.id) throw new Error(`Item "${item.name || 'unknown'}" has no valid ID`);
                 }
+
                 const orderData = {
                     items: cartItems.map(item => ({
                         menu_item_id: item.id,
@@ -578,8 +579,10 @@
                     subtotal: subtotal,
                     service_charge: service,
                     guest_name: accountName || undefined,
-                    guest_phone: phone || undefined
+                    guest_phone: phone || undefined,
+                    university_id: universityId
                 };
+
                 const response = await fetch('http://localhost:5000/api/orders', {
                     method: 'POST',
                     headers: {
