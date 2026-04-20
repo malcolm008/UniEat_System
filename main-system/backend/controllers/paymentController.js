@@ -355,11 +355,11 @@ const getAllPaymentMethodsByUniversity = async (req, res, next) => {
     }
 };
 
-// ── POST /payments/initiate ────────────────────────────────────
 const initiatePayment = async (req, res, next) => {
     try {
-        const { order_id, phone_number } = req.body;
+        const { order_id, phone_number, payment_method_id } = req.body;
 
+        // Get order with vendor and university info
         const { rows: [order] } = await query(
             `SELECT o.*, u.id as vendor_id, o.university_id
              FROM orders o
@@ -370,37 +370,38 @@ const initiatePayment = async (req, res, next) => {
         if (!order) return notFound(res, 'Order not found');
         if (order.status !== 'pending') return error(res, `Order is already ${order.status}`);
 
+        // Get vendor's active payment method
         const { rows: [paymentMethod] } = await query(
             `SELECT * FROM vendor_payment_methods
-             WHERE vendor_id = $1 AND is_active = true
-             ORDER BY is_default DESC LIMIT 1`,
-            [order.vendor_id]
+             WHERE id = $1 AND is_active = true`,
+            [payment_method_id]
         );
 
         if (!paymentMethod) {
             return error(res, 'Vendor has no active payment method configured', 400);
         }
 
+        // Create payment record - NO transaction_id generated here (will be provided by user)
         const { rows: [payment] } = await query(`
             INSERT INTO payments (order_id, provider, phone_number, amount, status, payment_method, university_id)
-            VALUES ($1, $2, $3, $4, 'processing', $5, $6)
+            VALUES ($1, $2, $3, $4, 'pending', $5, $6)
             RETURNING *
         `, [order_id, paymentMethod.provider, phone_number, order.total, paymentMethod.method_type, order.university_id]);
 
-        const transactionCode = 'TXN-' + Date.now() + '-' + crypto.randomBytes(4).toString('hex').toUpperCase();
+        // Create transaction record - NO transaction_code auto-generated
         const { rows: [transaction] } = await query(`
-            INSERT INTO transactions (order_id, vendor_id, customer_id, university_id, amount, phone_number, transaction_code, provider, payment_method, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'processing')
+            INSERT INTO transactions (order_id, vendor_id, customer_id, university_id, amount, phone_number, provider, payment_method, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
             RETURNING *
-        `, [order_id, order.vendor_id, req.user.id, order.university_id, order.total, phone_number, transactionCode, paymentMethod.provider, paymentMethod.method_type]);
+        `, [order_id, order.vendor_id, req.user.id, order.university_id, order.total, phone_number, paymentMethod.provider, paymentMethod.method_type]);
 
         logger.info(`Payment initiated: ${payment.id} for order ${order_id} using ${paymentMethod.method_type} (${paymentMethod.provider})`);
 
+        // For Lipa (manual) - return instructions for user to pay and enter transaction ID
         if (paymentMethod.method_type === 'lipa') {
             return success(res, {
                 payment_id: payment.id,
                 transaction_id: transaction.id,
-                transaction_code: transaction.transaction_code,
                 order_id,
                 provider: paymentMethod.provider,
                 amount: order.total,
@@ -409,14 +410,15 @@ const initiatePayment = async (req, res, next) => {
                 payment_instructions: {
                     lipa_number: paymentMethod.lipa_number,
                     account_name: paymentMethod.account_name,
-                    reference: transaction.transaction_code,
-                    message: `Please send ${order.total} TZS to ${paymentMethod.provider} number ${paymentMethod.lipa_number} with reference ${transaction.transaction_code}`
+                    message: `Please send ${order.total} TZS to ${paymentMethod.provider} number ${paymentMethod.lipa_number}`
                 },
-                message: `Please complete payment to ${paymentMethod.lipa_number} using reference ${transaction.transaction_code}`
+                message: `Please complete payment to ${paymentMethod.lipa_number} and then enter your transaction ID below.`
             });
         } else {
+            // STK Push flow - automated
             logger.info(`STK Push simulation: ${paymentMethod.provider} - ${phone_number} - TZS ${order.total}`);
 
+            // Simulate callback after 5 seconds
             setTimeout(async () => {
                 try {
                     await query(`
@@ -427,7 +429,6 @@ const initiatePayment = async (req, res, next) => {
                     `, [transaction.id]);
                     await query(`UPDATE orders SET status = 'paid' WHERE id = $1`, [order_id]);
 
-                    // Generate QR code for order pickup
                     const token = crypto.randomBytes(24).toString('hex');
                     const expiryMins = parseInt(process.env.QR_EXPIRY_MINUTES) || 30;
                     const expiresAt = new Date(Date.now() + expiryMins * 60 * 1000);
@@ -452,7 +453,6 @@ const initiatePayment = async (req, res, next) => {
             return success(res, {
                 payment_id: payment.id,
                 transaction_id: transaction.id,
-                transaction_code: transaction.transaction_code,
                 order_id,
                 provider: paymentMethod.provider,
                 amount: order.total,
@@ -467,51 +467,84 @@ const initiatePayment = async (req, res, next) => {
     }
 };
 
-// ── POST /payments/confirm-manual ──────────────────────────────
 const confirmManualPayment = async (req, res, next) => {
     try {
         const { transaction_id, transaction_code, phone_number } = req.body;
 
+        // Validate input
+        if (!transaction_code || transaction_code.trim() === '') {
+            return error(res, 'Transaction code is required', 400);
+        }
+
+        // Check if transaction code already exists in the system (prevent double submission)
+        const { rows: existingTransaction } = await query(
+            `SELECT id, transaction_code, status FROM transactions
+             WHERE transaction_code = $1`,
+            [transaction_code]
+        );
+
+        if (existingTransaction.length > 0) {
+            return error(res, 'This transaction code has already been used. Please check your payment status or contact support.', 409);
+        }
+
+        // Also check payments table for duplicate
+        const { rows: existingPayment } = await query(
+            `SELECT id, transaction_id FROM payments
+             WHERE transaction_id = $1`,
+            [transaction_code]
+        );
+
+        if (existingPayment.length > 0) {
+            return error(res, 'This transaction code has already been submitted. Please check your payment status.', 409);
+        }
+
+        // Find transaction
         const { rows: [transaction] } = await query(
             `SELECT t.*, o.id as order_id, o.status as order_status, o.university_id
              FROM transactions t
              JOIN orders o ON t.order_id = o.id
-             WHERE t.id = $1 OR t.transaction_code = $2`,
-            [transaction_id, transaction_code]
+             WHERE t.id = $1`,
+            [transaction_id]
         );
 
         if (!transaction) return notFound(res, 'Transaction not found');
 
-        if (transaction.status !== 'processing') {
+        if (transaction.status !== 'pending') {
             return error(res, `Payment already ${transaction.status}`, 400);
         }
 
+        // Update transaction with user-provided transaction_code
         await query(
             `UPDATE transactions
              SET status = 'pending_verification',
-                 phone_number = COALESCE($1, phone_number),
+                 transaction_code = $1,
+                 phone_number = COALESCE($2, phone_number),
                  updated_at = NOW()
-             WHERE id = $2`,
-            [phone_number, transaction.id]
+             WHERE id = $3`,
+            [transaction_code, phone_number, transaction.id]
         );
 
+        // Update payment record with user-provided transaction_code as transaction_id
         await query(
             `UPDATE payments
-             SET status = 'pending_verification', updated_at = NOW()
-             WHERE order_id = $1`,
-            [transaction.order_id]
+             SET status = 'pending_verification',
+                 transaction_id = $1,
+                 updated_at = NOW()
+             WHERE order_id = $2`,
+            [transaction_code, transaction.order_id]
         );
 
+        // Update order status
         await query(
             `UPDATE orders SET status = 'pending_verification', updated_at = NOW() WHERE id = $1`,
             [transaction.order_id]
         );
 
-        logger.info(`Manual payment confirmation submitted for transaction ${transaction.transaction_code}`);
+        logger.info(`Manual payment confirmation submitted for transaction ${transaction_code}`);
 
         return success(res, {
             transaction_id: transaction.id,
-            transaction_code: transaction.transaction_code,
+            transaction_code: transaction_code,
             status: 'pending_verification',
             message: 'Payment confirmation submitted. Waiting for vendor verification.'
         });
@@ -521,7 +554,6 @@ const confirmManualPayment = async (req, res, next) => {
     }
 };
 
-// ── POST /payments/verify-payment ──────────────────────────────
 const verifyPayment = async (req, res, next) => {
     try {
         const { transaction_id, is_verified, notes } = req.body;
@@ -543,6 +575,7 @@ const verifyPayment = async (req, res, next) => {
 
         if (is_verified) {
             await withTransaction(async (client) => {
+                // Update transaction to success (transaction_code remains unique)
                 await client.query(
                     `UPDATE transactions
                      SET status = 'success',
@@ -554,6 +587,7 @@ const verifyPayment = async (req, res, next) => {
                     [vendorId, notes, transaction.id]
                 );
 
+                // Update payment record
                 await client.query(
                     `UPDATE payments
                      SET status = 'success', completed_at = NOW()
@@ -561,11 +595,13 @@ const verifyPayment = async (req, res, next) => {
                     [transaction.order_id]
                 );
 
+                // Update order status to paid
                 await client.query(
                     `UPDATE orders SET status = 'paid', updated_at = NOW() WHERE id = $1`,
                     [transaction.order_id]
                 );
 
+                // Generate QR code for order pickup
                 const token = crypto.randomBytes(24).toString('hex');
                 const expiryMins = parseInt(process.env.QR_EXPIRY_MINUTES) || 30;
                 const expiresAt = new Date(Date.now() + expiryMins * 60 * 1000);
@@ -590,6 +626,7 @@ const verifyPayment = async (req, res, next) => {
                 message: 'Payment verified successfully'
             });
         } else {
+            // Mark as failed - transaction_code remains but marked failed
             await query(
                 `UPDATE transactions
                  SET status = 'failed',

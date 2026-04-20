@@ -730,6 +730,7 @@
         if (isMobile) {
             return (
                 <>
+                    {/* Backdrop */}
                     {isOpen && (
                         <div
                             onClick={onToggle}
@@ -746,6 +747,7 @@
                         />
                     )}
 
+                    {/* Bottom Sheet */}
                     <div style={{
                         position: 'fixed',
                         bottom: 0,
@@ -763,11 +765,12 @@
                         flexDirection: 'column',
                         overflow: 'hidden'
                     }}>
-
+                        {/* Drag Handle */}
                         <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 8px' }} onClick={onToggle}>
                             <div style={{ width: 40, height: 4, background: '#CBC1AE', borderRadius: 2 }} />
                         </div>
 
+                        {/* Header */}
                         <div style={{ padding: '8px 20px 12px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
                                 <span style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 20 }}>Your Order</span>
@@ -783,7 +786,7 @@
                             </div>
                         ) : (
                             <>
-                                {/* Cart Items - Scrollable */}
+                                {/* Cart Items */}
                                 <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', maxHeight: 'calc(90vh - 500px)' }}>
                                     {cartIds.map(k => {
                                         const it = cart[k];
@@ -831,7 +834,7 @@
                                                 border: `1.5px solid ${selectedPaymentMethod?.id === method.id ? '#4A6741' : 'var(--border)'}`,
                                                 borderRadius: 10, cursor: 'pointer', marginBottom: 6
                                             }}>
-                                                <div style={{ fontSize: 22 }}>{method.provider === 'mpesa' ? '📱' : method.provider === 'tigopesa' ? '📱' : method.provider === 'airtelmoney' ? '📱' : method.provider === 'halopesa' ? '📱' :'💳'}</div>
+                                                <div style={{ fontSize: 22 }}>{method.provider === 'mpesa' ? '📱' : method.provider === 'tigopesa' ? '📱' : method.provider === 'airtelmoney' ? '📱' : method.provider === 'halopesa' ? '📱' : '💳'}</div>
                                                 <div style={{ flex: 1 }}>
                                                     <div style={{ fontWeight: 600, fontSize: 14 }}>{payLabels[method.provider] || method.provider}</div>
                                                     {method.method_type === 'lipa' && method.lipa_number && (
@@ -874,20 +877,14 @@
                                 {/* Pay Button */}
                                 <div style={{ padding: '10px 14px 16px', flexShrink: 0, background: '#FAFAF7', borderTop: '1px solid var(--border)' }}>
                                     <button onClick={handlePayment} disabled={isLoading || !selectedPaymentMethod} style={{
-                                        width: '100%', background: isLoading || !selectedPaymentMethod ? '#3A3530' : '#1C1A17', color: '#F5F0E8',
-                                        border: 'none', borderRadius: 10, padding: '14px 16px', fontFamily: 'Syne,sans-serif', fontSize: '14px', fontWeight: 700,
-                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                        width: '100%', background: isLoading || !selectedPaymentMethod ? '#3A3530' : '#C4522A', color: '#fff',
+                                        border: 'none', borderRadius: 12, padding: '16px', fontSize: 16, fontWeight: 700,
                                         cursor: isLoading || !selectedPaymentMethod ? 'not-allowed' : 'pointer'
                                     }}>
-                                        <span>{isLoading ? 'Processing...' : (
+                                        {isLoading ? 'Processing...' : (
                                             selectedPaymentMethod?.method_type === 'stk'
-                                                ? `Pay with ${selectedPaymentMethod ? payLabels[selectedPaymentMethod.provider] : 'Select Method'}`
+                                                ? `Pay TZS ${fmt(total)}`
                                                 : 'Confirm Payment'
-                                        )}</span>
-                                        {selectedPaymentMethod?.method_type === 'stk' && (
-                                            <span style={{ background: 'rgba(255,255,255,.12)', padding: '4px 10px', borderRadius: 6, fontSize: '13px' }}>
-                                                TZS {fmt(total)}
-                                            </span>
                                         )}
                                     </button>
                                 </div>
@@ -895,6 +892,7 @@
                         )}
                     </div>
 
+                    {/* Payment Instructions Modal (Mobile) */}
                     {payState === 'instructions' && selectedPaymentMethod && (
                         <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(3px)' }}>
                             <div style={{ background: '#FAFAF7', borderRadius: '20px 20px 0 0', padding: '24px 22px 36px', width: '100%', maxWidth: 440 }}>
@@ -911,40 +909,63 @@
                                     </div>
                                     <div style={{ marginBottom: 16 }}>
                                         <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>Transaction ID</label>
-                                        <input type="text" id="manualTransactionId" placeholder="Enter the transaction ID from your payment" style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13 }} />
+                                        <input type="text" id="manualTransactionIdMobile" placeholder="Enter the transaction ID from your payment" style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13 }} />
                                     </div>
                                     <div style={{ display: 'flex', gap: 12 }}>
                                         <button onClick={() => { setPayState(null); }} style={{ flex: 1, background: '#EDE8DF', border: 'none', borderRadius: 9, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-                                        <button onClick={async () => { const txId = document.getElementById('manualTransactionId').value; if (!txId) { showToast('Please enter transaction ID', 'error'); return; } setTransactionId(txId); await confirmManualPayment(); }} style={{ flex: 1, background: '#C4522A', color: '#fff', border: 'none', borderRadius: 9, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>I've Sent Payment</button>
+                                        <button onClick={async () => { const txId = document.getElementById('manualTransactionIdMobile').value; if (!txId) { showToast('Please enter transaction ID', 'error'); return; } setTransactionId(txId); await confirmManualPayment(); }} style={{ flex: 1, background: '#C4522A', color: '#fff', border: 'none', borderRadius: 9, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>I've Sent Payment</button>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     )}
 
+                    {/* Pending Verification Modal (Mobile) */}
                     {payState === 'pending_verification' && (
                         <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(3px)' }}>
                             <div style={{ background: '#FAFAF7', borderRadius: '20px 20px 0 0', padding: '24px 22px 36px', width: '100%', maxWidth: 440 }}>
                                 <div style={{ width: 40, height: 4, background: 'var(--border)', borderRadius: 2, margin: '0 auto 22px' }} />
-                                <div style={{ textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>⏳</div><div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 19, marginBottom: 5 }}>Payment Pending Verification</div><div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>Your payment confirmation has been submitted. The vendor will verify your payment shortly.</div><button onClick={resetCart} style={{ width: '100%', background: '#4A6741', color: '#fff', border: 'none', borderRadius: 9, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Done</button></div>
+                                <div style={{ textAlign: 'center' }}>
+                                    <div style={{ fontSize: 48, marginBottom: 12 }}>⏳</div>
+                                    <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 19, marginBottom: 5 }}>Payment Pending Verification</div>
+                                    <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>Your payment confirmation has been submitted. The vendor will verify your payment shortly.</div>
+                                    <button onClick={resetCart} style={{ width: '100%', background: '#4A6741', color: '#fff', border: 'none', borderRadius: 9, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Done</button>
+                                </div>
                             </div>
                         </div>
                     )}
 
+                    {/* Processing Modal (Mobile) */}
                     {payState === 'processing' && (
                         <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(3px)' }}>
                             <div style={{ background: '#FAFAF7', borderRadius: '20px 20px 0 0', padding: '24px 22px 36px', width: '100%', maxWidth: 440 }}>
                                 <div style={{ width: 40, height: 4, background: 'var(--border)', borderRadius: 2, margin: '0 auto 22px' }} />
-                                <div style={{ textAlign: 'center' }}><div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }} /><div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 18, marginBottom: 5 }}>Awaiting payment</div><div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>Check your phone for the STK push</div><div style={{ fontSize: 10, color: 'var(--muted)', opacity: 0.5, marginTop: 12, animation: 'pulse 1s ease infinite' }}>Expires in {countdown}s</div></div>
+                                <div style={{ textAlign: 'center' }}>
+                                    <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }} />
+                                    <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 18, marginBottom: 5 }}>Awaiting payment</div>
+                                    <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>Check your phone for the STK push</div>
+                                    <div style={{ fontSize: 10, color: 'var(--muted)', opacity: 0.5, marginTop: 12, animation: 'pulse 1s ease infinite' }}>Expires in {countdown}s</div>
+                                </div>
                             </div>
                         </div>
                     )}
 
+                    {/* Success Modal (Mobile) */}
                     {payState === 'success' && (
                         <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(3px)' }}>
                             <div style={{ background: '#FAFAF7', borderRadius: '20px 20px 0 0', padding: '24px 22px 36px', width: '100%', maxWidth: 440 }}>
                                 <div style={{ width: 40, height: 4, background: 'var(--border)', borderRadius: 2, margin: '0 auto 22px' }} />
-                                <div style={{ textAlign: 'center' }}><div style={{ width: 54, height: 54, borderRadius: '50%', background: '#4A6741', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: 24, color: '#fff' }}>✓</div><div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 19, marginBottom: 3 }}>Payment confirmed!</div><div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>Show this QR code at the counter</div><div style={{ width: 180, height: 180, background: '#fff', border: '2px solid var(--border)', borderRadius: 12, margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}><QRCanvas refCode={qrRef} size={180} /></div><div style={{ fontFamily: 'Syne,sans-serif', fontSize: 12, fontWeight: 700, letterSpacing: 2, color: 'var(--muted)', marginBottom: 4 }}>{qrRef}</div><div style={{ fontSize: 10, color: 'var(--muted)', lineHeight: 1.7, maxWidth: 240, margin: '0 auto 18px' }}>Show to canteen staff to receive your order.<br />Valid 30 minutes · one use only.</div><button onClick={resetCart} style={{ background: '#EDE8DF', border: 'none', borderRadius: 9, padding: '11px 26px', fontFamily: 'Syne,sans-serif', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#1C1A17' }}>Done — new order</button></div>
+                                <div style={{ textAlign: 'center' }}>
+                                    <div style={{ width: 54, height: 54, borderRadius: '50%', background: '#4A6741', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: 24, color: '#fff' }}>✓</div>
+                                    <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 19, marginBottom: 3 }}>Payment confirmed!</div>
+                                    <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>Show this QR code at the counter</div>
+                                    <div style={{ width: 180, height: 180, background: '#fff', border: '2px solid var(--border)', borderRadius: 12, margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                        <QRCanvas refCode={qrRef} size={180} />
+                                    </div>
+                                    <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 12, fontWeight: 700, letterSpacing: 2, color: 'var(--muted)', marginBottom: 4 }}>{qrRef}</div>
+                                    <div style={{ fontSize: 10, color: 'var(--muted)', lineHeight: 1.7, maxWidth: 240, margin: '0 auto 18px' }}>Show to canteen staff to receive your order.<br />Valid 30 minutes · one use only.</div>
+                                    <button onClick={resetCart} style={{ background: '#EDE8DF', border: 'none', borderRadius: 9, padding: '11px 26px', fontFamily: 'Syne,sans-serif', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#1C1A17' }}>Done — new order</button>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -955,9 +976,13 @@
         return (
             <div className={`cart-sidebar ${!isOpen ? 'hide-cart' : ''}`} style={{ background: '#FAFAF7', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
                 <div className="cart-handle" onClick={onToggle} style={{ display: 'none' }} />
+
+                {/* Header */}
                 <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: '#FAFAF7' }}>
                     <span style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 14 }}>Your order</span>
-                    <span style={{ background: isEmpty ? '#EDE8DF' : '#C4522A', color: isEmpty ? 'var(--muted)' : '#fff', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 600 }}>{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
+                    <span style={{ background: isEmpty ? '#EDE8DF' : '#C4522A', color: isEmpty ? 'var(--muted)' : '#fff', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 600 }}>
+                        {itemCount} item{itemCount !== 1 ? 's' : ''}
+                    </span>
                     <button onClick={onToggle} className="close-cart-mobile" style={{ display: 'none', background: 'none', fontSize: 20, color: 'var(--muted)' }}>✕</button>
                 </div>
 
@@ -968,6 +993,7 @@
                     </div>
                 ) : (
                     <>
+                        {/* Cart Items */}
                         <div style={{ flex: 1, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', minHeight: 0 }}>
                             {cartIds.map(k => {
                                 const it = cart[k];
@@ -988,12 +1014,14 @@
                             })}
                         </div>
 
+                        {/* Order Summary */}
                         <div style={{ borderTop: '1px solid var(--border)', padding: '10px 14px', flexShrink: 0, background: '#FAFAF7' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}><span>Subtotal</span><span>TZS {fmt(subtotal)}</span></div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--muted)' }}><span>Service ({serviceFeePercentage}%)</span><span>TZS {fmt(service)}</span></div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'Syne,sans-serif', fontSize: 16, fontWeight: 700, marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--border)' }}><span>Total</span><span>TZS {fmt(total)}</span></div>
                         </div>
 
+                        {/* Payment Methods */}
                         {paymentMethods.length > 0 && (
                             <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border)', background: '#FAFAF7', maxHeight: '140px', overflowY: 'auto', flexShrink: 0 }}>
                                 <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 6 }}>Select Payment Method</div>
@@ -1008,6 +1036,7 @@
                             </div>
                         )}
 
+                        {/* Phone Input */}
                         <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border)', flexShrink: 0, background: '#FAFAF7' }}>
                             <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 4 }}>Phone Number</div>
                             <div style={{ display: 'flex', border: `1.5px solid ${phone ? '#C4522A' : 'var(--border)'}`, borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
@@ -1016,6 +1045,7 @@
                             </div>
                         </div>
 
+                        {/* Lipa Fields */}
                         {selectedPaymentMethod && selectedPaymentMethod.method_type === 'lipa' && (
                             <>
                                 <div style={{ padding: '6px 14px', flexShrink: 0, background: '#FAFAF7' }}>
@@ -1053,6 +1083,76 @@
                 )}
             </div>
         );
+
+        {payState === 'instructions' && selectedPaymentMethod && !isMobile && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(3px)' }}>
+                <div style={{ background: '#FAFAF7', borderRadius: 16, padding: '24px 22px 32px', width: '90%', maxWidth: 440 }}>
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: 48, marginBottom: 12 }}>💳</div>
+                        <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 19, marginBottom: 5 }}>Payment Instructions</div>
+                        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>Please send payment to complete your order</div>
+                        <div style={{ background: '#EAF0E8', borderRadius: 12, padding: 16, marginBottom: 20, textAlign: 'left' }}>
+                            <div style={{ marginBottom: 12 }}><div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>Provider</div><div style={{ fontSize: 14, fontWeight: 600 }}>{payLabels[selectedPaymentMethod.provider]}</div></div>
+                            <div style={{ marginBottom: 12 }}><div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>Lipa Number</div><div style={{ fontSize: 14, fontWeight: 600 }}>{selectedPaymentMethod.lipa_number}</div></div>
+                            <div style={{ marginBottom: 12 }}><div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>Account Name</div><div style={{ fontSize: 14, fontWeight: 600 }}>{selectedPaymentMethod.account_name || 'N/A'}</div></div>
+                            <div style={{ marginBottom: 12 }}><div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>Amount</div><div style={{ fontSize: 16, fontWeight: 700, color: '#C4522A' }}>TZS {fmt(total)}</div></div>
+                        </div>
+                        <div style={{ marginBottom: 16 }}>
+                            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>Transaction ID</label>
+                            <input type="text" id="manualTransactionIdDesktop" placeholder="Enter the transaction ID from your payment" style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13 }} />
+                        </div>
+                        <div style={{ display: 'flex', gap: 12 }}>
+                            <button onClick={() => { setPayState(null); }} style={{ flex: 1, background: '#EDE8DF', border: 'none', borderRadius: 9, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+                            <button onClick={async () => { const txId = document.getElementById('manualTransactionIdDesktop').value; if (!txId) { showToast('Please enter transaction ID', 'error'); return; } setTransactionId(txId); await confirmManualPayment(); }} style={{ flex: 1, background: '#C4522A', color: '#fff', border: 'none', borderRadius: 9, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>I've Sent Payment</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {payState === 'pending_verification' && !isMobile && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(3px)' }}>
+                <div style={{ background: '#FAFAF7', borderRadius: 16, padding: '24px 22px 32px', width: '90%', maxWidth: 440 }}>
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: 48, marginBottom: 12 }}>⏳</div>
+                        <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 19, marginBottom: 5 }}>Payment Pending Verification</div>
+                        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>Your payment confirmation has been submitted. The vendor will verify your payment shortly.</div>
+                        <button onClick={resetCart} style={{ width: '100%', background: '#4A6741', color: '#fff', border: 'none', borderRadius: 9, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Done</button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {payState === 'processing' && !isMobile && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(3px)' }}>
+                <div style={{ background: '#FAFAF7', borderRadius: 16, padding: '24px 22px 32px', width: '90%', maxWidth: 440 }}>
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }} />
+                        <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 18, marginBottom: 5 }}>Awaiting payment</div>
+                        <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>Check your phone for the STK push</div>
+                        <div style={{ fontSize: 10, color: 'var(--muted)', opacity: 0.5, marginTop: 12, animation: 'pulse 1s ease infinite' }}>Expires in {countdown}s</div>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {payState === 'success' && !isMobile && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(3px)' }}>
+                <div style={{ background: '#FAFAF7', borderRadius: 16, padding: '24px 22px 32px', width: '90%', maxWidth: 440 }}>
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ width: 54, height: 54, borderRadius: '50%', background: '#4A6741', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: 24, color: '#fff' }}>✓</div>
+                        <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 19, marginBottom: 3 }}>Payment confirmed!</div>
+                        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>Show this QR code at the counter</div>
+                        <div style={{ width: 180, height: 180, background: '#fff', border: '2px solid var(--border)', borderRadius: 12, margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                            <QRCanvas refCode={qrRef} size={180} />
+                        </div>
+                        <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 12, fontWeight: 700, letterSpacing: 2, color: 'var(--muted)', marginBottom: 4 }}>{qrRef}</div>
+                        <div style={{ fontSize: 10, color: 'var(--muted)', lineHeight: 1.7, maxWidth: 240, margin: '0 auto 18px' }}>Show to canteen staff to receive your order.<br />Valid 30 minutes · one use only.</div>
+                        <button onClick={resetCart} style={{ background: '#EDE8DF', border: 'none', borderRadius: 9, padding: '11px 26px', fontFamily: 'Syne,sans-serif', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#1C1A17' }}>Done — new order</button>
+                    </div>
+                </div>
+            </div>
+        )}
     }
 
     function MealCard({meal, onAdd, onOpen}) { const [added, setAdded] = useState(false); const handleQuickAdd = e => { e.stopPropagation(); onAdd(meal, 1); setAdded(true); setTimeout(()=>setAdded(false), 800); }; return ( <div onClick={()=>meal.stock && onOpen(meal)} style={{background:meal.stock?'#fff':'#F8F6F2',border:`1px solid ${meal.stock?'#E2D9CC':'#EDE8DF'}`,borderRadius:14,overflow:'hidden',cursor:meal.stock?'pointer':'not-allowed',opacity:meal.stock?1:.6,transition:'transform .18s,box-shadow .18s'}}><div style={{height:110,background:CAT_COLORS[meal.cat]||'#EDE8DF',display:'flex',alignItems:'center',justifyContent:'center',fontSize:46,position:'relative'}}>{meal.emoji}{meal.badge && (<span style={{position:'absolute',top:8,left:8,background:meal.badge==='popular'?'#C4522A':meal.badge==='new'?'#D4831A':'#4A6741',color:'#fff',fontSize:8,fontWeight:700,padding:'2px 7px',borderRadius:5}}>{meal.badge}</span>)}{!meal.stock && <span style={{position:'absolute',top:8,right:8,background:'rgba(28,26,23,.65)',color:'#fff',fontSize:8,padding:'2px 7px',borderRadius:5}}>SOLD OUT</span>}</div><div style={{padding:'10px 12px 12px'}}><div style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:13,marginBottom:2}}>{meal.name}</div><div style={{fontSize:10.5,color:'var(--muted)',marginBottom:8,lineHeight:1.4}}>{meal.desc}</div><div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}><div style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:14}}>{fmt(meal.price)} <span style={{fontSize:9,fontWeight:400,color:'var(--muted)'}}>TZS</span></div>{meal.stock && (<button onClick={handleQuickAdd} style={{width:28,height:28,borderRadius:'50%',background:added?'#4A6741':'#1C1A17',color:'#fff',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center',animation:added?'pop .3s ease':'none'}}>{added?'✓':'+'}</button>)}</div></div></div> ); }

@@ -33,15 +33,15 @@ const menuRouter = require('express').Router();
 const {
   getMenu, getAllItems, getItem, createItem, updateItem,
   deleteItem, toggleAvailability, getCategoriesList, setDailyMenu, getDailySummary,
-  getDailyMenu, getDailyMenuIds  // Add these two functions
+  getDailyMenu, getDailyMenuIds
 } = require('../controllers/menuController');
-const { authenticate: auth, requireAdmin: admin, requireStaff: staff, optionalAuth } = require('../../../shared/middleware/auth');
+const { authenticate: auth, requireAdmin: admin, optionalAuth } = require('../../../shared/middleware/auth');
 
 menuRouter.get('/',          optionalAuth, getMenu);
 menuRouter.get('/categories', getCategoriesList);
 menuRouter.get('/daily-summary', getDailySummary);
-menuRouter.get('/daily',     optionalAuth, getDailyMenu);  // Get today's daily menu (for students)
-menuRouter.get('/daily/ids', auth, admin, getDailyMenuIds);  // Get daily menu IDs (for admin selection)
+menuRouter.get('/daily',     optionalAuth, getDailyMenu);
+menuRouter.get('/daily/ids', auth, admin, getDailyMenuIds);
 menuRouter.get('/items',     auth, admin, getAllItems);
 menuRouter.get('/items/:id', getItem);
 menuRouter.post('/items',    auth, admin, body('name').notEmpty(), body('price').isInt({ min: 1 }), validate, createItem);
@@ -105,9 +105,9 @@ paymentRouter.delete('/vendor/methods/:id', pAuth.authenticate, deletePaymentMet
 paymentRouter.patch('/vendor/methods/:id/toggle', pAuth.authenticate, togglePaymentMethodStatus);
 paymentRouter.get('/vendor/methods/active', pAuth.authenticate, getActivePaymentMethod);
 paymentRouter.get('/vendor/methods/by-university', pAuth.authenticate, getActivePaymentMethodByUniversity);
-paymentRouter.get('/vendor/methods/by-university/all', pAuth.authenticate, getAllPaymentMethodsByUniversity);  // Fixed: pAuth.authenticate
-paymentRouter.get('/settings/service-fee', pAuth.authenticate, getServiceFee);  // Fixed: pAuth.authenticate
-paymentRouter.put('/settings/service-fee', pAuth.authenticate, updateServiceFee);  // Fixed: pAuth.authenticate
+paymentRouter.get('/vendor/methods/by-university/all', pAuth.authenticate, getAllPaymentMethodsByUniversity);
+paymentRouter.get('/settings/service-fee', pAuth.authenticate, getServiceFee);
+paymentRouter.put('/settings/service-fee', pAuth.authenticate, updateServiceFee);
 
 // Transaction routes
 paymentRouter.get('/vendor/transactions', pAuth.authenticate, getVendorTransactions);
@@ -117,7 +117,8 @@ paymentRouter.get('/status/:orderId', pAuth.authenticate, getPaymentStatus);
 paymentRouter.post('/confirm-manual', pAuth.authenticate, confirmManualPayment);
 paymentRouter.post('/verify-payment', pAuth.authenticate, verifyPayment);
 
-module.exports = paymentRouter;
+// NOTE: Do NOT put module.exports here - it will be exported at the end
+
 
 // ── USER ROUTES (Complete CRUD for staff management) ───────────
 const userRouter = require('express').Router();
@@ -129,10 +130,9 @@ const {
   deleteUser,
   resetPassword,
   toggleUserStatus,
-  changePassword  // ✅ Add changePassword to the import
+  changePassword
 } = require('../controllers/userController');
 const uAuth = require('../../../shared/middleware/auth');
-
 
 userRouter.put('/profile', uAuth.authenticate, async (req, res, next) => {
   try {
@@ -189,7 +189,6 @@ userRouter.post('/:id/change-password', uAuth.authenticate,
 );
 
 
-
 // ── REPORT ROUTES ──────────────────────────────────────────────
 const reportRouter = require('express').Router();
 const { getSalesReport, getAuditLog } = require('../controllers/reportController');
@@ -199,4 +198,5 @@ reportRouter.get('/sales', rAuth.authenticate, rAuth.requireAdmin, getSalesRepor
 reportRouter.get('/audit', rAuth.authenticate, rAuth.requireAdmin, getAuditLog);
 
 
+// ── FINAL EXPORTS ──────────────────────────────────────────────
 module.exports = { authRouter, menuRouter, orderRouter, paymentRouter, userRouter, reportRouter };
