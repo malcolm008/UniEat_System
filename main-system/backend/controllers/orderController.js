@@ -141,21 +141,62 @@ const getOrders = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── GET /orders/mine — student's own orders ────────────────────
 const getMyOrders = async (req, res, next) => {
-  try {
-    const { rows } = await query(`
-      SELECT o.*,
-        (SELECT json_agg(json_build_object('name', oi.name, 'quantity', oi.quantity, 'subtotal', oi.subtotal))
-         FROM order_items oi WHERE oi.order_id = o.id) AS items,
-        p.provider AS payment_provider, p.status AS payment_status
-      FROM orders o
-      LEFT JOIN payments p ON p.order_id = o.id
-      WHERE o.user_id = $1
-      ORDER BY o.created_at DESC LIMIT 20
-    `, [req.user.id]);
-    return success(res, rows);
-  } catch (err) { next(err); }
+    try {
+        const universityId = req.user.university_id;
+
+        if (!universityId) {
+            return error(res, 'No university associated with your account', 400);
+        }
+
+        const { rows } = await query(`
+          SELECT
+            o.id,
+            o.status,
+            o.subtotal,
+            o.service_charge,
+            o.total,
+            o.created_at,
+            o.updated_at,
+            COALESCE(p.provider, 'pending') as payment_provider,
+            COALESCE(p.status, 'pending') as payment_status,
+            p.transaction_id as transaction_code,
+            (
+              SELECT json_agg(
+                json_build_object(
+                  'name', oi.name,
+                  'quantity', oi.quantity,
+                  'unit_price', oi.unit_price,
+                  'subtotal', oi.subtotal
+                )
+              )
+              FROM order_items oi
+              WHERE oi.order_id = o.id
+            ) AS items
+          FROM orders o
+          LEFT JOIN payments p ON p.order_id = o.id
+          WHERE o.user_id = $1 AND o.university_id = $2
+          ORDER BY
+            CASE o.status
+              WHEN 'pending' THEN 1
+              WHEN 'pending_verification' THEN 2
+              WHEN 'paid' THEN 3
+              WHEN 'preparing' THEN 4
+              WHEN 'ready' THEN 5
+              WHEN 'served' THEN 6
+              WHEN 'completed' THEN 7
+              WHEN 'cancelled' THEN 8
+              ELSE 9
+            END,
+            o.created_at DESC
+            LIMIT 10
+        `, [req.user.id, universityId]);
+
+        return success(res, rows);
+    } catch (err) {
+        console.error('Get my orders error:', err);
+        next(err);
+    }
 };
 
 // ── GET /orders/:id ────────────────────────────────────────────
