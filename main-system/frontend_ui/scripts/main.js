@@ -73,6 +73,7 @@
       }, []);
       return [toast, show];
     }
+
     function useClock() {
       const [time, setTime] = useState('');
       useEffect(() => {
@@ -81,6 +82,7 @@
       }, []);
       return time;
     }
+
     function Toast({toast}) { if (!toast) return null; const colors = {default:{bg:'#1C1A17',col:'#F5F0E8'},success:{bg:'#0F6E56',col:'#fff'},error:{bg:'#A32D2D',col:'#fff'}}; const {bg,col} = colors[toast.type] || colors.default; return ( <div style={{position:'fixed',bottom:28,left:'50%',transform:'translateX(-50%)',background:bg,color:col,padding:'11px 22px',borderRadius:30,fontSize:13,fontWeight:500,zIndex:9999,whiteSpace:'nowrap',boxShadow:'0 4px 20px rgba(0,0,0,.2)',animation:'fadeUp .3s cubic-bezier(.34,1.56,.64,1)'}}>{toast.msg}</div> ); }
     function Modal({open, onClose, children, maxW=480, center=false}) { if (!open) return null; return ( <div onClick={e=>{ if(e.target===e.currentTarget) onClose(); }} style={{position:'fixed',inset:0,background:'rgba(28,26,23,.58)',display:'flex',alignItems:center?'center':'flex-end',justifyContent:'center',zIndex:500,backdropFilter:'blur(3px)'}}><div style={{background:'#FAFAF7',borderRadius:center?16:'20px 20px 0 0',padding:'24px 22px 32px',width:'100%',maxWidth:maxW,maxHeight:'90vh',overflowY:'auto',animation:'fadeUp .28s cubic-bezier(.34,1.56,.64,1)'}}>{!center && <div style={{width:40,height:4,background:'var(--border)',borderRadius:2,margin:'0 auto 20px'}}/>}{children}</div></div> ); }
     function Btn({children,onClick,variant='primary',fullWidth,disabled,small,style:sx={}}) { const base = {display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7,borderRadius:10,fontFamily:'Syne,sans-serif',fontWeight:700,cursor:'pointer',transition:'background .18s,transform .1s,opacity .15s',border:'none',width:fullWidth?'100%':'auto',opacity:disabled?.55:1,pointerEvents:disabled?'none':'auto',fontSize:small?12:14,padding:small?'7px 14px':'12px 18px',...sx}; const variants = {primary:{background:'#1C1A17',color:'#F5F0E8'},rust:{background:'#C4522A',color:'#fff'},sage:{background:'#4A6741',color:'#fff'},ghost:{background:'transparent',color:'#1C1A17',border:'1px solid #E2D9CC'},danger:{background:'#A32D2D',color:'#fff'},amber:{background:'#D4831A',color:'#fff'}}; const [hover,setHover] = useState(false); const hoverBg = {primary:'#C4522A',rust:'#A03D1E',sage:'#3A5131',ghost:'#EDE8DF',danger:'#7A1F1F',amber:'#B06B10'}; return (<button onClick={onClick} style={{...base,...variants[variant],background:hover?hoverBg[variant]:variants[variant].background}} onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)} onMouseDown={e=>e.currentTarget.style.transform='scale(.97)'} onMouseUp={e=>e.currentTarget.style.transform='scale(1)'}>{children}</button>); }
@@ -1062,7 +1064,237 @@
 
     function DrinkChip({drink, onAdd}) { const [added, setAdded] = useState(false); return ( <div style={{display:'flex',alignItems:'center',gap:9,background:'#fff',border:'1px solid var(--border)',borderRadius:50,padding:'7px 13px 7px 9px',cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.borderColor='#1C1A17'}><span style={{fontSize:20}}>{drink.emoji}</span><div><div style={{fontSize:12,fontWeight:500}}>{drink.name}</div><div style={{fontSize:10,color:'var(--muted)'}}>{fmt(drink.price)} TZS</div></div><button onClick={()=>{onAdd(drink,1);setAdded(true);setTimeout(()=>setAdded(false),700)}} style={{width:22,height:22,borderRadius:'50%',background:added?'#4A6741':'#1C1A17',color:'#fff',fontSize:13,display:'flex',alignItems:'center',justifyContent:'center'}}>{added?'✓':'+'}</button></div> ); }
 
-    function OrdersPage() { const myOrders = SAMPLE_ORDERS.slice(0,3); return ( <div style={{padding:24,maxWidth:680,margin:'0 auto'}}><div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:22}}>My Orders</div><div style={{fontSize:13,color:'var(--muted)',marginBottom:20}}>Your recent transactions</div>{myOrders.map(o => (<div key={o.id} style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:'14px 16px',marginBottom:12}}><div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}><div><span style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:13}}>{o.id}</span><span style={{fontSize:10,color:'var(--muted)',marginLeft:8}}>{o.time} today</span></div><Badge color={o.status==='served'?'sage':'amber'}>{o.status==='served'?'Served':'Pending'}</Badge></div><div style={{display:'flex',flexDirection:'column',gap:4,marginBottom:10}}>{o.items.map((it,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:12}}><span style={{color:'var(--muted)'}}>{it.qty}× {it.name}</span><span>{fmt(it.price)} TZS</span></div>))}</div><div style={{display:'flex',justifyContent:'space-between',paddingTop:10,borderTop:'1px solid var(--border)'}}><div style={{fontSize:11,color:'var(--muted)'}}>via {o.paid==='mpesa'?'M-Pesa':o.paid==='tigo'?'Tigo Pesa':'HaloPesa'}</div><span style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:14}}>TZS {fmt(o.total)}</span></div></div>))}</div> ); }
+    function OrdersPage() {
+        const { showToast } = useContext(AppCtx);
+        const [orders, setOrders] = useState([]);
+        const [loading, setLoading] = useState(true);
+        const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+        const [user, setUser] = useState(null);
+
+        useEffect(() => {
+            const handleResize = () => setIsMobile(window.innerWidth <= 768);
+            window.addEventListener('resize', handleResize);
+
+            const savedUser = localStorage.getItem('user');
+            if (savedUser) {
+                setUser(JSON.parse(savedUser));
+            }
+
+            fetchOrders();
+            return () => window.removeEventListener('resize', handleResize);
+        }, []);
+
+        const fetchOrders = async () => {
+            setLoading(true);
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch('http://localhost:5000/api/orders/mine', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    const sortedOrders = result.data.sort((a, b) => {
+                        const statusOrder = { 'pending': 0, 'pending_verification': 1, 'paid': 2, 'preparing': 3, 'ready': 4, 'served': 5, 'completed': 6, 'cancelled': 7};
+                        const statusDiff = (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
+
+                        if (statusDiff !== 0) return statusDiff;
+                        return new Date(b.created_at) - new Date(a.created_at);
+                    });
+
+                    setOrders(sortedOrders.slice(0, 10));
+                } else {
+                    setOrders([]);
+                }
+            } catch (error) {
+                console.error('Failed to fetch orders:', error);
+                showToast('Failed to load orders', 'error');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        const getStatusBadgeColor = (status) => {
+            switch (status) {
+                case 'pending': return 'amber';
+                case 'pending_verification': return 'orange';
+                case 'paid': return 'blue';
+                case 'preparing': return 'info';
+                case 'ready': return 'info';
+                case 'served': return 'sage';
+                case 'completed': return 'sage';
+                case 'cancelled': return 'red';
+                default: return 'gray';
+            }
+        };
+
+        const getStatusLabel = (status) => {
+            switch (status) {
+                case 'pending': return 'Pending';
+                case 'pending_verification' return 'Awaiting Verification';
+                case 'paid': return 'Paid';
+                case 'preparing': return 'Preparing';
+                case 'ready': return 'Ready for Pickup';
+                case 'served': return 'Served';
+                case 'completed': return 'Completed';
+                case 'cancelled': return 'Cancelled';
+                default: return status;
+            }
+        };
+
+        const formatDate = (dateString) => {
+            const date = new Date(dateString);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins} min ago`;
+            if (diffHours < 24) return `${diffHours} hours${diffHours > 1 ? 's' : ''} ago`;
+            if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's': ''} ago`;
+            return date.toLocaleDateString();
+        };
+
+        if (loading) {
+            return (
+                <div style={{ padding: 24, textAlign: 'center' }}>
+                    <div style={{ fontSize: 48, marginBottom: 16 }}>📦</div>
+                    <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No orders yet</div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)' }}>When you place an order, it will appear here.</div>
+                </div>
+            );
+        }
+
+        if (orders.length === 0) {
+            return (
+                <div style={{ padding: 24, textAlign: 'center' }}>
+                    <div style={{ fontSize: 48, marginBottom: 16 }}>📦</div>
+                    <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No orders yet</div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)' }}>When you place an order, it will appear here.</div>
+                </div>
+            );
+        }
+
+        return (
+            <div style={{ padding: isMobile ? 16 : 24, maxWidth: 900, margin: '0 auto' }}>
+                <div style={{ marginBottom: 24 }}>
+                    <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: isMobile ? 22 : 24, marginBottom: 4 }}>
+                        My Orders
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                        Your recent transactions and order status
+                    </div>
+                </div>
+
+                {/* Order List */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {orders.map((order, index) => (
+                        <div
+                            key={order.id}
+                            style={{
+                                background: '#fff',
+                                border: '1px solid var(--border)',
+                                borderRadius: 16,
+                                overflow: 'hidden',
+                                animation: `fadeUp ${0.2 + index * 0.05}s ease`
+                            }}
+                        >
+                            {/* Order Header */}
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '14px 16px',
+                                background: '#FAFAF7',
+                                borderBottom: '1px solid var(--border)',
+                                flexWrap: 'wrap',
+                                gap: 8
+                            }}>
+                                <div>
+                                    <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 13, letterSpacing: 0.5 }}>
+                                        Order #{order.id?.slice(0, 8)?.toUpperCase()}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                                        {formatDate(order.created_at)}
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <Badge color={getStatusBadgeColor(order.status)}>
+                                        {getStatusLabel(order.status)}
+                                    </Badge>
+                                    {order.transaction_code && (
+                                        <div style={{ fontSize: 10, color: 'var(--muted)', background: '#EDE8DF', padding: '2px 8px', borderRadius: 12 }}>
+                                            TXN: {order.transaction_code}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Order Items */}
+                            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+                                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                    Items
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {order.items && order.items.map((item, idx) => (
+                                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div>
+                                                <span style={{ fontSize: 13, fontWeight: 500 }}>{item.name}</span>
+                                                <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>x{item.quantity}</span>
+                                            </div>
+                                            <span style={{ fontSize: 13, fontWeight: 500 }}>TZS {fmt(item.subtotal || item.unit_price * item.quantity)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Order Footer */}
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '12px 16px',
+                                background: '#FAFAF7',
+                                flexWrap: 'wrap',
+                                gap: 8
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                                        Payment:
+                                        <span style={{ fontWeight: 500, color: '#1C1A17', marginLeft: 4 }}>
+                                            {order.payment_provider ?
+                                                (order.payment_provider === 'mpesa' ? 'M-Pesa' :
+                                                 order.payment_provider === 'tigopesa' ? 'Tigo Pesa' :
+                                                 order.payment_provider === 'airtelmoney' ? 'Airtel Money' :
+                                                 order.payment_provider === 'halopesa' ? 'HaloPesa' : order.payment_provider)
+                                                : 'Pending'}
+                                        </span>
+                                    </div>
+                                    {order.transaction_code && (
+                                        <div style={{ fontSize: 10, color: '#4A6741', background: '#EAF0E8', padding: '2px 8px', borderRadius: 12 }}>
+                                            Ref: {order.transaction_code}
+                                        </div>
+                                    )}
+                                </div>
+                                <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 16, color: '#C4522A' }}>
+                                    TZS {fmt(order.total)}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Refresh Button */}
+                <div style={{ textAlign: 'center', marginTop: 24 }}>
+                    <Btn variant="ghost" onClick={fetchOrders} small>
+                        ⟳ Refresh Orders
+                    </Btn>
+                </div>
+            </div>
+        );
+    }
 
     function ScannerPage() { const {showToast} = useContext(AppCtx); const [input, setInput] = useState(''); const [result, setResult] = useState(null); const [scanning, setScanning] = useState(false); const handleVerify = (code) => { const c = (code||input).toUpperCase().trim(); if (!c) return; setScanning(true); setResult(null); setTimeout(() => { setScanning(false); const order = SAMPLE_ORDERS.find(o=>o.id===c); if (order) { if (order.status==='served') { setResult({type:'used',order}); showToast('⚠ QR already used', 'error'); } else { setResult({type:'valid',order}); showToast('✓ Valid order — ready to serve', 'success'); } } else { setResult({type:'invalid'}); showToast('✗ Invalid QR code', 'error'); } }, 1200); }; const markServed = () => { if (result?.order) { result.order.status = 'served'; setResult({...result, type:'done'}); showToast('✓ Order marked as served', 'success'); } }; return ( <div className="staff-scanner-layout" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:0,flex:1,overflow:'auto'}}><div style={{padding:28,borderRight:'1px solid var(--border)'}}><div><div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:20}}>QR Scanner</div><div style={{fontSize:12,color:'var(--muted)'}}>Verify student orders</div></div><div style={{background:'#1C1A17',borderRadius:16,padding:20,marginTop:20,position:'relative',aspectRatio:'1',maxWidth:320}}><div style={{position:'absolute',top:0,left:0,right:0,height:2,background:'#C4522A',opacity:.7,animation:'scanline 2s linear infinite'}}/><div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%'}}><div style={{fontSize:40}}>📷</div><div style={{fontSize:11,color:'#6A6050'}}>Camera scanner</div></div></div><div style={{marginTop:20}}><div style={{fontSize:10,fontWeight:600,letterSpacing:1,color:'var(--muted)',marginBottom:8}}>Or enter code manually</div><div style={{display:'flex',gap:8}}><input value={input} onChange={e=>setInput(e.target.value.toUpperCase())} onKeyDown={e=>e.key==='Enter'&&handleVerify()} placeholder="e.g. UNI-AB3X7K" style={{flex:1,padding:'10px 12px',fontSize:13,background:'#fff',border:'1.5px solid var(--border)',borderRadius:9}}/><Btn variant="rust" onClick={()=>handleVerify()}>Verify</Btn></div><div style={{marginTop:10,display:'flex',flexWrap:'wrap',gap:6}}>{SAMPLE_ORDERS.map(o=>(<button key={o.id} onClick={()=>{setInput(o.id);handleVerify(o.id);}} style={{fontSize:10,padding:'4px 9px',borderRadius:6,background:'#EDE8DF'}}>{o.id}</button>))}</div></div></div><div style={{padding:28,display:'flex',justifyContent:'center',alignItems:'center',background:'#FAFAF7'}}>{scanning && (<div style={{textAlign:'center'}}><div style={{width:44,height:44,border:'3px solid var(--border)',borderTopColor:'#C4522A',borderRadius:'50%',margin:'0 auto 16px',animation:'spin .7s linear infinite'}}/><div style={{fontWeight:700}}>Verifying…</div></div>)}{!scanning && !result && (<div style={{textAlign:'center',opacity:.35}}><div style={{fontSize:54}}>🔲</div><div style={{fontWeight:700}}>Awaiting scan</div></div>)}{!scanning && result && (<div style={{width:'100%',maxWidth:340}}>{result.type==='valid' && (<><div style={{background:'#EAF0E8',borderRadius:16,padding:20,textAlign:'center'}}><div style={{width:52,height:52,borderRadius:'50%',background:'#4A6741',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 10px',fontSize:22,color:'#fff'}}>✓</div><div style={{fontWeight:800,fontSize:18}}>Valid Order</div><div>{result.order.id}</div></div><Btn fullWidth variant="sage" onClick={markServed}>✓ Mark as Served</Btn></>)}</div>)}</div></div> ); }
 
