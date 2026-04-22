@@ -911,7 +911,6 @@
             );
         }
 
-        // Desktop Layout (similar structure but with sidebar)
         return (
             <div className={`cart-sidebar ${!isOpen ? 'hide-cart' : ''}`} style={{ background: '#FAFAF7', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
                 <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -962,7 +961,7 @@
                                         border: `1.5px solid ${selectedPaymentMethod?.id === method.id ? '#4A6741' : 'var(--border)'}`,
                                         borderRadius: 10, cursor: 'pointer', marginBottom: 6
                                     }}>
-                                        <div style={{ fontSize: 22 }}>{method.provider === 'mpesa' ? '📱' : method.provider === 'tigopesa' ? '📱' : '💳'}</div>
+                                        <div style={{ fontSize: 22 }}>{method.provider === 'mpesa' ? '📱' : method.provider === 'tigopesa' ? '📱' : method.provider === 'airtelmoney' ? '📱' : method.provider === 'halopesa' ? '📱' : '💳'}</div>
                                         <div style={{ flex: 1 }}>
                                             <div style={{ fontWeight: 600 }}>{payLabels[method.provider] || method.provider}</div>
                                             {method.method_type === 'lipa' && method.lipa_number && <div style={{ fontSize: 11, color: '#4A6741' }}>Lipa: {method.lipa_number}</div>}
@@ -993,7 +992,6 @@
                     </>
                 )}
 
-                {/* Desktop Modals (same as mobile but centered) */}
                 {payState === 'instructions' && paymentInstructions && !isMobile && (
                     <div style={{ position: 'fixed', inset: 0, background: 'rgba(28,26,23,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, backdropFilter: 'blur(3px)' }}>
                         <div style={{ background: '#FAFAF7', borderRadius: 20, padding: 24, width: 400, maxHeight: '90vh', overflowY: 'auto' }}>

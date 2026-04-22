@@ -476,7 +476,7 @@ const confirmManualPayment = async (req, res, next) => {
             return error(res, 'Transaction code is required', 400);
         }
 
-        // Check if transaction code already exists in the system (prevent double submission)
+        // Check if transaction code already exists
         const { rows: existingTransaction } = await query(
             `SELECT id, transaction_code, status FROM transactions
              WHERE transaction_code = $1`,
@@ -485,17 +485,6 @@ const confirmManualPayment = async (req, res, next) => {
 
         if (existingTransaction.length > 0) {
             return error(res, 'This transaction code has already been used. Please check your payment status or contact support.', 409);
-        }
-
-        // Also check payments table for duplicate
-        const { rows: existingPayment } = await query(
-            `SELECT id, transaction_id FROM payments
-             WHERE transaction_id = $1`,
-            [transaction_code]
-        );
-
-        if (existingPayment.length > 0) {
-            return error(res, 'This transaction code has already been submitted. Please check your payment status.', 409);
         }
 
         // Find transaction
@@ -524,12 +513,11 @@ const confirmManualPayment = async (req, res, next) => {
             [transaction_code, phone_number, transaction.id]
         );
 
-        // Update payment record with user-provided transaction_code as transaction_id
+        // Update payment record with transaction_id - REMOVED updated_at reference
         await query(
             `UPDATE payments
              SET status = 'pending_verification',
-                 transaction_id = $1,
-                 updated_at = NOW()
+                 transaction_id = $1
              WHERE order_id = $2`,
             [transaction_code, transaction.order_id]
         );
@@ -649,7 +637,6 @@ const verifyPayment = async (req, res, next) => {
     }
 };
 
-// ── POST /payments/confirm — webhook / STK callback ───────────
 const confirmPayment = async (req, res, next) => {
     try {
         const { payment_id, provider_ref, status = 'success', transaction_code } = req.body;
@@ -707,7 +694,6 @@ const confirmPayment = async (req, res, next) => {
     }
 };
 
-// ── POST /payments/verify-qr — staff scans QR ────────────────
 const verifyQR = async (req, res, next) => {
     try {
         const { token } = req.body;
@@ -746,7 +732,6 @@ const verifyQR = async (req, res, next) => {
     } catch (err) { next(err); }
 };
 
-// ── POST /payments/redeem-qr — mark order served ─────────────
 const redeemQR = async (req, res, next) => {
     try {
         const { token } = req.body;
