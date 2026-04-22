@@ -53,7 +53,7 @@ menuRouter.post('/daily',              auth, admin, setDailyMenu);
 
 // ── ORDER ROUTES ───────────────────────────────────────────────
 const orderRouter = require('express').Router();
-const { createOrder, getOrders, getMyOrders, getOrder, updateStatus, getStats } = require('../controllers/orderController');
+const { createOrder, getOrders, getMyOrders, getOrder, updateStatus, getStats, generateOrderQR, getOrderQR} = require('../controllers/orderController');
 const authMw = require('../../../shared/middleware/auth');
 
 orderRouter.post('/',          authMw.optionalAuth, createOrder);
@@ -64,6 +64,8 @@ orderRouter.get('/:id',        authMw.authenticate, authMw.requireStaff, getOrde
 orderRouter.patch('/:id/status', authMw.authenticate, authMw.requireStaff,
   body('status').isIn(['pending','paid','preparing','ready','served','cancelled']), validate, updateStatus
 );
+orderRouter.post('/generate-qr', authMw.authenticate, authMw.requireStaff, generateOrderQR);
+orderRouter.post('/:orderId/qr', authMw.authenticate, getOrderQR);
 
 
 // ── PAYMENT ROUTES ─────────────────────────────────────────────

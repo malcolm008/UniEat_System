@@ -97,7 +97,6 @@ const createOrder = async (req, res, next) => {
   }
 };
 
-// ── GET /orders — admin/staff: all orders with filters ─────────
 const getOrders = async (req, res, next) => {
   try {
     const { page = 1, limit = 20, status, date, search } = req.query;
@@ -199,7 +198,6 @@ const getMyOrders = async (req, res, next) => {
     }
 };
 
-// ── GET /orders/:id ────────────────────────────────────────────
 const getOrder = async (req, res, next) => {
   try {
     const { rows } = await query(`
@@ -218,7 +216,6 @@ const getOrder = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── PATCH /orders/:id/status ───────────────────────────────────
 const updateStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
@@ -235,7 +232,6 @@ const updateStatus = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ── GET /orders/stats — admin dashboard stats ──────────────────
 const getStats = async (req, res, next) => {
   try {
     const { date } = req.query;
@@ -290,4 +286,92 @@ const getStats = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { createOrder, getOrders, getMyOrders, getOrder, updateStatus, getStats };
+const generateOrderQR = async (req, res, next) => {
+    try {
+        const { order_id, qr_code_url, transaction_code } = req.body;
+        const universityId = req.user.university_id;
+
+        const existingQR = await query(
+            `SELECT id FROM qr_codes WHERE order_id = $1`,
+            [order_id]
+        );
+
+        if (existingQR.rows.length > 0) {
+            return error(res, 'QR code already generated for this order', 400);
+        }
+
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + 24);
+
+        const { rows } = await query(
+            `INSERT INTO qr_codes (order_id, qr_image_url, token, expires_at, university_id) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+            [order_id, qr_code_url, transaction_code, expiresAt, universityId]
+        );
+
+        return success(res, row[0], 'QR code generated');
+    } catch (err) {
+        next(err);
+    }
+};
+
+const getOrderQR = async (req, res, next) => {
+    try {
+        const { orderId } = req.params;
+        const userId = req.user.id;
+
+        const { rows } = await query(
+            `SELECT q.* FROM qr_codes q
+             JOIN orders o ON q.order_id = o.id
+             WHERE q.order_id = $1 AND o.user_id = $2 AND q.is_used = false AND q.expires_at > NOW()
+             ORDER BY q.created_at DESC LIMIT 1`,
+            [orderId, userId]
+        );
+
+        if (!rows[0]) {
+            return success(res, null, 'No active QR code found');
+        }
+
+        return success(res, rows[0]);
+    } catch (err) {
+        next(err);
+    }
+};
+
+const redeemQr = async (req, res, next) => {
+    try {
+        const { token } = req.body;
+        const vendorId = req.user.id;
+
+        const { rows: [qr] } = await query(
+            `SELECT q.*, o.vendor_id, o.id as order_id
+             FROM qr_codes q
+             JOIN orders o ON q.order_id = o.id
+             WHERE q.token = $1 AND q.is_used = false AND q.expires_at > NOW()`,
+            [token]
+        );
+
+        if (!qr) return error(res, 'Invalid or expired QR code', 404);
+
+        if (qr.vendor_id !== vendorId && req.user.role !== 'admin') {
+            return error(res, 'Unauthorized to redeem this QR code', 403);
+        }
+
+        await withTransaction(async (client) => {
+            await client.query(
+                `UPDATE qr_codes SET is_used = true, used_by = $1, used_at = NOW() WHERE id = $2`,
+                [vendorId, qr.id]
+            );
+
+            await client.query(
+                `UPDATE orders SET status = 'served', updated_at = NOW() WHERE id = $1`,
+                [qr.order_id]
+            );
+        });
+
+        return success(res, { order_id: qr.order_id }, 'Order marked as served');
+    } catch (err) {
+        next(err);
+    }
+};
+
+module.exports = { createOrder, getOrders, getMyOrders, getOrder, updateStatus, getStats, generateOrderQR, getOrderQR, redeemQr };

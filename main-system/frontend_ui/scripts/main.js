@@ -84,11 +84,39 @@
     }
 
     function Toast({toast}) { if (!toast) return null; const colors = {default:{bg:'#1C1A17',col:'#F5F0E8'},success:{bg:'#0F6E56',col:'#fff'},error:{bg:'#A32D2D',col:'#fff'}}; const {bg,col} = colors[toast.type] || colors.default; return ( <div style={{position:'fixed',bottom:28,left:'50%',transform:'translateX(-50%)',background:bg,color:col,padding:'11px 22px',borderRadius:30,fontSize:13,fontWeight:500,zIndex:9999,whiteSpace:'nowrap',boxShadow:'0 4px 20px rgba(0,0,0,.2)',animation:'fadeUp .3s cubic-bezier(.34,1.56,.64,1)'}}>{toast.msg}</div> ); }
+
     function Modal({open, onClose, children, maxW=480, center=false}) { if (!open) return null; return ( <div onClick={e=>{ if(e.target===e.currentTarget) onClose(); }} style={{position:'fixed',inset:0,background:'rgba(28,26,23,.58)',display:'flex',alignItems:center?'center':'flex-end',justifyContent:'center',zIndex:500,backdropFilter:'blur(3px)'}}><div style={{background:'#FAFAF7',borderRadius:center?16:'20px 20px 0 0',padding:'24px 22px 32px',width:'100%',maxWidth:maxW,maxHeight:'90vh',overflowY:'auto',animation:'fadeUp .28s cubic-bezier(.34,1.56,.64,1)'}}>{!center && <div style={{width:40,height:4,background:'var(--border)',borderRadius:2,margin:'0 auto 20px'}}/>}{children}</div></div> ); }
+
     function Btn({children,onClick,variant='primary',fullWidth,disabled,small,style:sx={}}) { const base = {display:'inline-flex',alignItems:'center',justifyContent:'center',gap:7,borderRadius:10,fontFamily:'Syne,sans-serif',fontWeight:700,cursor:'pointer',transition:'background .18s,transform .1s,opacity .15s',border:'none',width:fullWidth?'100%':'auto',opacity:disabled?.55:1,pointerEvents:disabled?'none':'auto',fontSize:small?12:14,padding:small?'7px 14px':'12px 18px',...sx}; const variants = {primary:{background:'#1C1A17',color:'#F5F0E8'},rust:{background:'#C4522A',color:'#fff'},sage:{background:'#4A6741',color:'#fff'},ghost:{background:'transparent',color:'#1C1A17',border:'1px solid #E2D9CC'},danger:{background:'#A32D2D',color:'#fff'},amber:{background:'#D4831A',color:'#fff'}}; const [hover,setHover] = useState(false); const hoverBg = {primary:'#C4522A',rust:'#A03D1E',sage:'#3A5131',ghost:'#EDE8DF',danger:'#7A1F1F',amber:'#B06B10'}; return (<button onClick={onClick} style={{...base,...variants[variant],background:hover?hoverBg[variant]:variants[variant].background}} onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)} onMouseDown={e=>e.currentTarget.style.transform='scale(.97)'} onMouseUp={e=>e.currentTarget.style.transform='scale(1)'}>{children}</button>); }
-    function Badge({children, color='gray'}) { const colors = {gray:{bg:'#EDE8DF',col:'#5A5040'},rust:{bg:'#F5E8E2',col:'#C4522A'},amber:{bg:'#FEF3DC',col:'#854F0B'},sage:{bg:'#EAF0E8',col:'#4A6741'},blue:{bg:'#E6F1FB',col:'#185FA5'},red:{bg:'#FCEBEB',col:'#A32D2D'}}; return (<span style={{background:colors[color].bg,color:colors[color].col,fontSize:10,fontWeight:700,letterSpacing:.5,textTransform:'uppercase',padding:'3px 8px',borderRadius:6}}>{children}</span>); }
+
+    function Badge({ children, color = 'gray' }) {
+        const colors = {
+            gray: { bg: '#EDE8DF', col: '#5A5040' },
+            rust: { bg: '#F5E8E2', col: '#C4522A' },
+            amber: { bg: '#FEF3DC', col: '#854F0B' },
+            sage: { bg: '#EAF0E8', col: '#4A6741' },
+            blue: { bg: '#E6F1FB', col: '#185FA5' },
+            red: { bg: '#FCEBEB', col: '#A32D2D' },
+            // Add missing colors
+            orange: { bg: '#FFF3E0', col: '#E65100' },
+            info: { bg: '#E3F2FD', col: '#1565C0' }
+        };
+        const style = colors[color] || colors.gray;
+        return (
+            <span style={{
+                background: style.bg, color: style.col,
+                padding: '4px 10px', borderRadius: 20, fontSize: 11,
+                fontWeight: 600, display: 'inline-block', whiteSpace: 'nowrap'
+            }}>
+                {children}
+            </span>
+        );
+    }
+
     function Input({label,value,onChange,placeholder,type='text',prefix,maxLength}) { const [focus,setFocus] = useState(false); return ( <div style={{marginBottom:12}}>{label && <div style={{fontSize:11,fontWeight:500,letterSpacing:1,textTransform:'uppercase',color:'var(--muted)',marginBottom:6}}>{label}</div>}<div style={{display:'flex',border:`1.5px solid ${focus?'var(--rust)':'var(--border)'}`,borderRadius:10,overflow:'hidden',background:'#fff',transition:'border-color .15s'}}>{prefix && <div style={{padding:'10px 12px',fontSize:12,fontWeight:500,color:'var(--muted)',background:'var(--tag)',borderRight:'1px solid var(--border)',whiteSpace:'nowrap'}}>{prefix}</div>}<input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} maxLength={maxLength} style={{flex:1,padding:'10px 12px',fontSize:13,background:'transparent'}} onFocus={()=>setFocus(true)} onBlur={()=>setFocus(false)}/></div></div> ); }
+
     function StatCard({label,value,sub,color='default',icon}) { const bg = {default:'#fff',rust:'#FDF5F2',sage:'#EAF0E8',amber:'#FEF3DC',blue:'#E6F1FB'}; const col = {default:'var(--cr)',rust:'#C4522A',sage:'#4A6741',amber:'#854F0B',blue:'#185FA5'}; return ( <div style={{background:bg[color],border:'1px solid var(--border)',borderRadius:12,padding:'14px 16px',animation:'card-enter .3s ease'}}><div style={{fontSize:11,color:'var(--muted)',fontWeight:500,letterSpacing:.5,textTransform:'uppercase',marginBottom:6,display:'flex',alignItems:'center',gap:5}}>{icon && <span style={{fontSize:14}}>{icon}</span>}{label}</div><div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:24,color:col[color]}}>{value}</div>{sub && <div style={{fontSize:11,color:'var(--muted)',marginTop:3}}>{sub}</div>}</div> ); }
+
     function QRCanvas({refCode, size=180}) { const ref = useRef(); useEffect(() => { const canvas = ref.current; if(!canvas) return; const ctx = canvas.getContext('2d'); const mod = 25, cell = (size-20)/mod, offset = 10; ctx.fillStyle = '#fff'; ctx.fillRect(0,0,size,size); ctx.fillStyle = '#1C1A17'; let seed = refCode.split('').reduce((a,c)=>a+c.charCodeAt(0),0); const rand = () => { seed=(seed*1664525+1013904223)&0xFFFFFFFF; return (seed>>>0)/0xFFFFFFFF; }; for(let r=0;r<mod;r++) for(let c=0;c<mod;c++) if(rand()>.5) ctx.fillRect(offset+c*cell,offset+r*cell,cell-1,cell-1); const finder = (x,y) => { ctx.fillStyle='#fff'; ctx.fillRect(offset+x*cell,offset+y*cell,7*cell,7*cell); ctx.fillStyle='#1C1A17'; ctx.fillRect(offset+x*cell,offset+y*cell,7*cell,7*cell); ctx.fillStyle='#fff'; ctx.fillRect(offset+(x+1)*cell,offset+(y+1)*cell,5*cell,5*cell); ctx.fillStyle='#1C1A17'; ctx.fillRect(offset+(x+2)*cell,offset+(y+2)*cell,3*cell,3*cell); }; finder(0,0); finder(mod-7,0); finder(0,mod-7); }, [refCode, size]); return <canvas ref={ref} width={size} height={size} style={{borderRadius:8,display:'block'}}/>; }
 
     function MiniBarChart({data}) { const max = Math.max(...data.map(d=>d.sales)); return ( <div style={{display:'flex',alignItems:'flex-end',gap:6,height:80,padding:'0 4px'}}>{data.map((d,i) => (<div key={d.day} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4}}><div style={{width:'100%',background:i===4?'#C4522A':'#E2D9CC',borderRadius:'4px 4px 0 0',height:Math.round((d.sales/max)*70),transition:'height .4s ease'}}/><span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>{d.day}</span></div>))}</div> ); }
@@ -1069,17 +1097,10 @@
         const [orders, setOrders] = useState([]);
         const [loading, setLoading] = useState(true);
         const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-        const [user, setUser] = useState(null);
 
         useEffect(() => {
             const handleResize = () => setIsMobile(window.innerWidth <= 768);
             window.addEventListener('resize', handleResize);
-
-            const savedUser = localStorage.getItem('user');
-            if (savedUser) {
-                setUser(JSON.parse(savedUser));
-            }
-
             fetchOrders();
             return () => window.removeEventListener('resize', handleResize);
         }, []);
@@ -1094,15 +1115,8 @@
                 const result = await response.json();
 
                 if (result.success && result.data) {
-                    const sortedOrders = result.data.sort((a, b) => {
-                        const statusOrder = { 'pending': 0, 'pending_verification': 1, 'paid': 2, 'preparing': 3, 'ready': 4, 'served': 5, 'completed': 6, 'cancelled': 7};
-                        const statusDiff = (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
-
-                        if (statusDiff !== 0) return statusDiff;
-                        return new Date(b.created_at) - new Date(a.created_at);
-                    });
-
-                    setOrders(sortedOrders.slice(0, 10));
+                    // No sorting needed - backend already returns sorted orders
+                    setOrders(result.data);
                 } else {
                     setOrders([]);
                 }
@@ -1117,10 +1131,10 @@
         const getStatusBadgeColor = (status) => {
             switch (status) {
                 case 'pending': return 'amber';
-                case 'pending_verification': return 'orange';
+                case 'pending_verification': return 'amber';
                 case 'paid': return 'blue';
-                case 'preparing': return 'info';
-                case 'ready': return 'info';
+                case 'preparing': return 'blue';
+                case 'ready': return 'blue';
                 case 'served': return 'sage';
                 case 'completed': return 'sage';
                 case 'cancelled': return 'red';
@@ -1131,7 +1145,7 @@
         const getStatusLabel = (status) => {
             switch (status) {
                 case 'pending': return 'Pending';
-                case 'pending_verification' return 'Awaiting Verification';
+                case 'pending_verification': return 'Awaiting Verification';
                 case 'paid': return 'Paid';
                 case 'preparing': return 'Preparing';
                 case 'ready': return 'Ready for Pickup';
@@ -1152,17 +1166,18 @@
 
             if (diffMins < 1) return 'Just now';
             if (diffMins < 60) return `${diffMins} min ago`;
-            if (diffHours < 24) return `${diffHours} hours${diffHours > 1 ? 's' : ''} ago`;
-            if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's': ''} ago`;
+            if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+            if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
             return date.toLocaleDateString();
         };
 
         if (loading) {
             return (
-                <div style={{ padding: 24, textAlign: 'center' }}>
-                    <div style={{ fontSize: 48, marginBottom: 16 }}>📦</div>
-                    <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No orders yet</div>
-                    <div style={{ fontSize: 13, color: 'var(--muted)' }}>When you place an order, it will appear here.</div>
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }} />
+                        <div>Loading your orders...</div>
+                    </div>
                 </div>
             );
         }
@@ -1735,7 +1750,407 @@
         );
     }
 
-    function OrdersMgmtPage() { const [filter, setFilter] = useState('all'); const [orders] = useState(SAMPLE_ORDERS.map(o=>({...o}))); const filtered = filter==='all'?orders:orders.filter(o=>o.status===filter); return ( <div style={{padding:22,overflowY:'auto'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:18}}><div><div style={{fontWeight:800,fontSize:20}}>All Orders</div><div style={{fontSize:12}}>{orders.length} orders today</div></div><div style={{display:'flex',gap:6}}>{['all','pending','served'].map(f=>(<button key={f} onClick={()=>setFilter(f)} style={{padding:'6px 14px',borderRadius:8,background:filter===f?'#1C1A17':'#fff',color:filter===f?'#F5F0E8':'var(--cr)'}}>{f}</button>))}</div></div><div className="order-table" style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse'}}><thead><tr style={{background:'var(--tag)'}}>{['Order ID','Student','Items','Total','Method','Time','Status'].map(h=><th key={h} style={{padding:'10px 14px',fontSize:10,textAlign:'left'}}>{h}</th>)}</tr></thead><tbody>{filtered.map(o=>(<tr key={o.id}><td data-label="Order ID" style={{padding:'12px 14px'}}>{o.id}</td><td data-label="Student">{o.student}</td><td data-label="Items" style={{fontSize:11}}>{o.items.map(it=>`${it.qty}× ${it.name}`).join(', ')}</td><td data-label="Total">TZS {fmt(o.total)}</td><td data-label="Method"><Badge color={o.paid==='mpesa'?'sage':'blue'}>{o.paid}</Badge></td><td data-label="Time">{o.time}</td><td data-label="Status"><Badge color={o.status==='served'?'sage':'amber'}>{o.status}</Badge></td></tr>))}</tbody></table></div></div> ); }
+    function OrdersMgmtPage() {
+        const { showToast } = useContext(AppCtx);
+        const [orders, setOrders] = useState([]);
+        const [loading, setLoading] = useState(true);
+        const [filter, setFilter] = useState('all');
+        const [selectedOrder, setSelectedOrder] = useState(null);
+        const [showVerifyModal, setShowVerifyModal] = useState(false);
+        const [showQRModal, setShowQRModal] = useState(false);
+        const [qrCodeUrl, setQrCodeUrl] = useState('');
+        const [verifyingOrderId, setVerifyingOrderId] = useState(null);
+        const [transactionCode, setTransactionCode] = useState('');
+        const [isVerifying, setIsVerifying] = useState(false);
+        const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+        // Hovercode API credentials
+        const HOVERCODE_WORKSPACE = '16d7f3bd-f8dd-46f4-9703-df9be3773efa';
+        const HOVERCODE_TOKEN = '4d4d46f28f23480feaea8d175f2879a48aa92aab';
+
+        useEffect(() => {
+            const handleResize = () => setIsMobile(window.innerWidth <= 768);
+            window.addEventListener('resize', handleResize);
+            fetchOrders();
+            return () => window.removeEventListener('resize', handleResize);
+        }, []);
+
+        const fetchOrders = async () => {
+            setLoading(true);
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch('http://localhost:5000/api/orders', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    setOrders(result.data);
+                } else if (result.orders) {
+                    setOrders(result.orders);
+                } else {
+                    setOrders([]);
+                }
+            } catch (error) {
+                console.error('Failed to fetch orders:', error);
+                showToast('Failed to load orders', 'error');
+            }
+            setLoading(false);
+        };
+
+        const generateQRCode = async (orderId, transactionCode) => {
+            try {
+                // Create QR code using Hovercode API
+                const qrResponse = await fetch('https://hovercode.com/api/v1/qr-codes', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${HOVERCODE_TOKEN}`
+                    },
+                    body: JSON.stringify({
+                        workspace_id: HOVERCODE_WORKSPACE,
+                        name: `Order_${orderId}`,
+                        data: JSON.stringify({
+                            order_id: orderId,
+                            transaction_code: transactionCode,
+                            timestamp: new Date().toISOString(),
+                            is_used: false
+                        }),
+                        background_color: '#ffffff',
+                        foreground_color: '#000000',
+                        size: 300
+                    })
+                });
+
+                const qrResult = await qrResponse.json();
+
+                if (qrResult.data && qrResult.data.qr_code_url) {
+                    // Save QR code URL to database
+                    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                    await fetch('http://localhost:5000/api/orders/generate-qr', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            order_id: orderId,
+                            qr_code_url: qrResult.data.qr_code_url,
+                            transaction_code: transactionCode
+                        })
+                    });
+
+                    return qrResult.data.qr_code_url;
+                }
+                return null;
+            } catch (error) {
+                console.error('QR generation error:', error);
+                // Fallback: generate local QR code
+                const qrData = JSON.stringify({ order_id: orderId, transaction_code: transactionCode });
+                const canvas = document.createElement('canvas');
+                const qrCode = await import('qrcode');
+                const qrUrl = await qrCode.toDataURL(qrData);
+                return qrUrl;
+            }
+        };
+
+        const verifyOrder = async () => {
+            if (!transactionCode || transactionCode.trim() === '') {
+                showToast('Please enter transaction code', 'error');
+                return;
+            }
+
+            setIsVerifying(true);
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+
+                // First, verify the payment
+                const verifyResponse = await fetch('http://localhost:5000/api/payments/verify-payment', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        transaction_id: verifyingOrderId,
+                        is_verified: true,
+                        notes: `Verified by admin with transaction code: ${transactionCode}`
+                    })
+                });
+
+                const verifyResult = await verifyResponse.json();
+
+                if (verifyResult.success) {
+                    // Generate QR code for the order
+                    const qrUrl = await generateQRCode(verifyingOrderId, transactionCode);
+                    setQrCodeUrl(qrUrl);
+
+                    await fetchOrders();
+                    setShowVerifyModal(false);
+                    setShowQRModal(true);
+                    showToast('Order verified and QR code generated!', 'success');
+                } else {
+                    showToast(verifyResult.message || 'Verification failed', 'error');
+                }
+            } catch (error) {
+                console.error('Verification error:', error);
+                showToast('Failed to verify order', 'error');
+            } finally {
+                setIsVerifying(false);
+                setTransactionCode('');
+            }
+        };
+
+        const getStatusBadgeColor = (status) => {
+            switch (status) {
+                case 'pending': return 'amber';
+                case 'pending_verification': return 'orange';
+                case 'paid': return 'blue';
+                case 'preparing': return 'info';
+                case 'ready': return 'info';
+                case 'served': return 'sage';
+                case 'completed': return 'sage';
+                case 'cancelled': return 'red';
+                default: return 'gray';
+            }
+        };
+
+        const getStatusLabel = (status) => {
+            switch (status) {
+                case 'pending': return 'Pending';
+                case 'pending_verification': return 'Awaiting Verification';
+                case 'paid': return 'Paid';
+                case 'preparing': return 'Preparing';
+                case 'ready': return 'Ready';
+                case 'served': return 'Served';
+                case 'completed': return 'Completed';
+                case 'cancelled': return 'Cancelled';
+                default: return status;
+            }
+        };
+
+        const formatDate = (dateString) => {
+            if (!dateString) return '—';
+            const date = new Date(dateString);
+            return date.toLocaleString();
+        };
+
+        const filteredOrders = orders.filter(order => {
+            if (filter === 'all') return true;
+            return order.status === filter;
+        });
+
+        if (loading) {
+            return (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }} />
+                        <div>Loading orders...</div>
+                    </div>
+                </div>
+            );
+        }
+
+        return (
+            <div style={{ padding: isMobile ? 16 : 24, overflowY: 'auto' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
+                    <div>
+                        <div style={{ fontWeight: 800, fontSize: isMobile ? 20 : 24, marginBottom: 4 }}>Order Management</div>
+                        <div style={{ fontSize: 13, color: 'var(--muted)' }}>Manage and verify customer orders</div>
+                    </div>
+                    <Btn variant="rust" onClick={fetchOrders} small>
+                        ⟳ Refresh
+                    </Btn>
+                </div>
+
+                {/* Filter Tabs */}
+                <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+                    {['all', 'pending', 'pending_verification', 'paid', 'served', 'completed'].map(f => {
+                        const count = orders.filter(o => f === 'all' ? true : o.status === f).length;
+                        return (
+                            <button
+                                key={f}
+                                onClick={() => setFilter(f)}
+                                style={{
+                                    padding: '6px 14px',
+                                    borderRadius: 20,
+                                    background: filter === f ? '#C4522A' : 'transparent',
+                                    color: filter === f ? '#fff' : 'var(--muted)',
+                                    border: filter === f ? 'none' : '1px solid var(--border)',
+                                    cursor: 'pointer',
+                                    fontSize: 13,
+                                    fontWeight: 500
+                                }}
+                            >
+                                {f.replace('_', ' ').toUpperCase()} ({count})
+                            </button>
+                        );
+                    })}
+                </div>
+
+                {/* Orders Table */}
+                <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', overflowX: 'auto' }}>
+                    <table style={{ width: '100%', minWidth: 800, borderCollapse: 'collapse' }}>
+                        <thead>
+                            <tr style={{ background: 'var(--tag)' }}>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Order ID</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Customer</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Items</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Total</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Payment</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Date</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Status</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredOrders.length === 0 ? (
+                                <tr>
+                                    <td colSpan="8" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
+                                        No orders found
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredOrders.map((order, idx) => (
+                                    <tr key={order.id} style={{ borderTop: '1px solid var(--border)', background: idx % 2 === 0 ? '#fff' : '#FAFAF7' }}>
+                                        <td style={{ padding: '12px 16px' }}>
+                                            <div style={{ fontWeight: 600, fontSize: 12 }}>{order.id?.slice(0, 8)?.toUpperCase()}</div>
+                                            {order.transaction_code && (
+                                                <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>TXN: {order.transaction_code}</div>
+                                            )}
+                                        </td>
+                                        <td style={{ padding: '12px 16px' }}>
+                                            <div>{order.customer_name || order.guest_name || 'Guest'}</div>
+                                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>{order.guest_phone || '—'}</div>
+                                        </td>
+                                        <td style={{ padding: '12px 16px', fontSize: 12 }}>
+                                            {order.items && order.items.map(it => `${it.quantity}× ${it.name}`).join(', ')}
+                                        </td>
+                                        <td style={{ padding: '12px 16px', fontWeight: 600 }}>TZS {fmt(order.total)}</td>
+                                        <td style={{ padding: '12px 16px', fontSize: 12 }}>
+                                            <Badge color={order.payment_provider === 'mpesa' ? 'sage' : 'blue'}>
+                                                {order.payment_provider || 'Pending'}
+                                            </Badge>
+                                        </td>
+                                        <td style={{ padding: '12px 16px', fontSize: 12 }}>{formatDate(order.created_at)}</td>
+                                        <td style={{ padding: '12px 16px' }}>
+                                            <Badge color={getStatusBadgeColor(order.status)}>
+                                                {getStatusLabel(order.status)}
+                                            </Badge>
+                                        </td>
+                                        <td style={{ padding: '12px 16px' }}>
+                                            {order.status === 'pending_verification' && (
+                                                <button
+                                                    onClick={() => {
+                                                        setVerifyingOrderId(order.id);
+                                                        setShowVerifyModal(true);
+                                                    }}
+                                                    style={{
+                                                        padding: '6px 12px',
+                                                        background: '#4A6741',
+                                                        color: '#fff',
+                                                        border: 'none',
+                                                        borderRadius: 6,
+                                                        cursor: 'pointer',
+                                                        fontSize: 12
+                                                    }}
+                                                >
+                                                    Verify Payment
+                                                </button>
+                                            )}
+                                            {order.status === 'paid' && order.qr_code_url && (
+                                                <button
+                                                    onClick={() => {
+                                                        setQrCodeUrl(order.qr_code_url);
+                                                        setShowQRModal(true);
+                                                    }}
+                                                    style={{
+                                                        padding: '6px 12px',
+                                                        background: '#2563eb',
+                                                        color: '#fff',
+                                                        border: 'none',
+                                                        borderRadius: 6,
+                                                        cursor: 'pointer',
+                                                        fontSize: 12
+                                                    }}
+                                                >
+                                                    View QR
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Verify Payment Modal */}
+                <Modal open={showVerifyModal} onClose={() => { setShowVerifyModal(false); setTransactionCode(''); }} maxW={450} center>
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+                        <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 20, marginBottom: 5 }}>Verify Payment</div>
+                        <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>
+                            Enter the transaction code provided by the customer to verify payment.
+                        </div>
+                        <div style={{ marginBottom: 20 }}>
+                            <label style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, display: 'block' }}>Transaction Code</label>
+                            <input
+                                type="text"
+                                value={transactionCode}
+                                onChange={e => setTransactionCode(e.target.value.toUpperCase())}
+                                placeholder="e.g., QFV7K3L2M9"
+                                style={{
+                                    width: '100%',
+                                    padding: '12px',
+                                    border: '1.5px solid var(--border)',
+                                    borderRadius: 10,
+                                    fontSize: 14,
+                                    textTransform: 'uppercase'
+                                }}
+                            />
+                        </div>
+                        <div style={{ display: 'flex', gap: 12 }}>
+                            <Btn variant="ghost" onClick={() => { setShowVerifyModal(false); setTransactionCode(''); }}>Cancel</Btn>
+                            <Btn variant="rust" onClick={verifyOrder} disabled={isVerifying}>
+                                {isVerifying ? 'Verifying...' : 'Verify & Generate QR'}
+                            </Btn>
+                        </div>
+                    </div>
+                </Modal>
+
+                {/* QR Code Modal */}
+                <Modal open={showQRModal} onClose={() => setShowQRModal(false)} maxW={450} center>
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: 48, marginBottom: 12 }}>📱</div>
+                        <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 20, marginBottom: 5 }}>Order QR Code</div>
+                        <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>
+                            Customer can scan this QR code at the counter to receive their order.
+                        </div>
+                        {qrCodeUrl && (
+                            <div style={{
+                                width: 200,
+                                height: 200,
+                                margin: '0 auto 20px',
+                                border: '2px solid var(--border)',
+                                borderRadius: 12,
+                                overflow: 'hidden',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <img src={qrCodeUrl} alt="QR Code" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                            </div>
+                        )}
+                        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 20 }}>
+                            ⚠️ This QR code can only be scanned once for security.
+                        </div>
+                        <Btn variant="rust" onClick={() => setShowQRModal(false)}>Close</Btn>
+                    </div>
+                </Modal>
+            </div>
+        );
+    }
 
     function ReportsPage() { return ( <div style={{padding:24,overflowY:'auto'}}><div style={{fontWeight:800,fontSize:20}}>Reports</div><div className="admin-dashboard-stats" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}><StatCard label="This month" value="TZS 2.4M" sub="89 hours" color="rust" icon="📅"/><StatCard label="Total orders" value="1,247" color="amber" icon="📋"/><StatCard label="Top payer" value="M-Pesa" color="sage" icon="📱"/></div><div className="admin-grid-2col" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Daily revenue</div><MiniBarChart data={SALES_DATA}/></div><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Category breakdown</div>{[{label:'Lunch',pct:38},{label:'Dinner',pct:29},{label:'Breakfast',pct:18}].map(c=>(<div key={c.label} style={{display:'flex',gap:8,marginBottom:8}}><span style={{width:70}}>{c.label}</span><div style={{flex:1,height:6,background:'#EDE8DF'}}><div style={{width:c.pct+'%',height:'100%',background:'#C4522A'}}/></div><span>{c.pct}%</span></div>))}</div></div></div> ); }
 
