@@ -4,7 +4,7 @@ const { logger } = require('../../../shared/utils/logger');
 
 const createOrder = async (req, res, next) => {
   try {
-    const { items, guest_name, guest_phone, notes, university_id } = req.body;
+    const { items, guest_name, guest_phone, notes, university_id, transaction_code } = req.body;
     if (!items?.length) return error(res, 'Order must contain at least one item');
 
     let finalUniversityId = university_id || req.user?.university_id;
@@ -74,10 +74,10 @@ const createOrder = async (req, res, next) => {
       const total = subtotal + service_charge;
 
       const { rows: [order] } = await client.query(`
-        INSERT INTO orders (user_id, vendor_id, university_id, guest_name, guest_phone, status, subtotal, service_charge, total, notes)
-        VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, $9)
+        INSERT INTO orders (user_id, vendor_id, university_id, guest_name, guest_phone, status, subtotal, service_charge, total, notes, transaction_code)
+        VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, $9, $10)
         RETURNING *
-      `, [req.user?.id || null, vendorId, finalUniversityId, guest_name || null, guest_phone || null, subtotal, service_charge, total, notes || null]);
+      `, [req.user?.id || null, vendorId, finalUniversityId, guest_name || null, guest_phone || null, subtotal, service_charge, total, notes || null, transaction_code || null]);
 
       for (const line of orderLines) {
         await client.query(`
@@ -120,12 +120,16 @@ const getOrders = async (req, res, next) => {
         COALESCE(u.name, o.guest_name, 'Guest') AS customer_name,
         COALESCE(u.reg_number, '—') AS reg_number,
         u.role AS customer_role,
+        o.transaction_code,
+        t.provider AS transaction_provider,
+        t.status AS transaction_verification_status,
         (SELECT json_agg(json_build_object('name', oi.name, 'quantity', oi.quantity, 'unit_price', oi.unit_price, 'subtotal', oi.subtotal))
          FROM order_items oi WHERE oi.order_id = o.id) AS items,
         (SELECT p.provider FROM payments p WHERE p.order_id = o.id ORDER BY p.initiated_at DESC LIMIT 1) AS payment_provider,
         (SELECT p.status  FROM payments p WHERE p.order_id = o.id ORDER BY p.initiated_at DESC LIMIT 1) AS payment_status
       FROM orders o
       LEFT JOIN users u ON u.id = o.user_id
+      LEFT JOIN transactions t ON t.order_id = o.id AND t.status = 'success'
       ${where}
       ORDER BY o.created_at DESC
       LIMIT $${idx++} OFFSET $${idx}
@@ -308,7 +312,7 @@ const generateOrderQR = async (req, res, next) => {
             [order_id, qr_code_url, transaction_code, expiresAt, universityId]
         );
 
-        return success(res, row[0], 'QR code generated');
+        return success(res, rows[0], 'QR code generated');
     } catch (err) {
         next(err);
     }
@@ -374,4 +378,47 @@ const redeemQr = async (req, res, next) => {
     }
 };
 
-module.exports = { createOrder, getOrders, getMyOrders, getOrder, updateStatus, getStats, generateOrderQR, getOrderQR, redeemQr };
+const verifyOrderWithTransaction = async (req, res, next) => {
+    try {
+        const { order_id, transaction_id, is_verified, notes } = req.body;
+        const verifierId = req.user.id;
+
+        if (!is_verified) {
+            return error(res, 'Verification failed', 400);
+        }
+
+        const result = await withTransaction(async (client) => {
+            const { rows: [order] } = await client.query(`
+                UPDATE orders SET status = 'pending_verification',
+                    transaction_code = $1,
+                    updated_at = NOW()
+                WHERE id = $2
+                RETURNING *
+            `, [transaction_code, order_id]);
+
+            if (!order) throw new Error('Order not found');
+
+            const { rows: [transaction] } = await client.query(`
+                INSERT INTO transactions (
+                    order_id, vendor_id, customer_id, university_id,
+                    amount, transaction_code, status, verified_by, verified_at, notes
+                )
+                SELECT
+                    $1, o.vendor_id, o.user_id, o.university_id,
+                    o.total, $2, 'success', $3, NOW(), $4
+                FROM orders o
+                WHERE o.id = $1
+                RETURNING *
+            `, [order_id, transaction_code, verifierId, notes]);
+
+            return { order, transaction };
+        });
+
+        logger.info(`Order ${order_id} verified with transaction ${transaction_code}`);
+        return success(res, result, 'Order verified successfully');
+    } catch (err) {
+        next(err);
+    }
+};
+
+module.exports = { createOrder, getOrders, getMyOrders, getOrder, updateStatus, getStats, generateOrderQR, getOrderQR, redeemQr, verifyOrderWithTransaction};
