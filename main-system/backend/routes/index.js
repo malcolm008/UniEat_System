@@ -53,7 +53,7 @@ menuRouter.post('/daily',              auth, admin, setDailyMenu);
 
 // ── ORDER ROUTES ───────────────────────────────────────────────
 const orderRouter = require('express').Router();
-const { createOrder, getOrders, getMyOrders, getOrder, updateStatus, getStats, generateOrderQR, getOrderQR} = require('../controllers/orderController');
+const { createOrder, getOrders, getMyOrders, getOrder, updateStatus, getStats, generateOrderQR, getOrderQR, verifyOrderWithTransaction, redeemQr } = require('../controllers/orderController');
 const authMw = require('../../../shared/middleware/auth');
 
 orderRouter.post('/',          authMw.optionalAuth, createOrder);
@@ -61,12 +61,54 @@ orderRouter.get('/',           authMw.authenticate, authMw.requireStaff, getOrde
 orderRouter.get('/stats',      authMw.authenticate, authMw.requireAdmin, getStats);
 orderRouter.get('/mine',       authMw.authenticate, getMyOrders);
 orderRouter.get('/:id',        authMw.authenticate, authMw.requireStaff, getOrder);
-orderRouter.patch('/:id/status', authMw.authenticate, authMw.requireStaff,
-  body('status').isIn(['pending','paid','preparing','ready','served','cancelled']), validate, updateStatus
-);
-orderRouter.post('/generate-qr', authMw.authenticate, authMw.requireStaff, generateOrderQR);
-orderRouter.post('/:orderId/qr', authMw.authenticate, getOrderQR);
 
+// Update order status
+orderRouter.patch('/:id/status',
+    authMw.authenticate,
+    authMw.requireStaff,
+    body('status').isIn(['pending', 'paid', 'preparing', 'ready', 'served', 'cancelled', 'pending_verification', 'completed', 'refunded']),
+    validate,
+    updateStatus
+);
+
+// QR Code routes
+orderRouter.post('/generate-qr',
+    authMw.authenticate,
+    authMw.requireStaff,
+    body('order_id').isUUID(),
+    body('qr_code_url').isURL(),
+    body('transaction_code').optional().isString(),
+    validate,
+    generateOrderQR
+);
+
+orderRouter.get('/:orderId/qr',
+    authMw.authenticate,
+    getOrderQR
+);
+
+// NEW: Verify order with transaction code
+orderRouter.post('/verify-transaction',
+    authMw.authenticate,
+    authMw.requireStaff,
+    body('order_id').isUUID().withMessage('Valid order ID is required'),
+    body('transaction_code').isString().trim().notEmpty().withMessage('Transaction code is required'),
+    body('is_verified').isBoolean().withMessage('is_verified must be boolean'),
+    body('notes').optional().isString(),
+    validate,
+    verifyOrderWithTransaction
+);
+
+// NEW: Redeem QR code at counter (for vendors)
+orderRouter.post('/redeem-qr',
+    authMw.authenticate,
+    authMw.requireStaff,
+    body('token').isString().trim().notEmpty().withMessage('QR token is required'),
+    validate,
+    redeemQr
+);
+
+module.exports = orderRouter;
 
 // ── PAYMENT ROUTES ─────────────────────────────────────────────
 const paymentRouter = require('express').Router();

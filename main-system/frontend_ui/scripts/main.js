@@ -1864,15 +1864,16 @@
             try {
                 const token = localStorage.getItem('access_token') || localStorage.getItem('token');
 
-                // First, verify the payment
-                const verifyResponse = await fetch('http://localhost:5000/api/payments/verify-payment', {
+                // Use the new verification endpoint
+                const verifyResponse = await fetch('http://localhost:5000/api/orders/verify-transaction', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
                     body: JSON.stringify({
-                        transaction_id: verifyingOrderId,
+                        order_id: verifyingOrderId,
+                        transaction_code: transactionCode,
                         is_verified: true,
                         notes: `Verified by admin with transaction code: ${transactionCode}`
                     })
@@ -1881,10 +1882,8 @@
                 const verifyResult = await verifyResponse.json();
 
                 if (verifyResult.success) {
-                    // Generate QR code for the order
                     const qrUrl = await generateQRCode(verifyingOrderId, transactionCode);
                     setQrCodeUrl(qrUrl);
-
                     await fetchOrders();
                     setShowVerifyModal(false);
                     setShowQRModal(true);
