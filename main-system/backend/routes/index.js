@@ -53,7 +53,7 @@ menuRouter.post('/daily',              auth, admin, setDailyMenu);
 
 // ── ORDER ROUTES ───────────────────────────────────────────────
 const orderRouter = require('express').Router();
-const { createOrder, getOrders, getMyOrders, getOrder, updateStatus, getStats, generateOrderQR, getOrderQR, redeemQr } = require('../controllers/orderController');
+const { createOrder, getOrders, getMyOrders, getOrder, updateStatus, getStats, generateOrderQR, getOrderQR, regenerateOrderQR, redeemQr } = require('../controllers/orderController');
 const authMw = require('../../../shared/middleware/auth');
 
 orderRouter.post('/',          authMw.optionalAuth, createOrder);
@@ -62,7 +62,6 @@ orderRouter.get('/stats',      authMw.authenticate, authMw.requireAdmin, getStat
 orderRouter.get('/mine',       authMw.authenticate, getMyOrders);
 orderRouter.get('/:id',        authMw.authenticate, authMw.requireStaff, getOrder);
 
-// Update order status
 orderRouter.patch('/:id/status',
     authMw.authenticate,
     authMw.requireStaff,
@@ -71,13 +70,17 @@ orderRouter.patch('/:id/status',
     updateStatus
 );
 
-// QR Code routes
 orderRouter.post('/generate-qr',
     authMw.authenticate,
     authMw.requireStaff,
-    body('order_id').isUUID(),
-    body('qr_code_url').isURL(),
+    body('order_id').optional().isUUID(),
     body('transaction_code').optional().isString(),
+    body().custom(body => {
+        if (!body.order_id && !body.transaction_code) {
+            throw new Error('Either order_id or transaction_code is required');
+        }
+        return true;
+    }),
     validate,
     generateOrderQR
 );
@@ -87,7 +90,13 @@ orderRouter.get('/:orderId/qr',
     getOrderQR
 );
 
-// NEW: Redeem QR code at counter (for vendors)
+orderRouter.post('/:orderId/regenerate-qr',
+    authMw.authenticate,
+    authMw.requireStaff,
+    validate,
+    regenerateOrderQR
+);
+
 orderRouter.post('/redeem-qr',
     authMw.authenticate,
     authMw.requireStaff,

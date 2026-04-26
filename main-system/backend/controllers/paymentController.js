@@ -544,182 +544,70 @@ const confirmManualPayment = async (req, res, next) => {
 
 const verifyPayment = async (req, res, next) => {
     try {
-        // IMPROVEMENT: Accept either transaction_id OR transaction_code
-        const { transaction_id, transaction_code, is_verified, notes } = req.body;
-        const vendorId = req.user.id;
+        const { transaction_code, is_verified, notes } = req.body;
+        const verifierId = req.user.id;
         const universityId = req.user.university_id;
 
-        // Build query based on what's provided
-        let transactionQuery = `
-            SELECT t.*, o.vendor_id, o.university_id, o.id as order_id, o.status as order_status
-            FROM transactions t
-            JOIN orders o ON t.order_id = o.id
-            WHERE o.university_id = $1 AND (1=2`; // False by default
-        let params = [universityId];
-        let paramIndex = 2;
-
-        if (transaction_id) {
-            transactionQuery += ` OR t.id = $${paramIndex}`;
-            params.push(transaction_id);
-            paramIndex++;
-        }
-        if (transaction_code) {
-            transactionQuery += ` OR t.transaction_code = $${paramIndex}`;
-            params.push(transaction_code);
-            paramIndex++;
-        }
-        transactionQuery += `) LIMIT 1`;
-
-        const { rows: [transaction] } = await query(transactionQuery, params);
-
-        if (!transaction) {
-            return notFound(res, 'Transaction not found or not authorized');
+        if (!transaction_code) {
+            return error(res, 'Transaction code is required', 400);
         }
 
-        // Verify vendor authorization
-        if (transaction.vendor_id !== vendorId && req.user.role !== 'admin') {
-            return error(res, 'Not authorized to verify this transaction', 403);
+        if (!is_verified) {
+            return error(res, 'Verification failed. Payment not confirmed.', 400);
         }
 
-        // Check transaction status
-        if (transaction.status !== 'pending_verification') {
-            return error(res, `Cannot verify payment. Current status: ${transaction.status}`, 400);
-        }
+        const result = await withTransaction(async (client) => {
+            // Find the transaction by code
+            const { rows: [transaction] } = await client.query(
+                `SELECT t.*, o.id as order_id, o.status as order_status, o.vendor_id
+                 FROM transactions t
+                 JOIN orders o ON t.order_id = o.id
+                 WHERE t.transaction_code = $1 AND o.university_id = $2
+                 ORDER BY t.created_at DESC LIMIT 1`,
+                [transaction_code, universityId]
+            );
 
-        // IMPROVEMENT: Check order status before allowing verification
-        if (transaction.order_status !== 'pending_verification') {
-            return error(res, `Order status is ${transaction.order_status}. Cannot verify payment.`, 400);
-        }
+            if (!transaction) {
+                throw new Error('Transaction not found');
+            }
 
-        if (is_verified) {
-            const result = await withTransaction(async (client) => {
-                // Update transaction to success
-                await client.query(
-                    `UPDATE transactions
-                     SET status = 'success',
-                         verified_by = $1,
-                         verified_at = NOW(),
-                         notes = COALESCE(notes, '') || '\n' || $2,
-                         updated_at = NOW()
-                     WHERE id = $3`,
-                    [vendorId, `Verified by ${req.user.reg_number} on ${new Date().toISOString()}`, transaction.id]
-                );
+            if (transaction.order_status !== 'pending_verification') {
+                throw new Error(`Order cannot be verified. Current status: ${transaction.order_status}`);
+            }
 
-                // IMPROVEMENT: Update orders table with transaction_code if not set
-                await client.query(
-                    `UPDATE orders
-                     SET status = 'paid',
-                         transaction_code = COALESCE(transaction_code, $1),
-                         transaction_id = $2,
-                         updated_at = NOW()
-                     WHERE id = $3`,
-                    [transaction.transaction_code, transaction.id, transaction.order_id]
-                );
-
-                // Update payment record if exists
-                await client.query(
-                    `UPDATE payments
-                     SET status = 'success',
-                         completed_at = NOW(),
-                         provider_ref = COALESCE(provider_ref, $1)
-                     WHERE order_id = $2`,
-                    [transaction.transaction_code, transaction.order_id]
-                );
-
-                // IMPROVEMENT: Check if QR code already exists before generating new one
-                const { rows: existingQR } = await client.query(
-                    `SELECT id, token, expires_at FROM qr_tokens
-                     WHERE order_id = $1 AND is_used = false AND expires_at > NOW()
-                     ORDER BY created_at DESC LIMIT 1`,
-                    [transaction.order_id]
-                );
-
-                let qrToken, qrImage, expiresAt;
-
-                if (existingQR.length > 0) {
-                    // Reuse existing QR code
-                    qrToken = existingQR[0];
-                    qrImage = existingQR[0].qr_image_url;
-                    expiresAt = existingQR[0].expires_at;
-
-                    logger.info(`Reusing existing QR code for order ${transaction.order_id}`);
-                } else {
-                    // Generate new QR code
-                    qrToken = crypto.randomBytes(24).toString('hex');
-                    const expiryMins = parseInt(process.env.QR_EXPIRY_MINUTES) || 30;
-                    expiresAt = new Date(Date.now() + expiryMins * 60 * 1000);
-
-                    const qrData = JSON.stringify({
-                        order_id: transaction.order_id,
-                        token: qrToken,
-                        transaction_code: transaction.transaction_code,
-                        exp: expiresAt.toISOString()
-                    });
-
-                    // IMPROVEMENT: Make QR generation async with timeout
-                    qrImage = await Promise.race([
-                        QRCode.toDataURL(qrData, {
-                            errorCorrectionLevel: 'H',
-                            margin: 2,
-                            color: { dark: '#16120E', light: '#FFFFFF' },
-                        }),
-                        new Promise((_, reject) =>
-                            setTimeout(() => reject(new Error('QR generation timeout')), 5000)
-                        )
-                    ]);
-
-                    await client.query(
-                        `INSERT INTO qr_tokens (order_id, token, qr_image_url, expires_at, university_id)
-                         VALUES ($1, $2, $3, $4, $5)`,
-                        [transaction.order_id, qrToken, qrImage, expiresAt, transaction.university_id]
-                    );
-                }
-
-                return {
-                    transaction_id: transaction.id,
-                    transaction_code: transaction.transaction_code,
-                    qr_token: qrToken,
-                    qr_image_url: qrImage,
-                    expires_at: expiresAt
-                };
-            });
-
-            logger.info(`Payment verified for transaction ${transaction.transaction_code} by ${req.user.reg_number}`);
-            return success(res, result, 'Payment verified successfully. QR code ready for pickup.');
-
-        } else {
-            // Mark as failed
-            await query(
+            // Update transaction to success
+            await client.query(
                 `UPDATE transactions
-                 SET status = 'failed',
+                 SET status = 'success',
                      verified_by = $1,
-                     notes = $2,
+                     verified_at = NOW(),
+                     notes = COALESCE(notes, '') || '\n' || 'Verified by ' || $2 || ' on ' || NOW(),
                      updated_at = NOW()
                  WHERE id = $3`,
-                [vendorId, notes || `Payment verification failed by ${req.user.reg_number}`, transaction.id]
+                [verifierId, req.user.reg_number, transaction.id]
             );
 
-            // Update order status to cancelled if verification failed
-            await query(
+            // Update order status to paid
+            const { rows: [order] } = await client.query(
                 `UPDATE orders
-                 SET status = 'cancelled',
+                 SET status = 'paid',
+                     transaction_code = COALESCE(transaction_code, $1),
                      updated_at = NOW()
-                 WHERE id = $1 AND status = 'pending_verification'`,
-                [transaction.order_id]
+                 WHERE id = $2
+                 RETURNING *`,
+                [transaction_code, transaction.order_id]
             );
 
-            logger.warn(`Payment verification failed for transaction ${transaction.transaction_code}`);
-            return success(res, {
-                transaction_id: transaction.id,
-                status: 'failed',
-                message: 'Payment verification failed'
-            });
-        }
+            return { order, transaction };
+        });
+
+        logger.info(`Payment verified for transaction ${transaction_code} by ${req.user.reg_number}`);
+        return success(res, result, 'Payment verified successfully. QR code can now be generated.');
+
     } catch (err) {
         logger.error('Verify payment error:', err);
-        if (err.message === 'QR generation timeout') {
-            return error(res, 'QR code generation timed out. Please try again.', 504);
-        }
+        if (err.message.includes('not found')) return error(res, err.message, 404);
+        if (err.message.includes('cannot be verified')) return error(res, err.message, 400);
         next(err);
     }
 };
@@ -987,7 +875,6 @@ const redeemQR = async (req, res, next) => {
     }
 };
 
-// ── GET /payments/:orderId/qr — get QR image ─────────────────
 const getQR = async (req, res, next) => {
     try {
         const { rows: [qr] } = await query(

@@ -1097,12 +1097,21 @@
         const [orders, setOrders] = useState([]);
         const [loading, setLoading] = useState(true);
         const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+        const [showQRModal, setShowQRModal] = useState(false);
+        const [selectedQR, setSelectedQR] = useState(null);
+        const [loadingQR, setLoadingQR] = useState(null); // Track which order's QR is loading
 
         useEffect(() => {
             const handleResize = () => setIsMobile(window.innerWidth <= 768);
             window.addEventListener('resize', handleResize);
             fetchOrders();
-            return () => window.removeEventListener('resize', handleResize);
+
+            // Set up polling for order status updates (every 30 seconds)
+            const interval = setInterval(fetchOrders, 30000);
+            return () => {
+                window.removeEventListener('resize', handleResize);
+                clearInterval(interval);
+            };
         }, []);
 
         const fetchOrders = async () => {
@@ -1115,8 +1124,17 @@
                 const result = await response.json();
 
                 if (result.success && result.data) {
-                    // No sorting needed - backend already returns sorted orders
                     setOrders(result.data);
+
+                    // Show notification if any order status changed to 'paid'
+                    result.data.forEach(order => {
+                        if (order.status === 'paid' && !window.lastOrderStatus?.[order.id]) {
+                            showToast(`Order #${order.id?.slice(0, 8)} is ready for pickup!`, 'success');
+                        }
+                    });
+
+                    // Store current statuses
+                    window.lastOrderStatus = result.data.reduce((acc, o) => ({ ...acc, [o.id]: o.status }), {});
                 } else {
                     setOrders([]);
                 }
@@ -1128,13 +1146,40 @@
             }
         };
 
+        const fetchQRCode = async (orderId) => {
+            setLoadingQR(orderId);
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5000/api/orders/${orderId}/qr-code`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+
+                if (result.success && result.data && result.data.qr_code_url) {
+                    setSelectedQR({
+                        url: result.data.qr_code_url,
+                        expires_at: result.data.expires_at,
+                        orderId: orderId
+                    });
+                    setShowQRModal(true);
+                } else {
+                    showToast('No QR code available yet. Please wait for payment verification.', 'info');
+                }
+            } catch (error) {
+                console.error('Failed to fetch QR code:', error);
+                showToast('Failed to load QR code', 'error');
+            } finally {
+                setLoadingQR(null);
+            }
+        };
+
         const getStatusBadgeColor = (status) => {
             switch (status) {
                 case 'pending': return 'amber';
-                case 'pending_verification': return 'amber';
+                case 'pending_verification': return 'orange';
                 case 'paid': return 'blue';
-                case 'preparing': return 'blue';
-                case 'ready': return 'blue';
+                case 'preparing': return 'info';
+                case 'ready': return 'success';
                 case 'served': return 'sage';
                 case 'completed': return 'sage';
                 case 'cancelled': return 'red';
@@ -1146,7 +1191,7 @@
             switch (status) {
                 case 'pending': return 'Pending';
                 case 'pending_verification': return 'Awaiting Verification';
-                case 'paid': return 'Paid';
+                case 'paid': return 'Paid - Ready for Pickup';
                 case 'preparing': return 'Preparing';
                 case 'ready': return 'Ready for Pickup';
                 case 'served': return 'Served';
@@ -1241,7 +1286,7 @@
                                     </Badge>
                                     {order.transaction_code && (
                                         <div style={{ fontSize: 10, color: 'var(--muted)', background: '#EDE8DF', padding: '2px 8px', borderRadius: 12 }}>
-                                            TXN: {order.transaction_code}
+                                            TXN: {order.transaction_code?.slice(0, 8)}
                                         </div>
                                     )}
                                 </div>
@@ -1265,7 +1310,7 @@
                                 </div>
                             </div>
 
-                            {/* Order Footer */}
+                            {/* Order Footer with QR Button */}
                             <div style={{
                                 display: 'flex',
                                 justifyContent: 'space-between',
@@ -1289,17 +1334,83 @@
                                     </div>
                                     {order.transaction_code && (
                                         <div style={{ fontSize: 10, color: '#4A6741', background: '#EAF0E8', padding: '2px 8px', borderRadius: 12 }}>
-                                            Ref: {order.transaction_code}
+                                            Ref: {order.transaction_code.slice(0, 8)}
                                         </div>
                                     )}
                                 </div>
-                                <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 16, color: '#C4522A' }}>
-                                    TZS {fmt(order.total)}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                    <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 16, color: '#C4522A' }}>
+                                        TZS {fmt(order.total)}
+                                    </div>
+
+                                    {/* QR Code Button - Only show for paid/ready orders */}
+                                    {(order.status === 'paid' || order.status === 'ready' || order.status === 'preparing') && (
+                                        <button
+                                            onClick={() => fetchQRCode(order.id)}
+                                            disabled={loadingQR === order.id}
+                                            style={{
+                                                padding: '8px 12px',
+                                                background: loadingQR === order.id ? '#ccc' : '#6a4a3a',
+                                                color: '#fff',
+                                                border: 'none',
+                                                borderRadius: 8,
+                                                cursor: loadingQR === order.id ? 'not-allowed' : 'pointer',
+                                                fontSize: 12,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 6
+                                            }}
+                                        >
+                                            {loadingQR === order.id ? (
+                                                <>⏳ Loading...</>
+                                            ) : (
+                                                <>Get QR Code</>
+                                            )}
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
                     ))}
                 </div>
+
+                {/* QR Code Modal */}
+                <Modal open={showQRModal} onClose={() => setShowQRModal(false)} maxW={450} center>
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: 48, marginBottom: 12 }}>📱</div>
+                        <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 20, marginBottom: 5 }}>
+                            Order Pickup QR Code
+                        </div>
+                        <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>
+                            Show this QR code at the counter to collect your order.
+                        </div>
+                        {selectedQR && (
+                            <>
+                                <div style={{
+                                    width: 250,
+                                    height: 250,
+                                    margin: '0 auto 20px',
+                                    border: '2px solid var(--border)',
+                                    borderRadius: 16,
+                                    overflow: 'hidden',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    background: '#fff'
+                                }}>
+                                    <img src={selectedQR.url} alt="QR Code" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                </div>
+                                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
+                                    Valid until: {new Date(selectedQR.expires_at).toLocaleString()}
+                                </div>
+                            </>
+                        )}
+                        <div style={{ fontSize: 11, color: '#e11d48', marginBottom: 20 }}>
+                            ⚠️ This QR code can only be scanned once for security.
+                        </div>
+                        <Btn variant="rust" onClick={() => setShowQRModal(false)}>Close</Btn>
+                    </div>
+                </Modal>
 
                 {/* Refresh Button */}
                 <div style={{ textAlign: 'center', marginTop: 24 }}>
@@ -1307,6 +1418,23 @@
                         ⟳ Refresh Orders
                     </Btn>
                 </div>
+
+                {/* Add CSS animation */}
+                <style>{`
+                    @keyframes fadeUp {
+                        from {
+                            opacity: 0;
+                            transform: translateY(10px);
+                        }
+                        to {
+                            opacity: 1;
+                            transform: translateY(0);
+                        }
+                    }
+                    @keyframes spin {
+                        to { transform: rotate(360deg); }
+                    }
+                `}</style>
             </div>
         );
     }
@@ -1763,6 +1891,7 @@
         const [isVerifying, setIsVerifying] = useState(false);
         const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
+        // Hovercode API credentials
         const HOVERCODE_WORKSPACE = '16d7f3bd-f8dd-46f4-9703-df9be3773efa';
         const HOVERCODE_TOKEN = '4d4d46f28f23480feaea8d175f2879a48aa92aab';
 
@@ -1778,14 +1907,14 @@
             try {
                 const token = localStorage.getItem('access_token') || localStorage.getItem('token');
                 const response = await fetch('http://localhost:5000/api/orders', {
-                    headers: { 'Authorization': `Bearer ${token}`}
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const result = await response.json();
 
                 if (result.success && result.data) {
                     setOrders(result.data);
                 } else if (result.orders) {
-                    setOrders(result.orders)
+                    setOrders(result.orders);
                 } else {
                     setOrders([]);
                 }
@@ -1798,6 +1927,7 @@
 
         const generateQRCode = async (orderId, transactionCode) => {
             try {
+                // Create QR code using Hovercode API
                 const qrResponse = await fetch('https://hovercode.com/api/v1/qr-codes', {
                     method: 'POST',
                     headers: {
@@ -1822,8 +1952,8 @@
                 const qrResult = await qrResponse.json();
 
                 if (qrResult.data && qrResult.data.qr_code_url) {
+                    // Save QR code URL to database
                     const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-
                     await fetch('http://localhost:5000/api/orders/generate-qr', {
                         method: 'POST',
                         headers: {
@@ -1842,7 +1972,7 @@
                 return null;
             } catch (error) {
                 console.error('QR generation error:', error);
-
+                // Fallback: generate local QR code
                 const qrData = JSON.stringify({ order_id: orderId, transaction_code: transactionCode });
                 const qrCode = await import('qrcode');
                 const qrUrl = await qrCode.toDataURL(qrData);
@@ -1851,6 +1981,7 @@
         };
 
         const verifyOrder = async () => {
+            // Find the selected order to get its transaction code
             const orderToVerify = orders.find(order => order.id === verifyingOrderId);
 
             if (!orderToVerify) {
@@ -1859,15 +1990,15 @@
             }
 
             if (!orderToVerify.transaction_code) {
-                showToast('No transaction code found for this order', 'error');;
+                showToast('No transaction code found for this order', 'error');
                 return;
             }
 
             setIsVerifying(true);
-
             try {
                 const token = localStorage.getItem('access_token') || localStorage.getItem('token');
 
+                // Call the verification endpoint with the existing transaction code
                 const verifyResponse = await fetch('http://localhost:5000/api/payments/verify-payment', {
                     method: 'POST',
                     headers: {
@@ -1875,7 +2006,7 @@
                         'Authorization': `Bearer ${token}`
                     },
                     body: JSON.stringify({
-                        transaction_code: orderToVerify.transaction_code,
+                        transaction_code: orderToVerify.transaction_code, // Use existing transaction code
                         is_verified: true,
                         notes: `Payment verified by ${localStorage.getItem('user_name') || 'Admin'} on ${new Date().toLocaleString()}`
                     })
@@ -1884,10 +2015,10 @@
                 const verifyResult = await verifyResponse.json();
 
                 if (verifyResult.success) {
+                    // Generate QR code for the verified order
                     const qrUrl = await generateQRCode(verifyingOrderId, orderToVerify.transaction_code);
                     setQrCodeUrl(qrUrl);
-
-                    await fetchOrders();
+                    await fetchOrders(); // Refresh the orders list
                     setShowVerifyModal(false);
                     setShowQRModal(true);
                     showToast('Payment verified successfully! QR code generated.', 'success');
@@ -1913,7 +2044,7 @@
                 case 'served': return 'sage';
                 case 'completed': return 'sage';
                 case 'cancelled': return 'red';
-                default: return 'grey';
+                default: return 'gray';
             }
         };
 
@@ -1923,7 +2054,7 @@
                 case 'pending_verification': return 'Awaiting Verification';
                 case 'paid': return 'Paid';
                 case 'preparing': return 'Preparing';
-                case 'ready': return 'Ready':
+                case 'ready': return 'Ready';
                 case 'served': return 'Served';
                 case 'completed': return 'Completed';
                 case 'cancelled': return 'Cancelled';
@@ -1931,8 +2062,8 @@
             }
         };
 
-        const formDate = (dateString) => {
-            if (!dateString) return '-';
+        const formatDate = (dateString) => {
+            if (!dateString) return '—';
             const date = new Date(dateString);
             return date.toLocaleString();
         };
