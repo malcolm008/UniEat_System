@@ -1760,11 +1760,9 @@
         const [showQRModal, setShowQRModal] = useState(false);
         const [qrCodeUrl, setQrCodeUrl] = useState('');
         const [verifyingOrderId, setVerifyingOrderId] = useState(null);
-        const [transactionCode, setTransactionCode] = useState('');
         const [isVerifying, setIsVerifying] = useState(false);
         const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
-        // Hovercode API credentials
         const HOVERCODE_WORKSPACE = '16d7f3bd-f8dd-46f4-9703-df9be3773efa';
         const HOVERCODE_TOKEN = '4d4d46f28f23480feaea8d175f2879a48aa92aab';
 
@@ -1780,14 +1778,14 @@
             try {
                 const token = localStorage.getItem('access_token') || localStorage.getItem('token');
                 const response = await fetch('http://localhost:5000/api/orders', {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                    headers: { 'Authorization': `Bearer ${token}`}
                 });
                 const result = await response.json();
 
                 if (result.success && result.data) {
                     setOrders(result.data);
                 } else if (result.orders) {
-                    setOrders(result.orders);
+                    setOrders(result.orders)
                 } else {
                     setOrders([]);
                 }
@@ -1800,7 +1798,6 @@
 
         const generateQRCode = async (orderId, transactionCode) => {
             try {
-                // Create QR code using Hovercode API
                 const qrResponse = await fetch('https://hovercode.com/api/v1/qr-codes', {
                     method: 'POST',
                     headers: {
@@ -1825,8 +1822,8 @@
                 const qrResult = await qrResponse.json();
 
                 if (qrResult.data && qrResult.data.qr_code_url) {
-                    // Save QR code URL to database
                     const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+
                     await fetch('http://localhost:5000/api/orders/generate-qr', {
                         method: 'POST',
                         headers: {
@@ -1845,9 +1842,8 @@
                 return null;
             } catch (error) {
                 console.error('QR generation error:', error);
-                // Fallback: generate local QR code
+
                 const qrData = JSON.stringify({ order_id: orderId, transaction_code: transactionCode });
-                const canvas = document.createElement('canvas');
                 const qrCode = await import('qrcode');
                 const qrUrl = await qrCode.toDataURL(qrData);
                 return qrUrl;
@@ -1855,39 +1851,46 @@
         };
 
         const verifyOrder = async () => {
-            if (!transactionCode || transactionCode.trim() === '') {
-                showToast('Please enter transaction code', 'error');
+            const orderToVerify = orders.find(order => order.id === verifyingOrderId);
+
+            if (!orderToVerify) {
+                showToast('Order not found', 'error');
+                return;
+            }
+
+            if (!orderToVerify.transaction_code) {
+                showToast('No transaction code found for this order', 'error');;
                 return;
             }
 
             setIsVerifying(true);
+
             try {
                 const token = localStorage.getItem('access_token') || localStorage.getItem('token');
 
-                // Use the new verification endpoint
-                const verifyResponse = await fetch('http://localhost:5000/api/orders/verify-payment', {
+                const verifyResponse = await fetch('http://localhost:5000/api/payments/verify-payment', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
                     body: JSON.stringify({
-                        order_id: verifyingOrderId,
-                        transaction_code: transactionCode,
+                        transaction_code: orderToVerify.transaction_code,
                         is_verified: true,
-                        notes: `Verified by admin with transaction code: ${transactionCode}`
+                        notes: `Payment verified by ${localStorage.getItem('user_name') || 'Admin'} on ${new Date().toLocaleString()}`
                     })
                 });
 
                 const verifyResult = await verifyResponse.json();
 
                 if (verifyResult.success) {
-                    const qrUrl = await generateQRCode(verifyingOrderId, transactionCode);
+                    const qrUrl = await generateQRCode(verifyingOrderId, orderToVerify.transaction_code);
                     setQrCodeUrl(qrUrl);
+
                     await fetchOrders();
                     setShowVerifyModal(false);
                     setShowQRModal(true);
-                    showToast('Order verified and QR code generated!', 'success');
+                    showToast('Payment verified successfully! QR code generated.', 'success');
                 } else {
                     showToast(verifyResult.message || 'Verification failed', 'error');
                 }
@@ -1896,7 +1899,7 @@
                 showToast('Failed to verify order', 'error');
             } finally {
                 setIsVerifying(false);
-                setTransactionCode('');
+                setVerifyingOrderId(null);
             }
         };
 
@@ -1910,7 +1913,7 @@
                 case 'served': return 'sage';
                 case 'completed': return 'sage';
                 case 'cancelled': return 'red';
-                default: return 'gray';
+                default: return 'grey';
             }
         };
 
@@ -1920,7 +1923,7 @@
                 case 'pending_verification': return 'Awaiting Verification';
                 case 'paid': return 'Paid';
                 case 'preparing': return 'Preparing';
-                case 'ready': return 'Ready';
+                case 'ready': return 'Ready':
                 case 'served': return 'Served';
                 case 'completed': return 'Completed';
                 case 'cancelled': return 'Cancelled';
@@ -1928,8 +1931,8 @@
             }
         };
 
-        const formatDate = (dateString) => {
-            if (!dateString) return '—';
+        const formDate = (dateString) => {
+            if (!dateString) return '-';
             const date = new Date(dateString);
             return date.toLocaleString();
         };
@@ -1989,9 +1992,10 @@
 
                 {/* Orders Table */}
                 <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', overflowX: 'auto' }}>
-                    <table style={{ width: '100%', minWidth: 800, borderCollapse: 'collapse' }}>
+                    <table style={{ width: '100%', minWidth: 900, borderCollapse: 'collapse' }}>
                         <thead>
                             <tr style={{ background: 'var(--tag)' }}>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Transaction Code</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Order ID</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Customer</th>
                                 <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Items</th>
@@ -2005,21 +2009,44 @@
                         <tbody>
                             {filteredOrders.length === 0 ? (
                                 <tr>
-                                    <td colSpan="8" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
+                                    <td colSpan="9" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
                                         No orders found
                                     </td>
                                 </tr>
                             ) : (
                                 filteredOrders.map((order, idx) => (
                                     <tr key={order.id} style={{ borderTop: '1px solid var(--border)', background: idx % 2 === 0 ? '#fff' : '#FAFAF7' }}>
+                                        {/* Transaction Code - Prominently displayed */}
                                         <td style={{ padding: '12px 16px' }}>
-                                            <div style={{ fontWeight: 600, fontSize: 12 }}>{order.id?.slice(0, 8)?.toUpperCase()}</div>
-                                            {order.transaction_code && (
-                                                <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>TXN: {order.transaction_code}</div>
+                                            {order.transaction_code ? (
+                                                <div>
+                                                    <div style={{
+                                                        fontFamily: 'monospace',
+                                                        fontSize: 14,
+                                                        fontWeight: 700,
+                                                        color: '#C4522A',
+                                                        letterSpacing: '1px'
+                                                    }}>
+                                                        {order.transaction_code}
+                                                    </div>
+                                                    <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 2 }}>
+                                                        Compare with SMS
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                                                    No TXN code
+                                                </div>
                                             )}
                                         </td>
+                                        {/* Order ID as subscript */}
                                         <td style={{ padding: '12px 16px' }}>
-                                            <div>{order.customer_name || order.guest_name || 'Guest'}</div>
+                                            <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace' }}>
+                                                #{order.id?.slice(0, 8)?.toUpperCase()}
+                                            </div>
+                                        </td>
+                                        <td style={{ padding: '12px 16px' }}>
+                                            <div style={{ fontWeight: 500 }}>{order.customer_name || order.guest_name || 'Guest'}</div>
                                             <div style={{ fontSize: 11, color: 'var(--muted)' }}>{order.guest_phone || '—'}</div>
                                         </td>
                                         <td style={{ padding: '12px 16px', fontSize: 12 }}>
@@ -2028,7 +2055,7 @@
                                         <td style={{ padding: '12px 16px', fontWeight: 600 }}>TZS {fmt(order.total)}</td>
                                         <td style={{ padding: '12px 16px', fontSize: 12 }}>
                                             <Badge color={order.payment_provider === 'mpesa' ? 'sage' : 'blue'}>
-                                                {order.payment_provider || 'Pending'}
+                                                {order.payment_provider || order.transaction_provider || 'Pending'}
                                             </Badge>
                                         </td>
                                         <td style={{ padding: '12px 16px', fontSize: 12 }}>{formatDate(order.created_at)}</td>
@@ -2042,6 +2069,7 @@
                                                 <button
                                                     onClick={() => {
                                                         setVerifyingOrderId(order.id);
+                                                        setSelectedOrder(order);
                                                         setShowVerifyModal(true);
                                                     }}
                                                     style={{
@@ -2051,10 +2079,13 @@
                                                         border: 'none',
                                                         borderRadius: 6,
                                                         cursor: 'pointer',
-                                                        fontSize: 12
+                                                        fontSize: 12,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
                                                     }}
                                                 >
-                                                    Verify Payment
+                                                    ✓ Verify Payment
                                                 </button>
                                             )}
                                             {order.status === 'paid' && order.qr_code_url && (
@@ -2073,7 +2104,7 @@
                                                         fontSize: 12
                                                     }}
                                                 >
-                                                    View QR
+                                                    📱 View QR
                                                 </button>
                                             )}
                                         </td>
@@ -2084,35 +2115,64 @@
                     </table>
                 </div>
 
-                {/* Verify Payment Modal */}
-                <Modal open={showVerifyModal} onClose={() => { setShowVerifyModal(false); setTransactionCode(''); }} maxW={450} center>
+                {/* Simplified Verify Payment Modal - No Input Field */}
+                <Modal open={showVerifyModal} onClose={() => { setShowVerifyModal(false); setSelectedOrder(null); }} maxW={450} center>
                     <div style={{ textAlign: 'center' }}>
                         <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
-                        <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 20, marginBottom: 5 }}>Verify Payment</div>
+                        <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 20, marginBottom: 5 }}>Confirm Payment Verification</div>
                         <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>
-                            Enter the transaction code provided by the customer to verify payment.
+                            Please confirm the following transaction details with the customer's SMS:
                         </div>
-                        <div style={{ marginBottom: 20 }}>
-                            <label style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, display: 'block' }}>Transaction Code</label>
-                            <input
-                                type="text"
-                                value={transactionCode}
-                                onChange={e => setTransactionCode(e.target.value.toUpperCase())}
-                                placeholder="e.g., QFV7K3L2M9"
-                                style={{
-                                    width: '100%',
-                                    padding: '12px',
-                                    border: '1.5px solid var(--border)',
-                                    borderRadius: 10,
-                                    fontSize: 14,
-                                    textTransform: 'uppercase'
-                                }}
-                            />
+
+                        {/* Display Transaction Code for Comparison */}
+                        {selectedOrder && selectedOrder.transaction_code && (
+                            <div style={{
+                                background: '#f0f9ff',
+                                padding: 16,
+                                borderRadius: 12,
+                                marginBottom: 20,
+                                border: '2px solid #bae6fd'
+                            }}>
+                                <div style={{ fontSize: 11, color: '#0369a1', marginBottom: 8, fontWeight: 600 }}>
+                                    Transaction Code from Customer's SMS:
+                                </div>
+                                <div style={{
+                                    fontFamily: 'monospace',
+                                    fontSize: 24,
+                                    fontWeight: 800,
+                                    color: '#0284c7',
+                                    letterSpacing: '2px',
+                                    background: '#fff',
+                                    padding: '8px',
+                                    borderRadius: 8,
+                                    border: '1px solid #bae6fd'
+                                }}>
+                                    {selectedOrder.transaction_code}
+                                </div>
+                                <div style={{ fontSize: 11, color: '#0369a1', marginTop: 8 }}>
+                                    ⚠️ Compare this with the code on customer's phone
+                                </div>
+                            </div>
+                        )}
+
+                        <div style={{
+                            background: '#fef3c7',
+                            padding: 12,
+                            borderRadius: 8,
+                            marginBottom: 20,
+                            fontSize: 12,
+                            color: '#92400e'
+                        }}>
+                            <strong>⚠️ Important:</strong> Only verify if the transaction code above matches<br/>
+                            the code the customer received via SMS from the payment provider.
                         </div>
+
                         <div style={{ display: 'flex', gap: 12 }}>
-                            <Btn variant="ghost" onClick={() => { setShowVerifyModal(false); setTransactionCode(''); }}>Cancel</Btn>
+                            <Btn variant="ghost" onClick={() => { setShowVerifyModal(false); setSelectedOrder(null); }}>
+                                Cancel
+                            </Btn>
                             <Btn variant="rust" onClick={verifyOrder} disabled={isVerifying}>
-                                {isVerifying ? 'Verifying...' : 'Verify & Generate QR'}
+                                {isVerifying ? 'Verifying...' : '✓ Confirm & Generate QR'}
                             </Btn>
                         </div>
                     </div>
