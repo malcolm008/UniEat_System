@@ -53,7 +53,7 @@ menuRouter.post('/daily',              auth, admin, setDailyMenu);
 
 // ── ORDER ROUTES ───────────────────────────────────────────────
 const orderRouter = require('express').Router();
-const { createOrder, getOrders, getMyOrders, getOrder, updateStatus, getStats, generateOrderQR, getOrderQR, verifyOrderWithTransaction, redeemQr } = require('../controllers/orderController');
+const { createOrder, getOrders, getMyOrders, getOrder, updateStatus, getStats, generateOrderQR, getOrderQR, redeemQr } = require('../controllers/orderController');
 const authMw = require('../../../shared/middleware/auth');
 
 orderRouter.post('/',          authMw.optionalAuth, createOrder);
@@ -85,18 +85,6 @@ orderRouter.post('/generate-qr',
 orderRouter.get('/:orderId/qr',
     authMw.authenticate,
     getOrderQR
-);
-
-// NEW: Verify order with transaction code
-orderRouter.post('/verify-transaction',
-    authMw.authenticate,
-    authMw.requireStaff,
-    body('order_id').isUUID().withMessage('Valid order ID is required'),
-    body('transaction_code').isString().trim().notEmpty().withMessage('Transaction code is required'),
-    body('is_verified').isBoolean().withMessage('is_verified must be boolean'),
-    body('notes').optional().isString(),
-    validate,
-    verifyOrderWithTransaction
 );
 
 // NEW: Redeem QR code at counter (for vendors)

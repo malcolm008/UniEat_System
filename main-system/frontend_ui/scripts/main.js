@@ -1865,7 +1865,7 @@
                 const token = localStorage.getItem('access_token') || localStorage.getItem('token');
 
                 // Use the new verification endpoint
-                const verifyResponse = await fetch('http://localhost:5000/api/orders/verify-transaction', {
+                const verifyResponse = await fetch('http://localhost:5000/api/orders/verify-payment', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

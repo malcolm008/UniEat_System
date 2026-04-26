@@ -378,47 +378,4 @@ const redeemQr = async (req, res, next) => {
     }
 };
 
-const verifyOrderWithTransaction = async (req, res, next) => {
-    try {
-        const { order_id, transaction_id, is_verified, notes } = req.body;
-        const verifierId = req.user.id;
-
-        if (!is_verified) {
-            return error(res, 'Verification failed', 400);
-        }
-
-        const result = await withTransaction(async (client) => {
-            const { rows: [order] } = await client.query(`
-                UPDATE orders SET status = 'pending_verification',
-                    transaction_code = $1,
-                    updated_at = NOW()
-                WHERE id = $2
-                RETURNING *
-            `, [transaction_code, order_id]);
-
-            if (!order) throw new Error('Order not found');
-
-            const { rows: [transaction] } = await client.query(`
-                INSERT INTO transactions (
-                    order_id, vendor_id, customer_id, university_id,
-                    amount, transaction_code, status, verified_by, verified_at, notes
-                )
-                SELECT
-                    $1, o.vendor_id, o.user_id, o.university_id,
-                    o.total, $2, 'success', $3, NOW(), $4
-                FROM orders o
-                WHERE o.id = $1
-                RETURNING *
-            `, [order_id, transaction_code, verifierId, notes]);
-
-            return { order, transaction };
-        });
-
-        logger.info(`Order ${order_id} verified with transaction ${transaction_code}`);
-        return success(res, result, 'Order verified successfully');
-    } catch (err) {
-        next(err);
-    }
-};
-
-module.exports = { createOrder, getOrders, getMyOrders, getOrder, updateStatus, getStats, generateOrderQR, getOrderQR, redeemQr, verifyOrderWithTransaction};
+module.exports = { createOrder, getOrders, getMyOrders, getOrder, updateStatus, getStats, generateOrderQR, getOrderQR, redeemQr};
