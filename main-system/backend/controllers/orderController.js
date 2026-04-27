@@ -311,11 +311,9 @@ const generateOrderQR = async (req, res, next) => {
         const universityId = req.user.university_id;
         const userId = req.user.id;
 
-        const HOVERCODE_WORKSPACE = process.env.HOVERCODE_WORKSPACE || '16d7f3bd-f8dd-46f4-9703-df9be3773efa';
-        const HOVERCODE_TOKEN = process.env.HOVERCODE_TOKEN || '4d4d46f28f23480feaea8d175f2879a48aa92aab';
-
         logger.info(`Generating QR for order_id: ${order_id}, transaction_code: ${transaction_code}`);
 
+        // Find the order
         let orderQuery = `
             SELECT o.*, t.transaction_code as txn_code, t.id as transaction_id
             FROM orders o
@@ -335,21 +333,31 @@ const generateOrderQR = async (req, res, next) => {
         }
 
         orderQuery += ` LIMIT 1`;
-
         const { rows: [order] } = await query(orderQuery, queryParams);
 
         if (!order) {
             return error(res, 'Order not found', 404);
         }
 
-        const isAuthorized = req.user.role === 'admin' || req.user.role === 'staff' || order.user_id === userId;
+        logger.info(`Found order: ${order.id}, status: ${order.status}, txn_code: ${order.txn_code}`);
 
+        // Check authorization
+        const isAuthorized = req.user.role === 'admin' ||
+                            req.user.role === 'staff' ||
+                            order.user_id === userId;
+
+        if (!isAuthorized) {
+            return error(res, 'Unauthorized to generate QR for this order', 403);
+        }
+
+        // Check order status
         if (order.status !== 'paid' && order.status !== 'ready' && order.status !== 'preparing') {
             return error(res, `QR codes can only be generated for paid orders. Current status: ${order.status}`, 400);
         }
 
+        // Check if valid QR code already exists
         const { rows: existingQR } = await query(
-            `SELECT id, qr_image_url, token, expires_at, hovercode_id
+            `SELECT id, qr_image_url, token, expires_at
              FROM qr_codes
              WHERE order_id = $1 AND is_used = false AND expires_at > NOW()
              ORDER BY created_at DESC LIMIT 1`,
@@ -364,51 +372,42 @@ const generateOrderQR = async (req, res, next) => {
             }, 'QR code retrieved');
         }
 
-        const qrData = JSON.stringify({
-            order_id: order.id,
-            transaction_code: order.txn_code || transaction_code,
-            university_id: universityId,
-            timestamp: new Date().toISOString(),
-            is_used: false
-        });
-
-        const hovercodeResponse = await fetch('https://hovercode.com/api/v1/qr-codes', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${HOVERCODE_TOKEN}`
-            },
-            body: JSON.stringify({
-                workspace_id: HOVERCODE_WORKSPACE,
-                name: `Order_${order.id.slice(0,8)}_${order.txn_code || transaction_code}`,
-                data: qrData,
-                background_color: '#FFFFFF',
-                foreground_color: '#C4522A',
-                size: 400
-            })
-        });
-
-        const hovercodeResult = await hovercodeResponse.json();
-
-        if (!hovercodeResult.data || !hovercodeResult.data.qr_code_url) {
-            logger.error('Hovercode API error:', hovercodeResult);
-            throw new Error('Failed to generate QR code with Hovercode');
-        }
-
-        const qrImageUrl = hovercodeResult.data.qr_code_url;
-        const hovercodeId = hovercodeResult.data.id;
+        // Generate QR code using QuickChart.io (free, no API key)
         const token = crypto.randomBytes(32).toString('hex');
         const expiryHours = 24;
         const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000);
 
+        // Create the data payload for the QR code
+        const qrPayload = {
+            order_id: order.id,
+            token: token,
+            transaction_code: order.txn_code || transaction_code,
+            university_id: universityId,
+            expires_at: expiresAt.toISOString(),
+            created_at: new Date().toISOString()
+        };
+
+        const qrData = JSON.stringify(qrPayload);
+
+        // QuickChart.io URL - completely free, no API key needed
+        // You can customize colors, size, etc.
+        const encodedData = encodeURIComponent(qrData);
+        const qrImageUrl = `https://quickchart.io/qr?text=${encodedData}&size=300&dark=C4522A&light=ffffff&margin=2&ecLevel=H`;
+
+        // Alternative: If you want a more compact QR code with error correction:
+        // const qrImageUrl = `https://quickchart.io/qr?text=${encodedData}&size=300&dark=C4522A&light=ffffff&margin=2&ecLevel=H&format=png`;
+
+        logger.info(`QuickChart QR URL generated for order ${order.id}`);
+
+        // Save to database
         const { rows: [qrCode] } = await query(
-            `INSERT INTO qr_codes (order_id, qr_image_url, token, expires_at, university_id, hovercode_id, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             RETURNING id, order_id, token, expires_at, created_at, is_used, hovercode_id`,
-            [order.id, qrImageUrl, token, expiresAt, universityId, hovercodeId, userId]
+            `INSERT INTO qr_codes (order_id, qr_image_url, token, expires_at, university_id)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING id, order_id, token, expires_at, created_at, is_used`,
+            [order.id, qrImageUrl, token, expiresAt, universityId]
         );
 
-        logger.info(`Qr code generated via Hovercode for order ${order.id}, hovercode_id ${hovercodeId}`);
+        logger.info(`QR code saved to database for order ${order.id}`);
 
         return success(res, {
             qr_code: {
@@ -416,12 +415,54 @@ const generateOrderQR = async (req, res, next) => {
                 qr_image_url: qrImageUrl
             },
             expires_at: expiresAt,
-            hovercode_id: hovercodeId,
-            message: 'QR code generated successfully via Hovercode'
+            source: 'quickchart',
+            message: 'QR code generated successfully'
         }, 'QR code generated');
+
     } catch (err) {
         logger.error('QR generation error:', err);
-        next(err);
+
+        // Fallback to local QR generation if QuickChart fails
+        logger.info('Falling back to local QR generation...');
+
+        try {
+            const token = crypto.randomBytes(32).toString('hex');
+            const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+            const qrPayload = {
+                order_id: req.body.order_id || order_id,
+                token: token,
+                transaction_code: req.body.transaction_code || transaction_code,
+                expires_at: expiresAt.toISOString()
+            };
+
+            const qrImageUrl = await QRCode.toDataURL(JSON.stringify(qrPayload), {
+                errorCorrectionLevel: 'H',
+                margin: 2,
+                width: 300,
+                color: { dark: '#C4522A', light: '#FFFFFF' }
+            });
+
+            const { rows: [qrCode] } = await query(
+                `INSERT INTO qr_codes (order_id, qr_image_url, token, expires_at, university_id)
+                 VALUES ($1, $2, $3, $4, $5)
+                 RETURNING id, order_id, token, expires_at, created_at, is_used`,
+                [req.body.order_id || order_id, qrImageUrl, token, expiresAt, req.user.university_id]
+            );
+
+            logger.info(`Local fallback QR generated for order ${req.body.order_id || order_id}`);
+
+            return success(res, {
+                qr_code: qrCode,
+                expires_at: expiresAt,
+                source: 'local_fallback',
+                message: 'QR code generated using local fallback'
+            }, 'QR code generated');
+
+        } catch (fallbackErr) {
+            logger.error('Local fallback also failed:', fallbackErr);
+            return error(res, 'Failed to generate QR code', 500);
+        }
     }
 };
 
@@ -431,6 +472,9 @@ const getOrderQR = async (req, res, next) => {
         const userId = req.user.id;
         const universityId = req.user.university_id;
 
+        logger.info(`Fetching QR code for order: ${orderId}, user: ${userId}`);
+
+        // First, verify the order belongs to the user and check its status
         const { rows: [order] } = await query(
             `SELECT id, status, user_id, transaction_code
              FROM orders
@@ -439,17 +483,21 @@ const getOrderQR = async (req, res, next) => {
         );
 
         if (!order) {
+            logger.error(`Order not found: ${orderId}`);
             return error(res, 'Order not found', 404);
         }
 
+        // Check authorization
         const isAuthorized = req.user.role === 'admin' ||
                             req.user.role === 'staff' ||
                             order.user_id === userId;
 
         if (!isAuthorized) {
+            logger.error(`Unauthorized access to order ${orderId} by user ${userId}`);
             return error(res, 'Unauthorized to view this QR code', 403);
         }
 
+        // Check if order is in a state that should have a QR code
         if (order.status === 'pending' || order.status === 'pending_verification') {
             return success(res, null, 'QR code will be available after payment verification');
         }
@@ -462,25 +510,68 @@ const getOrderQR = async (req, res, next) => {
             return success(res, null, 'Order has already been served. QR code is no longer valid.');
         }
 
-        // Get active QR code (match your schema)
-        const { rows: [qrCode] } = await query(
+        // Get active QR code
+        const { rows: qrCodes } = await query(
             `SELECT id, qr_image_url, token, expires_at, is_used, created_at
              FROM qr_codes
              WHERE order_id = $1
-             AND is_used = false
-             AND expires_at > NOW()
+               AND is_used = false
+               AND expires_at > NOW()
              ORDER BY created_at DESC
              LIMIT 1`,
             [orderId]
         );
 
-        if (!qrCode) {
+        logger.info(`Found ${qrCodes.length} QR codes for order ${orderId}`);
+
+        if (!qrCodes || qrCodes.length === 0) {
+            // If order is paid but no QR exists, try to generate one automatically
             if (order.status === 'paid' || order.status === 'ready') {
-                return success(res, null, 'QR code not yet generated. Please refresh or contact staff.');
+                logger.info(`No QR found for paid order ${orderId}, attempting auto-generation...`);
+
+                // Auto-generate QR code using the generateOrderQR logic
+                const token = crypto.randomBytes(32).toString('hex');
+                const expiryHours = 24;
+                const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000);
+
+                const qrPayload = {
+                    order_id: order.id,
+                    token: token,
+                    transaction_code: order.transaction_code,
+                    university_id: universityId,
+                    expires_at: expiresAt.toISOString()
+                };
+
+                const qrData = JSON.stringify(qrPayload);
+                const encodedData = encodeURIComponent(qrData);
+                const qrImageUrl = `https://quickchart.io/qr?text=${encodedData}&size=300&dark=C4522A&light=ffffff&margin=2&ecLevel=H`;
+
+                // Save to database
+                const { rows: [newQR] } = await query(
+                    `INSERT INTO qr_codes (order_id, qr_image_url, token, expires_at, university_id)
+                     VALUES ($1, $2, $3, $4, $5)
+                     RETURNING id, order_id, token, expires_at, created_at, is_used, qr_image_url`,
+                    [order.id, qrImageUrl, token, expiresAt, universityId]
+                );
+
+                logger.info(`Auto-generated QR code for order ${orderId}`);
+
+                return success(res, {
+                    id: newQR.id,
+                    qr_image_url: newQR.qr_image_url,
+                    token: newQR.token,
+                    expires_at: newQR.expires_at,
+                    is_used: newQR.is_used,
+                    order_status: order.status
+                }, 'QR code generated automatically');
             }
-            return success(res, null, 'No active QR code found for this order');
+
+            return success(res, null, 'No active QR code found for this order. Please contact staff.');
         }
 
+        const qrCode = qrCodes[0];
+
+        // Return QR code details
         return success(res, {
             id: qrCode.id,
             qr_image_url: qrCode.qr_image_url,

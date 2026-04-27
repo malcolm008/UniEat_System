@@ -1099,15 +1099,15 @@
         const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
         const [showQRModal, setShowQRModal] = useState(false);
         const [selectedQR, setSelectedQR] = useState(null);
-        const [loadingQR, setLoadingQR] = useState(null); // Track which order's QR is loading
+        const [loadingQR, setLoadingQR] = useState(null);
 
         useEffect(() => {
             const handleResize = () => setIsMobile(window.innerWidth <= 768);
             window.addEventListener('resize', handleResize);
             fetchOrders();
 
-            // Set up polling for order status updates (every 30 seconds)
-            const interval = setInterval(fetchOrders, 30000);
+            // Poll for order status updates every 15 seconds
+            const interval = setInterval(fetchOrders, 15000);
             return () => {
                 window.removeEventListener('resize', handleResize);
                 clearInterval(interval);
@@ -1126,14 +1126,13 @@
                 if (result.success && result.data) {
                     setOrders(result.data);
 
-                    // Show notification if any order status changed to 'paid'
+                    // Check for newly verified orders
                     result.data.forEach(order => {
                         if (order.status === 'paid' && !window.lastOrderStatus?.[order.id]) {
                             showToast(`Order #${order.id?.slice(0, 8)} is ready for pickup!`, 'success');
                         }
                     });
 
-                    // Store current statuses
                     window.lastOrderStatus = result.data.reduce((acc, o) => ({ ...acc, [o.id]: o.status }), {});
                 } else {
                     setOrders([]);
@@ -1146,22 +1145,28 @@
             }
         };
 
+        // FIXED: Use correct endpoint - /qr NOT /qr-code
         const fetchQRCode = async (orderId) => {
             setLoadingQR(orderId);
             try {
                 const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-                const response = await fetch(`http://localhost:5000/api/orders/${orderId}/qr-code`, {
+                // CORRECTED URL - using /qr not /qr-code
+                const response = await fetch(`http://localhost:5000/api/orders/${orderId}/qr`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const result = await response.json();
 
-                if (result.success && result.data && result.data.qr_code_url) {
+                console.log('QR response:', result); // Debug log
+
+                if (result.success && result.data && result.data.qr_image_url) {
                     setSelectedQR({
-                        url: result.data.qr_code_url,
+                        url: result.data.qr_image_url,
                         expires_at: result.data.expires_at,
                         orderId: orderId
                     });
                     setShowQRModal(true);
+                } else if (result.success && result.data === null && result.message) {
+                    showToast(result.message, 'info');
                 } else {
                     showToast('No QR code available yet. Please wait for payment verification.', 'info');
                 }
@@ -1257,8 +1262,7 @@
                                 background: '#fff',
                                 border: '1px solid var(--border)',
                                 borderRadius: 16,
-                                overflow: 'hidden',
-                                animation: `fadeUp ${0.2 + index * 0.05}s ease`
+                                overflow: 'hidden'
                             }}
                         >
                             {/* Order Header */}
@@ -1343,14 +1347,14 @@
                                         TZS {fmt(order.total)}
                                     </div>
 
-                                    {/* QR Code Button - Only show for paid/ready orders */}
-                                    {(order.status === 'paid' || order.status === 'ready' || order.status === 'preparing') && (
+                                    {/* QR Code Button - Show for paid/ready orders */}
+                                    {(order.status === 'paid' || order.status === 'ready') && (
                                         <button
                                             onClick={() => fetchQRCode(order.id)}
                                             disabled={loadingQR === order.id}
                                             style={{
                                                 padding: '8px 12px',
-                                                background: loadingQR === order.id ? '#ccc' : '#6a4a3a',
+                                                background: loadingQR === order.id ? '#ccc' : '#000000',
                                                 color: '#fff',
                                                 border: 'none',
                                                 borderRadius: 8,
@@ -1372,6 +1376,13 @@
                             </div>
                         </div>
                     ))}
+                </div>
+
+                {/* Refresh Button */}
+                <div style={{ textAlign: 'center', marginTop: 24 }}>
+                    <Btn variant="ghost" onClick={fetchOrders} small>
+                        ⟳ Refresh Orders
+                    </Btn>
                 </div>
 
                 {/* QR Code Modal */}
@@ -1400,37 +1411,33 @@
                                 }}>
                                     <img src={selectedQR.url} alt="QR Code" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                                 </div>
-                                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
-                                    Valid until: {new Date(selectedQR.expires_at).toLocaleString()}
-                                </div>
+                                {selectedQR.expires_at && (
+                                    <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
+                                        Valid until: {new Date(selectedQR.expires_at).toLocaleString()}
+                                    </div>
+                                )}
                             </>
                         )}
                         <div style={{ fontSize: 11, color: '#e11d48', marginBottom: 20 }}>
                             ⚠️ This QR code can only be scanned once for security.
                         </div>
-                        <Btn variant="rust" onClick={() => setShowQRModal(false)}>Close</Btn>
+                        <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+                            <Btn variant="ghost" onClick={() => setShowQRModal(false)}>Close</Btn>
+                            {selectedQR?.url && (
+                                <Btn variant="rust" onClick={() => {
+                                    const link = document.createElement('a');
+                                    link.download = 'qrcode.png';
+                                    link.href = selectedQR.url;
+                                    link.click();
+                                }}>
+                                    Download QR
+                                </Btn>
+                            )}
+                        </div>
                     </div>
                 </Modal>
 
-                {/* Refresh Button */}
-                <div style={{ textAlign: 'center', marginTop: 24 }}>
-                    <Btn variant="ghost" onClick={fetchOrders} small>
-                        ⟳ Refresh Orders
-                    </Btn>
-                </div>
-
-                {/* Add CSS animation */}
                 <style>{`
-                    @keyframes fadeUp {
-                        from {
-                            opacity: 0;
-                            transform: translateY(10px);
-                        }
-                        to {
-                            opacity: 1;
-                            transform: translateY(0);
-                        }
-                    }
                     @keyframes spin {
                         to { transform: rotate(360deg); }
                     }
