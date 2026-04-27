@@ -1890,10 +1890,7 @@
         const [verifyingOrderId, setVerifyingOrderId] = useState(null);
         const [isVerifying, setIsVerifying] = useState(false);
         const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-
-        // Hovercode API credentials
-        const HOVERCODE_WORKSPACE = '16d7f3bd-f8dd-46f4-9703-df9be3773efa';
-        const HOVERCODE_TOKEN = '4d4d46f28f23480feaea8d175f2879a48aa92aab';
+        const [generatingQR, setGeneratingQR] = useState(false);
 
         useEffect(() => {
             const handleResize = () => setIsMobile(window.innerWidth <= 768);
@@ -1925,58 +1922,44 @@
             setLoading(false);
         };
 
+        // FIXED: Generate QR code using backend API (not Hovercode)
         const generateQRCode = async (orderId, transactionCode) => {
+            setGeneratingQR(true);
             try {
-                // Create QR code using Hovercode API
-                const qrResponse = await fetch('https://hovercode.com/api/v1/qr-codes', {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+
+                const response = await fetch('http://localhost:5000/api/orders/generate-qr', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${HOVERCODE_TOKEN}`
+                        'Authorization': `Bearer ${token}`
                     },
                     body: JSON.stringify({
-                        workspace_id: HOVERCODE_WORKSPACE,
-                        name: `Order_${orderId}`,
-                        data: JSON.stringify({
-                            order_id: orderId,
-                            transaction_code: transactionCode,
-                            timestamp: new Date().toISOString(),
-                            is_used: false
-                        }),
-                        background_color: '#ffffff',
-                        foreground_color: '#000000',
-                        size: 300
+                        order_id: orderId,
+                        transaction_code: transactionCode
                     })
                 });
 
-                const qrResult = await qrResponse.json();
+                const result = await response.json();
 
-                if (qrResult.data && qrResult.data.qr_code_url) {
-                    // Save QR code URL to database
-                    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-                    await fetch('http://localhost:5000/api/orders/generate-qr', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify({
-                            order_id: orderId,
-                            qr_code_url: qrResult.data.qr_code_url,
-                            transaction_code: transactionCode
-                        })
-                    });
-
-                    return qrResult.data.qr_code_url;
+                if (result.success && result.data && result.data.qr_code) {
+                    // Return the QR image URL from the backend
+                    return result.data.qr_code.qr_image_url;
                 }
+
+                if (result.success && result.data && result.data.qr_image_url) {
+                    return result.data.qr_image_url;
+                }
+
+                console.error('QR generation failed:', result);
+                showToast(result.message || 'Failed to generate QR code', 'error');
                 return null;
             } catch (error) {
                 console.error('QR generation error:', error);
-                // Fallback: generate local QR code
-                const qrData = JSON.stringify({ order_id: orderId, transaction_code: transactionCode });
-                const qrCode = await import('qrcode');
-                const qrUrl = await qrCode.toDataURL(qrData);
-                return qrUrl;
+                showToast('Failed to generate QR code', 'error');
+                return null;
+            } finally {
+                setGeneratingQR(false);
             }
         };
 
@@ -2006,7 +1989,7 @@
                         'Authorization': `Bearer ${token}`
                     },
                     body: JSON.stringify({
-                        transaction_code: orderToVerify.transaction_code, // Use existing transaction code
+                        transaction_code: orderToVerify.transaction_code,
                         is_verified: true,
                         notes: `Payment verified by ${localStorage.getItem('user_name') || 'Admin'} on ${new Date().toLocaleString()}`
                     })
@@ -2017,11 +2000,17 @@
                 if (verifyResult.success) {
                     // Generate QR code for the verified order
                     const qrUrl = await generateQRCode(verifyingOrderId, orderToVerify.transaction_code);
-                    setQrCodeUrl(qrUrl);
+
+                    if (qrUrl) {
+                        setQrCodeUrl(qrUrl);
+                        setShowQRModal(true);
+                        showToast('Payment verified successfully! QR code generated.', 'success');
+                    } else {
+                        showToast('Payment verified but QR generation failed. Please try again.', 'warning');
+                    }
+
                     await fetchOrders(); // Refresh the orders list
                     setShowVerifyModal(false);
-                    setShowQRModal(true);
-                    showToast('Payment verified successfully! QR code generated.', 'success');
                 } else {
                     showToast(verifyResult.message || 'Verification failed', 'error');
                 }
@@ -2034,13 +2023,51 @@
             }
         };
 
+        // FIXED: Fetch existing QR code for an order
+        const fetchOrderQR = async (orderId) => {
+            setGeneratingQR(true);
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5000/api/orders/${orderId}/qr`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+
+                if (result.success && result.data && result.data.qr_image_url) {
+                    setQrCodeUrl(result.data.qr_image_url);
+                    setShowQRModal(true);
+                } else if (result.success && result.data === null && result.message) {
+                    // No QR code exists, try to generate one
+                    const order = orders.find(o => o.id === orderId);
+                    if (order && order.transaction_code) {
+                        const qrUrl = await generateQRCode(orderId, order.transaction_code);
+                        if (qrUrl) {
+                            setQrCodeUrl(qrUrl);
+                            setShowQRModal(true);
+                        } else {
+                            showToast(result.message || 'No QR code available for this order', 'info');
+                        }
+                    } else {
+                        showToast(result.message || 'No QR code available for this order', 'info');
+                    }
+                } else {
+                    showToast('Failed to fetch QR code', 'error');
+                }
+            } catch (error) {
+                console.error('Fetch QR error:', error);
+                showToast('Failed to fetch QR code', 'error');
+            } finally {
+                setGeneratingQR(false);
+            }
+        };
+
         const getStatusBadgeColor = (status) => {
             switch (status) {
                 case 'pending': return 'amber';
                 case 'pending_verification': return 'orange';
                 case 'paid': return 'blue';
                 case 'preparing': return 'info';
-                case 'ready': return 'info';
+                case 'ready': return 'success';
                 case 'served': return 'sage';
                 case 'completed': return 'sage';
                 case 'cancelled': return 'red';
@@ -2054,7 +2081,7 @@
                 case 'pending_verification': return 'Awaiting Verification';
                 case 'paid': return 'Paid';
                 case 'preparing': return 'Preparing';
-                case 'ready': return 'Ready';
+                case 'ready': return 'Ready for Pickup';
                 case 'served': return 'Served';
                 case 'completed': return 'Completed';
                 case 'cancelled': return 'Cancelled';
@@ -2203,40 +2230,47 @@
                                                         setSelectedOrder(order);
                                                         setShowVerifyModal(true);
                                                     }}
+                                                    disabled={isVerifying}
                                                     style={{
                                                         padding: '6px 12px',
                                                         background: '#4A6741',
                                                         color: '#fff',
                                                         border: 'none',
                                                         borderRadius: 6,
-                                                        cursor: 'pointer',
+                                                        cursor: isVerifying ? 'not-allowed' : 'pointer',
                                                         fontSize: 12,
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         gap: '4px'
                                                     }}
                                                 >
-                                                    ✓ Verify Payment
+                                                    {isVerifying && verifyingOrderId === order.id ? '⏳ Verifying...' : '✓ Verify Payment'}
                                                 </button>
                                             )}
-                                            {order.status === 'paid' && order.qr_code_url && (
+                                            {(order.status === 'paid' || order.status === 'ready') && (
                                                 <button
-                                                    onClick={() => {
-                                                        setQrCodeUrl(order.qr_code_url);
-                                                        setShowQRModal(true);
-                                                    }}
+                                                    onClick={() => fetchOrderQR(order.id)}
+                                                    disabled={generatingQR}
                                                     style={{
                                                         padding: '6px 12px',
-                                                        background: '#2563eb',
+                                                        background: generatingQR ? '#ccc' : '#2563eb',
                                                         color: '#fff',
                                                         border: 'none',
                                                         borderRadius: 6,
-                                                        cursor: 'pointer',
-                                                        fontSize: 12
+                                                        cursor: generatingQR ? 'not-allowed' : 'pointer',
+                                                        fontSize: 12,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
                                                     }}
                                                 >
-                                                    📱 View QR
+                                                    {generatingQR ? '⏳ Loading...' : '📱 View QR'}
                                                 </button>
+                                            )}
+                                            {order.status === 'served' && (
+                                                <span style={{ fontSize: 11, color: '#4A6741' }}>
+                                                    ✓ Completed
+                                                </span>
                                             )}
                                         </td>
                                     </tr>
@@ -2310,34 +2344,60 @@
                 </Modal>
 
                 {/* QR Code Modal */}
-                <Modal open={showQRModal} onClose={() => setShowQRModal(false)} maxW={450} center>
+                <Modal open={showQRModal} onClose={() => { setShowQRModal(false); setQrCodeUrl(''); }} maxW={450} center>
                     <div style={{ textAlign: 'center' }}>
                         <div style={{ fontSize: 48, marginBottom: 12 }}>📱</div>
                         <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 20, marginBottom: 5 }}>Order QR Code</div>
                         <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>
                             Customer can scan this QR code at the counter to receive their order.
                         </div>
-                        {qrCodeUrl && (
-                            <div style={{
-                                width: 200,
-                                height: 200,
-                                margin: '0 auto 20px',
-                                border: '2px solid var(--border)',
-                                borderRadius: 12,
-                                overflow: 'hidden',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                            }}>
-                                <img src={qrCodeUrl} alt="QR Code" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                        {qrCodeUrl ? (
+                            <>
+                                <div style={{
+                                    width: 250,
+                                    height: 250,
+                                    margin: '0 auto 20px',
+                                    border: '2px solid var(--border)',
+                                    borderRadius: 12,
+                                    overflow: 'hidden',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    background: '#fff'
+                                }}>
+                                    <img src={qrCodeUrl} alt="QR Code" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                </div>
+                                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 20 }}>
+                                    ⚠️ This QR code can only be scanned once for security.
+                                </div>
+                            </>
+                        ) : (
+                            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>
+                                {generatingQR ? 'Generating QR code...' : 'No QR code available'}
                             </div>
                         )}
-                        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 20 }}>
-                            ⚠️ This QR code can only be scanned once for security.
+                        <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+                            <Btn variant="ghost" onClick={() => setShowQRModal(false)}>Close</Btn>
+                            {qrCodeUrl && (
+                                <Btn variant="rust" onClick={() => {
+                                    const link = document.createElement('a');
+                                    link.download = 'qrcode.png';
+                                    link.href = qrCodeUrl;
+                                    link.click();
+                                }}>
+                                    Download QR
+                                </Btn>
+                            )}
                         </div>
-                        <Btn variant="rust" onClick={() => setShowQRModal(false)}>Close</Btn>
                     </div>
                 </Modal>
+
+                {/* Add CSS animation */}
+                <style>{`
+                    @keyframes spin {
+                        to { transform: rotate(360deg); }
+                    }
+                `}</style>
             </div>
         );
     }
