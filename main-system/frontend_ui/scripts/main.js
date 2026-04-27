@@ -1922,7 +1922,6 @@
             setLoading(false);
         };
 
-        // FIXED: Generate QR code using backend API (not Hovercode)
         const generateQRCode = async (orderId, transactionCode) => {
             setGeneratingQR(true);
             try {
@@ -2023,7 +2022,6 @@
             }
         };
 
-        // FIXED: Fetch existing QR code for an order
         const fetchOrderQR = async (orderId) => {
             setGeneratingQR(true);
             try {

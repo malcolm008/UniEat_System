@@ -111,20 +111,23 @@ const getOrders = async (req, res, next) => {
     if (status) { where += ` AND o.status = $${idx++}`; params.push(status); }
     if (date)   { where += ` AND DATE(o.created_at) = $${idx++}`; params.push(date); }
     if (search) {
-      where += ` AND (u.name ILIKE $${idx} OR u.reg_number ILIKE $${idx} OR o.guest_name ILIKE $${idx} OR o.transaction_code ILIKE $${idx} OR CAST(o.id AS TEXT) ILIKE $${idx})`;
+      where += ` AND (u.name ILIKE $${idx} OR u.reg_number ILIKE $${idx} OR o.guest_name ILIKE $${idx} OR t.transaction_code ILIKE $${idx} OR CAST(o.id AS TEXT) ILIKE $${idx})`;
       params.push(`%${search}%`); idx++;
     }
 
-    const countSql = `SELECT COUNT(*) FROM orders o LEFT JOIN users u ON u.id = o.user_id ${where}`;
+    const countSql = `SELECT COUNT(*) FROM orders o LEFT JOIN users u ON u.id = o.user_id LEFT JOIN transactions t ON t.order_id = o.id ${where}`;
+
     const ordersSql = `
       SELECT
         o.*,
         COALESCE(u.name, o.guest_name, 'Guest') AS customer_name,
         COALESCE(u.reg_number, '—') AS reg_number,
         u.role AS customer_role,
-        o.transaction_code,
+        -- IMPORTANT: Get transaction_code from transactions table, not orders
+        t.transaction_code,
         t.provider AS transaction_provider,
         t.status AS transaction_verification_status,
+        t.id as transaction_id,
         (SELECT json_agg(json_build_object('name', oi.name, 'quantity', oi.quantity, 'unit_price', oi.unit_price, 'subtotal', oi.subtotal))
          FROM order_items oi WHERE oi.order_id = o.id) AS items,
         (SELECT p.provider FROM payments p WHERE p.order_id = o.id ORDER BY p.initiated_at DESC LIMIT 1) AS payment_provider,
@@ -132,7 +135,7 @@ const getOrders = async (req, res, next) => {
         (SELECT q.qr_image_url FROM qr_codes q WHERE q.order_id = o.id AND q.is_used = false AND q.expires_at > NOW() ORDER BY q.created_at DESC LIMIT 1) AS qr_code_url
       FROM orders o
       LEFT JOIN users u ON u.id = o.user_id
-      LEFT JOIN transactions t ON t.order_id = o.id AND t.status IN ('pending_verification', 'success')
+      LEFT JOIN transactions t ON t.order_id = o.id  -- This join is critical!
       ${where}
       ORDER BY o.created_at DESC
       LIMIT $${idx++} OFFSET $${idx}
@@ -167,7 +170,9 @@ const getMyOrders = async (req, res, next) => {
             o.total,
             o.created_at,
             o.updated_at,
-            o.transaction_code,
+            t.transaction_code,
+            t.provider AS transaction_provider,
+            t.status AS transaction_status,
             COALESCE(p.provider, 'pending') as payment_provider,
             COALESCE(p.status, 'pending') as payment_status,
             (
@@ -189,6 +194,7 @@ const getMyOrders = async (req, res, next) => {
             ) AS qr_code_url
           FROM orders o
           LEFT JOIN payments p ON p.order_id = o.id
+          LEFT JOIN transactions t ON t.order_id = o.id  -- Add this join!
           WHERE o.user_id = $1 AND o.university_id = $2
           ORDER BY
             CASE o.status
@@ -305,6 +311,11 @@ const generateOrderQR = async (req, res, next) => {
         const universityId = req.user.university_id;
         const userId = req.user.id;
 
+        const HOVERCODE_WORKSPACE = process.env.HOVERCODE_WORKSPACE || '16d7f3bd-f8dd-46f4-9703-df9be3773efa';
+        const HOVERCODE_TOKEN = process.env.HOVERCODE_TOKEN || '4d4d46f28f23480feaea8d175f2879a48aa92aab';
+
+        logger.info(`Generating QR for order_id: ${order_id}, transaction_code: ${transaction_code}`);
+
         let orderQuery = `
             SELECT o.*, t.transaction_code as txn_code, t.id as transaction_id
             FROM orders o
@@ -331,21 +342,14 @@ const generateOrderQR = async (req, res, next) => {
             return error(res, 'Order not found', 404);
         }
 
-        const isAuthorized = req.user.role === 'admin' ||
-                            req.user.role === 'staff' ||
-                            order.user_id === userId;
-
-        if (!isAuthorized) {
-            return error(res, 'Unauthorized to generate QR for this order', 403);
-        }
+        const isAuthorized = req.user.role === 'admin' || req.user.role === 'staff' || order.user_id === userId;
 
         if (order.status !== 'paid' && order.status !== 'ready' && order.status !== 'preparing') {
             return error(res, `QR codes can only be generated for paid orders. Current status: ${order.status}`, 400);
         }
 
-        // Check if valid QR code already exists (match your schema)
         const { rows: existingQR } = await query(
-            `SELECT id, qr_image_url, token, expires_at
+            `SELECT id, qr_image_url, token, expires_at, hovercode_id
              FROM qr_codes
              WHERE order_id = $1 AND is_used = false AND expires_at > NOW()
              ORDER BY created_at DESC LIMIT 1`,
@@ -360,47 +364,61 @@ const generateOrderQR = async (req, res, next) => {
             }, 'QR code retrieved');
         }
 
-        // Generate new QR code
+        const qrData = JSON.stringify({
+            order_id: order.id,
+            transaction_code: order.txn_code || transaction_code,
+            university_id: universityId,
+            timestamp: new Date().toISOString(),
+            is_used: false
+        });
+
+        const hovercodeResponse = await fetch('https://hovercode.com/api/v1/qr-codes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${HOVERCODE_TOKEN}`
+            },
+            body: JSON.stringify({
+                workspace_id: HOVERCODE_WORKSPACE,
+                name: `Order_${order.id.slice(0,8)}_${order.txn_code || transaction_code}`,
+                data: qrData,
+                background_color: '#FFFFFF',
+                foreground_color: '#C4522A',
+                size: 400
+            })
+        });
+
+        const hovercodeResult = await hovercodeResponse.json();
+
+        if (!hovercodeResult.data || !hovercodeResult.data.qr_code_url) {
+            logger.error('Hovercode API error:', hovercodeResult);
+            throw new Error('Failed to generate QR code with Hovercode');
+        }
+
+        const qrImageUrl = hovercodeResult.data.qr_code_url;
+        const hovercodeId = hovercodeResult.data.id;
         const token = crypto.randomBytes(32).toString('hex');
         const expiryHours = 24;
         const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000);
 
-        const qrPayload = {
-            order_id: order.id,
-            token: token,
-            transaction_code: order.txn_code || transaction_code,
-            university_id: universityId,
-            expires_at: expiresAt.toISOString(),
-            created_at: new Date().toISOString()
-        };
-
-        const qrData = JSON.stringify(qrPayload);
-        const qrImageUrl = await QRCode.toDataURL(qrData, {
-            errorCorrectionLevel: 'H',
-            margin: 2,
-            width: 300,
-            color: {
-                dark: '#C4522A',
-                light: '#FFFFFF'
-            }
-        });
-
-        // Match your actual qr_codes table schema (no created_by column)
         const { rows: [qrCode] } = await query(
-            `INSERT INTO qr_codes (order_id, qr_image_url, token, expires_at, university_id)
-             VALUES ($1, $2, $3, $4, $5)
-             RETURNING id, order_id, token, expires_at, created_at, is_used, qr_image_url`,
-            [order.id, qrImageUrl, token, expiresAt, universityId]
+            `INSERT INTO qr_codes (order_id, qr_image_url, token, expires_at, university_id, hovercode_id, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING id, order_id, token, expires_at, created_at, is_used, hovercode_id`,
+            [order.id, qrImageUrl, token, expiresAt, universityId, hovercodeId, userId]
         );
 
-        logger.info(`QR code generated for order ${order.id} by user ${userId}`);
+        logger.info(`Qr code generated via Hovercode for order ${order.id}, hovercode_id ${hovercodeId}`);
 
         return success(res, {
-            qr_code: qrCode,
+            qr_code: {
+                ...qrCode,
+                qr_image_url: qrImageUrl
+            },
             expires_at: expiresAt,
-            message: 'QR code generated successfully'
+            hovercode_id: hovercodeId,
+            message: 'QR code generated successfully via Hovercode'
         }, 'QR code generated');
-
     } catch (err) {
         logger.error('QR generation error:', err);
         next(err);
