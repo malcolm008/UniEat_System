@@ -1145,12 +1145,11 @@
             }
         };
 
-        // FIXED: Use correct endpoint - /qr NOT /qr-code
         const fetchQRCode = async (orderId) => {
             setLoadingQR(orderId);
             try {
                 const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-                // CORRECTED URL - using /qr not /qr-code
+
                 const response = await fetch(`http://localhost:5000/api/orders/${orderId}/qr`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
@@ -1314,7 +1313,6 @@
                                 </div>
                             </div>
 
-                            {/* Order Footer with QR Button */}
                             <div style={{
                                 display: 'flex',
                                 justifyContent: 'space-between',
@@ -1378,14 +1376,12 @@
                     ))}
                 </div>
 
-                {/* Refresh Button */}
                 <div style={{ textAlign: 'center', marginTop: 24 }}>
                     <Btn variant="ghost" onClick={fetchOrders} small>
                         ⟳ Refresh Orders
                     </Btn>
                 </div>
 
-                {/* QR Code Modal */}
                 <Modal open={showQRModal} onClose={() => setShowQRModal(false)} maxW={450} center>
                     <div style={{ textAlign: 'center' }}>
                         <div style={{ fontSize: 48, marginBottom: 12 }}>📱</div>
@@ -4478,15 +4474,14 @@
     }
 
     function App() {
-    const [user, setUser] = useState(null);
-    const [page, setPage] = useState('');
-    const [cart, setCart] = useState({});
-    const [toast, showToast] = useToast();
-    const [subscriptionError, setSubscriptionError] = useState(null);
-    const [loading, setLoading] = useState(true); // Add loading state
+        const [user, setUser] = useState(null);
+        const [page, setPage] = useState('');
+        const [cart, setCart] = useState({});
+        const [toast, showToast] = useToast();
+        const [subscriptionError, setSubscriptionError] = useState(null);
+        const [loading, setLoading] = useState(true); // Add loading state
 
-    // Check for existing session on app load
-    useEffect(() => {
+        useEffect(() => {
         const checkSession = async () => {
             const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             const savedUser = localStorage.getItem('user');
@@ -4495,17 +4490,14 @@
                 try {
                     const userData = JSON.parse(savedUser);
 
-                    // Just use the stored user data without verifying with backend
-                    // This avoids the 401 error on page refresh
                     setUser(userData);
                     setPage(userData.role === 'student' ? 'menu' : userData.role === 'staff' ? 'scanner' : 'dashboard');
 
-                    // Optional: Verify token in background without blocking UI
                     fetch('http://localhost:5000/api/auth/me', {
                         headers: { 'Authorization': `Bearer ${token}` }
                     }).then(response => {
                         if (!response.ok) {
-                            // Token expired, clear storage
+
                             console.log('Token expired, clearing session');
                             localStorage.removeItem('access_token');
                             localStorage.removeItem('token');
@@ -4527,10 +4519,9 @@
         };
 
         checkSession();
-    }, []);
+        }, []);
 
-    // Subscription event listener
-    useEffect(() => {
+        useEffect(() => {
         const handleSubscriptionInactive = (event) => {
             setSubscriptionError({
                 message: event.detail.message,
@@ -4544,15 +4535,15 @@
         return () => {
             window.removeEventListener('subscription:inactive', handleSubscriptionInactive);
         };
-    }, [showToast]);
+        }, [showToast]);
 
-    const handleLogin = (u) => {
+        const handleLogin = (u) => {
         setUser(u);
         setPage(u.role === 'student' ? 'menu' : u.role === 'staff' ? 'scanner' : 'dashboard');
         setSubscriptionError(null);
-    };
+        };
 
-    const handleLogout = () => {
+        const handleLogout = () => {
         setUser(null);
         setPage('');
         setCart({});
@@ -4561,9 +4552,9 @@
         localStorage.removeItem('refresh_token');
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-    };
+        };
 
-    const handleApiError = (error) => {
+        const handleApiError = (error) => {
         if (error.code === 'SUBSCRIPTION_INACTIVE' || error.message?.includes('subscription')) {
             setSubscriptionError({
                 message: error.message,
@@ -4572,19 +4563,18 @@
             return true;
         }
         return false;
-    };
+        };
 
-    const handleUpdateUser = (updatedUser) => {
+        const handleUpdateUser = (updatedUser) => {
         setUser(updatedUser);
         localStorage.setItem('user', JSON.stringify(updatedUser));
-    };
+        };
 
-    const handleOpenSettings = () => {
+        const handleOpenSettings = () => {
         setPage('settings');
-    };
+        };
 
-    // Show loading spinner while checking session
-    if (loading) {
+        if (loading) {
         return (
             <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1C1A17' }}>
                 <div style={{ textAlign: 'center' }}>
@@ -4593,27 +4583,27 @@
                 </div>
             </div>
         );
-    }
+        }
 
-    if (subscriptionError) {
+        if (subscriptionError) {
         return (
             <AppCtx.Provider value={{ showToast }}>
                 <SubscriptionInactiveScreen user={user} onLogout={handleLogout} />
                 <Toast toast={toast} />
             </AppCtx.Provider>
         );
-    }
+        }
 
-    if (!user) {
+        if (!user) {
         return (
             <AppCtx.Provider value={{ showToast }}>
                 <LoginScreen onLogin={handleLogin} />
                 <Toast toast={toast} />
             </AppCtx.Provider>
         );
-    }
+        }
 
-    const renderPage = () => {
+        const renderPage = () => {
         if (user.role === 'student') {
             if (page === 'menu') return <MenuPage cart={cart} setCart={setCart} setPage={setPage} />;
             if (page === 'orders') return <OrdersPage />;
@@ -4632,9 +4622,9 @@
         }
         if (page === 'settings') return <SettingsPage user={user} onUpdateUser={handleUpdateUser} />;
         return <div>404</div>;
-    };
+        };
 
-    return (
+        return (
         <AppCtx.Provider value={{ showToast }}>
             <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <TopBar
@@ -4651,7 +4641,7 @@
             </div>
             <Toast toast={toast} />
         </AppCtx.Provider>
-    );
-}
+        );
+    }
 
     ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
