@@ -674,7 +674,7 @@ const regenerateOrderQR = async (req, res, next) => {
 const redeemQr = async (req, res, next) => {
     try {
         const { token } = req.body;
-        const vendorId = req.user.id;
+        const vendor_id = req.user.id;
         const universityId = req.user.university_id;
 
         const { rows: [qr] } = await query(

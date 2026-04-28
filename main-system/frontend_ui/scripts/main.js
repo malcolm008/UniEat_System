@@ -1513,7 +1513,7 @@
         const startCamera = async () => {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment" }  // Use back camera on mobile
+                    video: { facingMode: "environment" }
                 });
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
@@ -1535,89 +1535,189 @@
             setCameraActive(false);
         };
 
+        // Helper function to find order by various identifiers
+        const findOrderByIdentifier = async (identifier, token) => {
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+
+                // Try 1: Check if it's a QR token (64 chars hex)
+                if (identifier.length === 64 && /^[a-f0-9]+$/i.test(identifier)) {
+                    const response = await fetch('http://localhost:5000/api/orders/redeem-qr', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ token: identifier })
+                    });
+                    return await response.json();
+                }
+
+                // Try 2: Check if it's a full UUID
+                if (identifier.length === 36 && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier)) {
+                    const response = await fetch(`http://localhost:5000/api/orders/${identifier}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const result = await response.json();
+                    if (result.success && result.data) {
+                        return { success: true, data: { order: result.data, type: 'order' } };
+                    }
+                }
+
+                // Try 3: Check if it's a short UUID (first 8 chars)
+                if (identifier.length === 8 && /^[0-9a-f]+$/i.test(identifier)) {
+                    // Search by partial ID
+                    const response = await fetch(`http://localhost:5000/api/orders?search=${identifier}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const result = await response.json();
+                    if (result.success && result.data && result.data.length === 1) {
+                        return { success: true, data: { order: result.data[0], type: 'order' } };
+                    } else if (result.success && result.data && result.data.length > 1) {
+                        return { success: false, message: `Multiple orders found with ID starting with ${identifier}. Please use full order ID.` };
+                    }
+                }
+
+                // Try 4: Check if it's a transaction code
+                const response = await fetch(`http://localhost:5000/api/orders?search=${identifier}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+                if (result.success && result.data && result.data.length === 1) {
+                    return { success: true, data: { order: result.data[0], type: 'order' } };
+                }
+
+                return { success: false, message: 'No order found with this identifier' };
+            } catch (error) {
+                console.error('Find order error:', error);
+                return { success: false, message: 'Failed to find order' };
+            }
+        };
+
         const handleScan = async (scannedCode) => {
-            const code = (scannedCode || input).toUpperCase().trim();
-            if (!code) return;
+            const identifier = (scannedCode || input).toUpperCase().trim();
+            if (!identifier) return;
 
             setScanning(true);
             setResult(null);
 
             try {
                 const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                let orderData = null;
+                let isQRToken = false;
 
-                // First, try to find the order by QR token or order ID
-                const response = await fetch('http://localhost:5000/api/orders/redeem-qr', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ token: code })
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    // Order was successfully redeemed
-                    setResult({
-                        type: 'success',
-                        message: 'Order verified and marked as served!',
-                        orderId: result.data.order_id
+                // Determine input type and call appropriate endpoint
+                if (identifier.length === 64 && /^[A-F0-9]+$/i.test(identifier)) {
+                    // This is a QR token - call redeem endpoint
+                    isQRToken = true;
+                    const response = await fetch('http://localhost:5000/api/orders/redeem-qr', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ token: identifier.toLowerCase() })
                     });
-                    showToast('✓ Order marked as served successfully!', 'success');
+                    const result = await response.json();
 
-                    // Fetch order details to show in modal
-                    await fetchOrderDetails(result.data.order_id);
-                    setShowOrderModal(true);
+                    if (result.success) {
+                        setResult({
+                            type: 'success',
+                            message: 'Order verified and marked as served!',
+                            orderId: result.data.order_id
+                        });
+                        showToast('✓ Order marked as served successfully!', 'success');
+                        await fetchOrderDetails(result.data.order_id);
+                        setShowOrderModal(true);
+                        setScanning(false);
+                        setInput('');
+                        return;
+                    } else {
+                        throw new Error(result.message || 'Invalid QR code');
+                    }
                 } else {
-                    // Try to get order by ID as fallback
-                    const orderResponse = await fetch(`http://localhost:5000/api/orders/${code}`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    // This is an order ID (full UUID, short UUID, or transaction code)
+                    let orderResponse;
+
+                    // Try as full UUID
+                    if (identifier.length === 36 && /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i.test(identifier)) {
+                        orderResponse = await fetch(`http://localhost:5000/api/orders/${identifier.toLowerCase()}`, {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                    } else {
+                        // Search by partial ID or transaction code
+                        orderResponse = await fetch(`http://localhost:5000/api/orders?search=${identifier}`, {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                    }
+
                     const orderResult = await orderResponse.json();
 
+                    let order = null;
                     if (orderResult.success && orderResult.data) {
-                        const order = orderResult.data;
-
-                        if (order.status === 'served' || order.status === 'completed') {
+                        if (Array.isArray(orderResult.data) && orderResult.data.length === 1) {
+                            order = orderResult.data[0];
+                        } else if (!Array.isArray(orderResult.data) && orderResult.data.id) {
+                            order = orderResult.data;
+                        } else if (Array.isArray(orderResult.data) && orderResult.data.length > 1) {
                             setResult({
-                                type: 'used',
-                                message: 'This QR code has already been used.',
-                                order: order
+                                type: 'error',
+                                message: `Multiple orders found. Please use full order ID.`
                             });
-                            showToast('⚠ QR code already used', 'error');
-                        } else if (order.status === 'paid' || order.status === 'ready') {
-                            setResult({
-                                type: 'valid',
-                                message: 'Valid order - Ready to serve!',
-                                order: order
-                            });
-                            showToast('✓ Valid order — ready to serve', 'success');
-                            setOrderDetails(order);
-                            setShowOrderModal(true);
-                        } else {
-                            setResult({
-                                type: 'invalid',
-                                message: `Order is not ready. Status: ${order.status}`,
-                                order: order
-                            });
-                            showToast(`Order status: ${order.status}. Cannot serve yet.`, 'error');
+                            showToast('Multiple orders found. Please use full order ID.', 'error');
+                            setScanning(false);
+                            return;
                         }
+                    }
+
+                    if (!order) {
+                        setResult({
+                            type: 'invalid',
+                            message: `No order found with identifier: ${identifier}`
+                        });
+                        showToast('Order not found', 'error');
+                        setScanning(false);
+                        return;
+                    }
+
+                    orderData = order;
+                }
+
+                // Process order data for manual entry
+                if (orderData) {
+                    if (orderData.status === 'served' || orderData.status === 'completed') {
+                        setResult({
+                            type: 'used',
+                            message: 'This order has already been served.',
+                            order: orderData
+                        });
+                        showToast('⚠ Order already served', 'error');
+                    } else if (orderData.status === 'paid' || orderData.status === 'ready') {
+                        setResult({
+                            type: 'valid',
+                            message: 'Valid order - Ready to serve!',
+                            order: orderData
+                        });
+                        showToast('✓ Valid order — ready to serve', 'success');
+                        setOrderDetails(orderData);
+                        setShowOrderModal(true);
                     } else {
                         setResult({
                             type: 'invalid',
-                            message: 'Invalid QR code or order not found'
+                            message: `Order is not ready. Current status: ${orderData.status}`,
+                            order: orderData
                         });
-                        showToast('✗ Invalid QR code', 'error');
+                        showToast(`Order status: ${orderData.status}. Cannot serve yet.`, 'error');
                     }
                 }
+
             } catch (error) {
                 console.error('Verification error:', error);
                 setResult({
                     type: 'error',
-                    message: 'Failed to verify. Please try again.'
+                    message: error.message || 'Failed to verify. Please try again.'
                 });
-                showToast('Failed to verify QR code', 'error');
+                showToast(error.message || 'Failed to verify', 'error');
             } finally {
                 setScanning(false);
                 setInput('');
@@ -1646,14 +1746,25 @@
             try {
                 const token = localStorage.getItem('access_token') || localStorage.getItem('token');
 
-                // Call the redeem endpoint with the order's QR token
+                // First get the QR token for this order
+                const qrResponse = await fetch(`http://localhost:5000/api/orders/${orderDetails.id}/qr`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const qrResult = await qrResponse.json();
+
+                if (!qrResult.success || !qrResult.data || !qrResult.data.token) {
+                    showToast('No QR code found for this order', 'error');
+                    setScanning(false);
+                    return;
+                }
+
                 const response = await fetch('http://localhost:5000/api/orders/redeem-qr', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify({ token: orderDetails.qr?.token })
+                    body: JSON.stringify({ token: qrResult.data.token })
                 });
 
                 const result = await response.json();
@@ -1667,9 +1778,6 @@
                     });
                     setShowOrderModal(false);
                     setOrderDetails(null);
-
-                    // Optional: Play success sound
-                    // new Audio('/success.mp3').play();
                 } else {
                     showToast(result.message || 'Failed to mark order as served', 'error');
                 }
@@ -1704,7 +1812,7 @@
                             QR Scanner
                         </div>
                         <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-                            Scan student QR codes to verify and serve orders
+                            Scan student QR codes or enter order ID manually
                         </div>
                     </div>
 
@@ -1735,7 +1843,6 @@
                                         borderRadius: 12
                                     }}
                                 />
-                                {/* Scanning overlay */}
                                 <div style={{
                                     position: 'absolute',
                                     top: 0,
@@ -1799,24 +1906,24 @@
                                 marginBottom: showManualInput ? 0 : 0
                             }}
                         >
-                            {showManualInput ? '− Hide Manual Entry' : '+ Enter Code Manually'}
+                            {showManualInput ? '− Hide Manual Entry' : '+ Enter Order ID or Token'}
                         </button>
 
                         {showManualInput && (
                             <div style={{ marginTop: 12 }}>
                                 <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: 1, color: 'var(--muted)', marginBottom: 8 }}>
-                                    Enter QR token or Order ID
+                                    Enter Order ID or QR Token
                                 </div>
                                 <div style={{ display: 'flex', gap: 8 }}>
                                     <input
                                         value={input}
-                                        onChange={e => setInput(e.target.value.toUpperCase())}
+                                        onChange={e => setInput(e.target.value)}
                                         onKeyDown={e => e.key === 'Enter' && handleScan()}
-                                        placeholder="e.g., ABC123XYZ or ORD-123"
+                                        placeholder="e.g., 16a90d98... or f70e033d..."
                                         style={{
                                             flex: 1,
                                             padding: '10px 12px',
-                                            fontSize: 13,
+                                            fontSize: 12,
                                             background: '#fff',
                                             border: '1.5px solid var(--border)',
                                             borderRadius: 9,
@@ -1826,6 +1933,9 @@
                                     <Btn variant="rust" onClick={() => handleScan()} disabled={scanning}>
                                         Verify
                                     </Btn>
+                                </div>
+                                <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 8 }}>
+                                    💡 Accepts: Full order ID, first 8 characters, or QR token
                                 </div>
                             </div>
                         )}
@@ -1861,7 +1971,7 @@
                                 margin: '0 auto 16px',
                                 animation: 'spin .7s linear infinite'
                             }} />
-                            <div style={{ fontWeight: 700 }}>Verifying QR Code...</div>
+                            <div style={{ fontWeight: 700 }}>Verifying...</div>
                         </div>
                     )}
 
@@ -1933,10 +2043,10 @@
                                 }}>
                                     <div style={{ fontSize: 48, marginBottom: 8 }}>⚠️</div>
                                     <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 4 }}>
-                                        Already Used
+                                        Already Served
                                     </div>
                                     <div style={{ fontSize: 13, color: '#92400e' }}>
-                                        This QR code has already been scanned and served.
+                                        This order has already been served.
                                     </div>
                                 </div>
                             )}
@@ -1950,10 +2060,10 @@
                                 }}>
                                     <div style={{ fontSize: 48, marginBottom: 8 }}>❌</div>
                                     <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 4 }}>
-                                        Invalid QR Code
+                                        Invalid
                                     </div>
                                     <div style={{ fontSize: 13, color: '#991b1b' }}>
-                                        {result.message || 'The scanned QR code is not valid.'}
+                                        {result.message || 'The scanned code is not valid.'}
                                     </div>
                                 </div>
                             )}
@@ -2040,7 +2150,7 @@
 
                             <div style={{ marginBottom: 16 }}>
                                 <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Order ID</div>
-                                <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 600 }}>
+                                <div style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 600, wordBreak: 'break-all' }}>
                                     {orderDetails.id}
                                 </div>
                             </div>
@@ -2079,7 +2189,7 @@
 
                             <div style={{
                                 display: 'flex',
-     justifyContent: 'space-between',
+                                justifyContent: 'space-between',
                                 padding: '12px 0',
                                 borderTop: '2px solid var(--border)',
                                 marginTop: 8,
