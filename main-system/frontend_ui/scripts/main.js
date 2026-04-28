@@ -1101,18 +1101,67 @@
         const [selectedQR, setSelectedQR] = useState(null);
         const [loadingQR, setLoadingQR] = useState(null);
 
+        // Add a ref to track if modal is open to prevent auto-refresh from closing it
+        const [isModalOpen, setIsModalOpen] = useState(false);
+        const [isAutoRefreshing, setIsAutoRefreshing] = useState(false);
+
         useEffect(() => {
             const handleResize = () => setIsMobile(window.innerWidth <= 768);
             window.addEventListener('resize', handleResize);
+
+            // Initial fetch
             fetchOrders();
 
             // Poll for order status updates every 15 seconds
-            const interval = setInterval(fetchOrders, 15000);
+            const interval = setInterval(() => {
+                // Only auto-refresh if modal is NOT open
+                if (!isModalOpen) {
+                    fetchOrdersSilently();
+                }
+            }, 15000);
+
             return () => {
                 window.removeEventListener('resize', handleResize);
                 clearInterval(interval);
             };
-        }, []);
+        }, [isModalOpen]); // Re-run when modal state changes
+
+        // Silent refresh - doesn't show loading state or affect QR modal
+        const fetchOrdersSilently = async () => {
+            if (isAutoRefreshing) return;
+
+            setIsAutoRefreshing(true);
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch('http://localhost:5000/api/orders/mine', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    // Preserve the current orders and only update if there are changes
+                    setOrders(prevOrders => {
+                        const newOrders = result.data;
+
+                        // Check for newly verified orders (only if modal is not open)
+                        if (!isModalOpen) {
+                            newOrders.forEach(order => {
+                                const oldOrder = prevOrders.find(o => o.id === order.id);
+                                if (oldOrder && oldOrder.status !== 'paid' && order.status === 'paid') {
+                                    showToast(`Order #${order.id?.slice(0, 8)} is ready for pickup!`, 'success');
+                                }
+                            });
+                        }
+
+                        return newOrders;
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to silently fetch orders:', error);
+            } finally {
+                setIsAutoRefreshing(false);
+            }
+        };
 
         const fetchOrders = async () => {
             setLoading(true);
@@ -1125,15 +1174,6 @@
 
                 if (result.success && result.data) {
                     setOrders(result.data);
-
-                    // Check for newly verified orders
-                    result.data.forEach(order => {
-                        if (order.status === 'paid' && !window.lastOrderStatus?.[order.id]) {
-                            showToast(`Order #${order.id?.slice(0, 8)} is ready for pickup!`, 'success');
-                        }
-                    });
-
-                    window.lastOrderStatus = result.data.reduce((acc, o) => ({ ...acc, [o.id]: o.status }), {});
                 } else {
                     setOrders([]);
                 }
@@ -1149,13 +1189,12 @@
             setLoadingQR(orderId);
             try {
                 const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-
                 const response = await fetch(`http://localhost:5000/api/orders/${orderId}/qr`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const result = await response.json();
 
-                console.log('QR response:', result); // Debug log
+                console.log('QR response:', result);
 
                 if (result.success && result.data && result.data.qr_image_url) {
                     setSelectedQR({
@@ -1163,6 +1202,7 @@
                         expires_at: result.data.expires_at,
                         orderId: orderId
                     });
+                    setIsModalOpen(true);
                     setShowQRModal(true);
                 } else if (result.success && result.data === null && result.message) {
                     showToast(result.message, 'info');
@@ -1175,6 +1215,12 @@
             } finally {
                 setLoadingQR(null);
             }
+        };
+
+        const closeQRModal = () => {
+            setShowQRModal(false);
+            setIsModalOpen(false);
+            setSelectedQR(null);
         };
 
         const getStatusBadgeColor = (status) => {
@@ -1313,6 +1359,7 @@
                                 </div>
                             </div>
 
+                            {/* Order Footer with QR Button */}
                             <div style={{
                                 display: 'flex',
                                 justifyContent: 'space-between',
@@ -1376,13 +1423,15 @@
                     ))}
                 </div>
 
+                {/* Refresh Button */}
                 <div style={{ textAlign: 'center', marginTop: 24 }}>
                     <Btn variant="ghost" onClick={fetchOrders} small>
                         ⟳ Refresh Orders
                     </Btn>
                 </div>
 
-                <Modal open={showQRModal} onClose={() => setShowQRModal(false)} maxW={450} center>
+                {/* QR Code Modal */}
+                <Modal open={showQRModal} onClose={closeQRModal} maxW={450} center>
                     <div style={{ textAlign: 'center' }}>
                         <div style={{ fontSize: 48, marginBottom: 12 }}>📱</div>
                         <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 20, marginBottom: 5 }}>
@@ -1418,7 +1467,7 @@
                             ⚠️ This QR code can only be scanned once for security.
                         </div>
                         <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-                            <Btn variant="ghost" onClick={() => setShowQRModal(false)}>Close</Btn>
+                            <Btn variant="ghost" onClick={closeQRModal}>Close</Btn>
                             {selectedQR?.url && (
                                 <Btn variant="rust" onClick={() => {
                                     const link = document.createElement('a');
@@ -1442,7 +1491,630 @@
         );
     }
 
-    function ScannerPage() { const {showToast} = useContext(AppCtx); const [input, setInput] = useState(''); const [result, setResult] = useState(null); const [scanning, setScanning] = useState(false); const handleVerify = (code) => { const c = (code||input).toUpperCase().trim(); if (!c) return; setScanning(true); setResult(null); setTimeout(() => { setScanning(false); const order = SAMPLE_ORDERS.find(o=>o.id===c); if (order) { if (order.status==='served') { setResult({type:'used',order}); showToast('⚠ QR already used', 'error'); } else { setResult({type:'valid',order}); showToast('✓ Valid order — ready to serve', 'success'); } } else { setResult({type:'invalid'}); showToast('✗ Invalid QR code', 'error'); } }, 1200); }; const markServed = () => { if (result?.order) { result.order.status = 'served'; setResult({...result, type:'done'}); showToast('✓ Order marked as served', 'success'); } }; return ( <div className="staff-scanner-layout" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:0,flex:1,overflow:'auto'}}><div style={{padding:28,borderRight:'1px solid var(--border)'}}><div><div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:20}}>QR Scanner</div><div style={{fontSize:12,color:'var(--muted)'}}>Verify student orders</div></div><div style={{background:'#1C1A17',borderRadius:16,padding:20,marginTop:20,position:'relative',aspectRatio:'1',maxWidth:320}}><div style={{position:'absolute',top:0,left:0,right:0,height:2,background:'#C4522A',opacity:.7,animation:'scanline 2s linear infinite'}}/><div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%'}}><div style={{fontSize:40}}>📷</div><div style={{fontSize:11,color:'#6A6050'}}>Camera scanner</div></div></div><div style={{marginTop:20}}><div style={{fontSize:10,fontWeight:600,letterSpacing:1,color:'var(--muted)',marginBottom:8}}>Or enter code manually</div><div style={{display:'flex',gap:8}}><input value={input} onChange={e=>setInput(e.target.value.toUpperCase())} onKeyDown={e=>e.key==='Enter'&&handleVerify()} placeholder="e.g. UNI-AB3X7K" style={{flex:1,padding:'10px 12px',fontSize:13,background:'#fff',border:'1.5px solid var(--border)',borderRadius:9}}/><Btn variant="rust" onClick={()=>handleVerify()}>Verify</Btn></div><div style={{marginTop:10,display:'flex',flexWrap:'wrap',gap:6}}>{SAMPLE_ORDERS.map(o=>(<button key={o.id} onClick={()=>{setInput(o.id);handleVerify(o.id);}} style={{fontSize:10,padding:'4px 9px',borderRadius:6,background:'#EDE8DF'}}>{o.id}</button>))}</div></div></div><div style={{padding:28,display:'flex',justifyContent:'center',alignItems:'center',background:'#FAFAF7'}}>{scanning && (<div style={{textAlign:'center'}}><div style={{width:44,height:44,border:'3px solid var(--border)',borderTopColor:'#C4522A',borderRadius:'50%',margin:'0 auto 16px',animation:'spin .7s linear infinite'}}/><div style={{fontWeight:700}}>Verifying…</div></div>)}{!scanning && !result && (<div style={{textAlign:'center',opacity:.35}}><div style={{fontSize:54}}>🔲</div><div style={{fontWeight:700}}>Awaiting scan</div></div>)}{!scanning && result && (<div style={{width:'100%',maxWidth:340}}>{result.type==='valid' && (<><div style={{background:'#EAF0E8',borderRadius:16,padding:20,textAlign:'center'}}><div style={{width:52,height:52,borderRadius:'50%',background:'#4A6741',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 10px',fontSize:22,color:'#fff'}}>✓</div><div style={{fontWeight:800,fontSize:18}}>Valid Order</div><div>{result.order.id}</div></div><Btn fullWidth variant="sage" onClick={markServed}>✓ Mark as Served</Btn></>)}</div>)}</div></div> ); }
+    function ScannerPage() {
+        const { showToast } = useContext(AppCtx);
+        const [input, setInput] = useState('');
+        const [result, setResult] = useState(null);
+        const [scanning, setScanning] = useState(false);
+        const [cameraActive, setCameraActive] = useState(false);
+        const [showManualInput, setShowManualInput] = useState(false);
+        const videoRef = useRef(null);
+        const [orderDetails, setOrderDetails] = useState(null);
+        const [showOrderModal, setShowOrderModal] = useState(false);
+
+        // Initialize camera on component mount
+        useEffect(() => {
+            startCamera();
+            return () => {
+                stopCamera();
+            };
+        }, []);
+
+        const startCamera = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" }  // Use back camera on mobile
+                });
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    setCameraActive(true);
+                }
+            } catch (err) {
+                console.error('Camera error:', err);
+                showToast('Unable to access camera. Please use manual entry.', 'error');
+                setShowManualInput(true);
+            }
+        };
+
+        const stopCamera = () => {
+            if (videoRef.current && videoRef.current.srcObject) {
+                const tracks = videoRef.current.srcObject.getTracks();
+                tracks.forEach(track => track.stop());
+                videoRef.current.srcObject = null;
+            }
+            setCameraActive(false);
+        };
+
+        const handleScan = async (scannedCode) => {
+            const code = (scannedCode || input).toUpperCase().trim();
+            if (!code) return;
+
+            setScanning(true);
+            setResult(null);
+
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+
+                // First, try to find the order by QR token or order ID
+                const response = await fetch('http://localhost:5000/api/orders/redeem-qr', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ token: code })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // Order was successfully redeemed
+                    setResult({
+                        type: 'success',
+                        message: 'Order verified and marked as served!',
+                        orderId: result.data.order_id
+                    });
+                    showToast('✓ Order marked as served successfully!', 'success');
+
+                    // Fetch order details to show in modal
+                    await fetchOrderDetails(result.data.order_id);
+                    setShowOrderModal(true);
+                } else {
+                    // Try to get order by ID as fallback
+                    const orderResponse = await fetch(`http://localhost:5000/api/orders/${code}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const orderResult = await orderResponse.json();
+
+                    if (orderResult.success && orderResult.data) {
+                        const order = orderResult.data;
+
+                        if (order.status === 'served' || order.status === 'completed') {
+                            setResult({
+                                type: 'used',
+                                message: 'This QR code has already been used.',
+                                order: order
+                            });
+                            showToast('⚠ QR code already used', 'error');
+                        } else if (order.status === 'paid' || order.status === 'ready') {
+                            setResult({
+                                type: 'valid',
+                                message: 'Valid order - Ready to serve!',
+                                order: order
+                            });
+                            showToast('✓ Valid order — ready to serve', 'success');
+                            setOrderDetails(order);
+                            setShowOrderModal(true);
+                        } else {
+                            setResult({
+                                type: 'invalid',
+                                message: `Order is not ready. Status: ${order.status}`,
+                                order: order
+                            });
+                            showToast(`Order status: ${order.status}. Cannot serve yet.`, 'error');
+                        }
+                    } else {
+                        setResult({
+                            type: 'invalid',
+                            message: 'Invalid QR code or order not found'
+                        });
+                        showToast('✗ Invalid QR code', 'error');
+                    }
+                }
+            } catch (error) {
+                console.error('Verification error:', error);
+                setResult({
+                    type: 'error',
+                    message: 'Failed to verify. Please try again.'
+                });
+                showToast('Failed to verify QR code', 'error');
+            } finally {
+                setScanning(false);
+                setInput('');
+            }
+        };
+
+        const fetchOrderDetails = async (orderId) => {
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch(`http://localhost:5000/api/orders/${orderId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+                if (result.success) {
+                    setOrderDetails(result.data);
+                }
+            } catch (error) {
+                console.error('Failed to fetch order details:', error);
+            }
+        };
+
+        const markAsServed = async () => {
+            if (!orderDetails) return;
+
+            setScanning(true);
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+
+                // Call the redeem endpoint with the order's QR token
+                const response = await fetch('http://localhost:5000/api/orders/redeem-qr', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ token: orderDetails.qr?.token })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast('✓ Order marked as served!', 'success');
+                    setResult({
+                        type: 'success',
+                        message: 'Order has been served successfully!',
+                        orderId: orderDetails.id
+                    });
+                    setShowOrderModal(false);
+                    setOrderDetails(null);
+
+                    // Optional: Play success sound
+                    // new Audio('/success.mp3').play();
+                } else {
+                    showToast(result.message || 'Failed to mark order as served', 'error');
+                }
+            } catch (error) {
+                console.error('Mark as served error:', error);
+                showToast('Failed to mark order as served', 'error');
+            } finally {
+                setScanning(false);
+            }
+        };
+
+        const resetScanner = () => {
+            setResult(null);
+            setOrderDetails(null);
+            setShowOrderModal(false);
+            setInput('');
+        };
+
+        return (
+            <div className="staff-scanner-layout" style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 0,
+                flex: 1,
+                overflow: 'auto',
+                minHeight: '100%'
+            }}>
+                {/* Left Panel - Scanner */}
+                <div style={{ padding: 28, borderRight: '1px solid var(--border)', background: '#fff' }}>
+                    <div>
+                        <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 20 }}>
+                            QR Scanner
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                            Scan student QR codes to verify and serve orders
+                        </div>
+                    </div>
+
+                    {/* Camera View */}
+                    <div style={{
+                        background: '#1C1A17',
+                        borderRadius: 16,
+                        padding: 20,
+                        marginTop: 20,
+                        position: 'relative',
+                        aspectRatio: '1',
+                        maxWidth: 320,
+                        overflow: 'hidden'
+                    }}>
+                        {cameraActive ? (
+                            <>
+                                <video
+                                    ref={videoRef}
+                                    autoPlay
+                                    playsInline
+                                    style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        width: '100%',
+                                        height: '100%',
+                                        objectFit: 'cover',
+                                        borderRadius: 12
+                                    }}
+                                />
+                                {/* Scanning overlay */}
+                                <div style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    height: 2,
+                                    background: '#C4522A',
+                                    opacity: 0.8,
+                                    animation: 'scanline 2s linear infinite'
+                                }} />
+                                <div style={{
+                                    position: 'absolute',
+                                    top: '50%',
+                                    left: '50%',
+                                    transform: 'translate(-50%, -50%)',
+                                    width: '70%',
+                                    height: '70%',
+                                    border: '2px solid rgba(196, 82, 42, 0.5)',
+                                    borderRadius: 12,
+                                    pointerEvents: 'none'
+                                }} />
+                            </>
+                        ) : (
+                            <div style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                height: '100%',
+                                gap: 12
+                            }}>
+                                <div style={{ fontSize: 48 }}>📷</div>
+                                <div style={{ fontSize: 12, color: '#6A6050', textAlign: 'center' }}>
+                                    Camera not available<br/>
+                                    Use manual entry below
+                                </div>
+                                <Btn
+                                    variant="ghost"
+                                    size="small"
+                                    onClick={startCamera}
+                                >
+                                    Try Again
+                                </Btn>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Manual Entry Toggle */}
+                    <div style={{ marginTop: 20 }}>
+                        <button
+                            onClick={() => setShowManualInput(!showManualInput)}
+                            style={{
+                                width: '100%',
+                                padding: '8px',
+                                background: 'transparent',
+                                border: '1px solid var(--border)',
+                                borderRadius: 8,
+                                cursor: 'pointer',
+                                fontSize: 12,
+                                color: 'var(--muted)',
+                                marginBottom: showManualInput ? 0 : 0
+                            }}
+                        >
+                            {showManualInput ? '− Hide Manual Entry' : '+ Enter Code Manually'}
+                        </button>
+
+                        {showManualInput && (
+                            <div style={{ marginTop: 12 }}>
+                                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: 1, color: 'var(--muted)', marginBottom: 8 }}>
+                                    Enter QR token or Order ID
+                                </div>
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                    <input
+                                        value={input}
+                                        onChange={e => setInput(e.target.value.toUpperCase())}
+                                        onKeyDown={e => e.key === 'Enter' && handleScan()}
+                                        placeholder="e.g., ABC123XYZ or ORD-123"
+                                        style={{
+                                            flex: 1,
+                                            padding: '10px 12px',
+                                            fontSize: 13,
+                                            background: '#fff',
+                                            border: '1.5px solid var(--border)',
+                                            borderRadius: 9,
+                                            fontFamily: 'monospace'
+                                        }}
+                                    />
+                                    <Btn variant="rust" onClick={() => handleScan()} disabled={scanning}>
+                                        Verify
+                                    </Btn>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Reset Button */}
+                    {result && (
+                        <div style={{ marginTop: 16 }}>
+                            <Btn variant="ghost" onClick={resetScanner} fullWidth>
+                                Scan Another QR Code
+                            </Btn>
+                        </div>
+                    )}
+                </div>
+
+                {/* Right Panel - Results */}
+                <div style={{
+                    padding: 28,
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    background: '#FAFAF7',
+                    flexDirection: 'column'
+                }}>
+                    {scanning && (
+                        <div style={{ textAlign: 'center' }}>
+                            <div style={{
+                                width: 44,
+                                height: 44,
+                                border: '3px solid var(--border)',
+                                borderTopColor: '#C4522A',
+                                borderRadius: '50%',
+                                margin: '0 auto 16px',
+                                animation: 'spin .7s linear infinite'
+                            }} />
+                            <div style={{ fontWeight: 700 }}>Verifying QR Code...</div>
+                        </div>
+                    )}
+
+                    {!scanning && !result && (
+                        <div style={{ textAlign: 'center', opacity: 0.45 }}>
+                            <div style={{ fontSize: 54 }}>🔲</div>
+                            <div style={{ fontWeight: 700, marginTop: 12 }}>Awaiting Scan</div>
+                            <div style={{ fontSize: 12, marginTop: 4 }}>Position QR code in the camera view</div>
+                        </div>
+                    )}
+
+                    {!scanning && result && (
+                        <div style={{ width: '100%', maxWidth: 380 }}>
+                            {result.type === 'valid' && result.order && (
+                                <div>
+                                    <div style={{
+                                        background: '#EAF0E8',
+                                        borderRadius: 16,
+                                        padding: 24,
+                                        textAlign: 'center',
+                                        marginBottom: 16
+                                    }}>
+                                        <div style={{
+                                            width: 52,
+                                            height: 52,
+                                            borderRadius: '50%',
+                                            background: '#4A6741',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            margin: '0 auto 10px',
+                                            fontSize: 22,
+                                            color: '#fff'
+                                        }}>
+                                            ✓
+                                        </div>
+                                        <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>
+                                            Valid Order
+                                        </div>
+                                        <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#4A6741' }}>
+                                            Order #{result.order.id?.slice(0, 8)?.toUpperCase()}
+                                        </div>
+                                        <div style={{ fontSize: 13, marginTop: 12 }}>
+                                            Customer: {result.order.customer_name || 'Guest'}
+                                        </div>
+                                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                                            Amount: TZS {fmt(result.order.total)}
+                                        </div>
+                                    </div>
+                                    <Btn
+                                        fullWidth
+                                        variant="sage"
+                                        onClick={() => {
+                                            setOrderDetails(result.order);
+                                            setShowOrderModal(true);
+                                        }}
+                                    >
+                                        View Order Details & Serve
+                                    </Btn>
+                                </div>
+                            )}
+
+                            {result.type === 'used' && (
+                                <div style={{
+                                    background: '#FEF3C7',
+                                    borderRadius: 16,
+                                    padding: 24,
+                                    textAlign: 'center'
+                                }}>
+                                    <div style={{ fontSize: 48, marginBottom: 8 }}>⚠️</div>
+                                    <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 4 }}>
+                                        Already Used
+                                    </div>
+                                    <div style={{ fontSize: 13, color: '#92400e' }}>
+                                        This QR code has already been scanned and served.
+                                    </div>
+                                </div>
+                            )}
+
+                            {result.type === 'invalid' && (
+                                <div style={{
+                                    background: '#FEE2E2',
+                                    borderRadius: 16,
+                                    padding: 24,
+                                    textAlign: 'center'
+                                }}>
+                                    <div style={{ fontSize: 48, marginBottom: 8 }}>❌</div>
+                                    <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 4 }}>
+                                        Invalid QR Code
+                                    </div>
+                                    <div style={{ fontSize: 13, color: '#991b1b' }}>
+                                        {result.message || 'The scanned QR code is not valid.'}
+                                    </div>
+                                </div>
+                            )}
+
+                            {result.type === 'success' && (
+                                <div style={{
+                                    background: '#EAF0E8',
+                                    borderRadius: 16,
+                                    padding: 24,
+                                    textAlign: 'center'
+                                }}>
+                                    <div style={{ fontSize: 48, marginBottom: 8 }}>🎉</div>
+                                    <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 4 }}>
+                                        Order Served!
+                                    </div>
+                                    <div style={{ fontSize: 13, color: '#4A6741' }}>
+                                        {result.message}
+                                    </div>
+                                </div>
+                            )}
+
+                            {result.type === 'error' && (
+                                <div style={{
+                                    background: '#FEE2E2',
+                                    borderRadius: 16,
+                                    padding: 24,
+                                    textAlign: 'center'
+                                }}>
+                                    <div style={{ fontSize: 48, marginBottom: 8 }}>⚠️</div>
+                                    <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 4 }}>
+                                        Error
+                                    </div>
+                                    <div style={{ fontSize: 13, color: '#991b1b' }}>
+                                        {result.message}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Order Details Modal */}
+                {showOrderModal && orderDetails && (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(0,0,0,0.5)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000
+                    }} onClick={() => setShowOrderModal(false)}>
+                        <div style={{
+                            background: '#fff',
+                            borderRadius: 20,
+                            maxWidth: 500,
+                            width: '90%',
+                            maxHeight: '80vh',
+                            overflow: 'auto',
+                            padding: 24
+                        }} onClick={e => e.stopPropagation()}>
+                            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                                <div style={{
+                                    width: 52,
+                                    height: 52,
+                                    borderRadius: '50%',
+                                    background: '#4A6741',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: 22,
+                                    color: '#fff'
+                                }}>
+                                    📋
+                                </div>
+                            </div>
+
+                            <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: 20, textAlign: 'center', marginBottom: 20 }}>
+                                Order Details
+                            </div>
+
+                            <div style={{ marginBottom: 16 }}>
+                                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Order ID</div>
+                                <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 600 }}>
+                                    {orderDetails.id}
+                                </div>
+                            </div>
+
+                            <div style={{ marginBottom: 16 }}>
+                                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Customer</div>
+                                <div style={{ fontSize: 14, fontWeight: 500 }}>
+                                    {orderDetails.customer_name || orderDetails.guest_name || 'Guest'}
+                                </div>
+                                {orderDetails.guest_phone && (
+                                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                                        📞 {orderDetails.guest_phone}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div style={{ marginBottom: 16 }}>
+                                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Items</div>
+                                <div style={{ borderTop: '1px solid var(--border)', marginTop: 4 }}>
+                                    {orderDetails.items?.map((item, idx) => (
+                                        <div key={idx} style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            padding: '8px 0',
+                                            borderBottom: idx !== orderDetails.items.length - 1 ? '1px solid var(--border)' : 'none'
+                                        }}>
+                                            <div>
+                                                <span style={{ fontWeight: 500 }}>{item.name}</span>
+                                                <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 8 }}>x{item.quantity}</span>
+                                            </div>
+                                            <div>TZS {fmt(item.subtotal || item.unit_price * item.quantity)}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div style={{
+                                display: 'flex',
+     justifyContent: 'space-between',
+                                padding: '12px 0',
+                                borderTop: '2px solid var(--border)',
+                                marginTop: 8,
+                                fontWeight: 700
+                            }}>
+                                <div>Total</div>
+                                <div style={{ color: '#C4522A', fontSize: 18 }}>
+                                    TZS {fmt(orderDetails.total)}
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+                                <Btn variant="ghost" onClick={() => setShowOrderModal(false)}>
+                                    Cancel
+                                </Btn>
+                                <Btn variant="sage" onClick={markAsServed} disabled={scanning}>
+                                    {scanning ? 'Processing...' : '✓ Mark as Served'}
+                                </Btn>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <style>{`
+                    @keyframes spin {
+                        to { transform: rotate(360deg); }
+                    }
+                    @keyframes scanline {
+                        0% { transform: translateY(-100%); }
+                        100% { transform: translateY(100%); }
+                    }
+                `}</style>
+            </div>
+        );
+    }
 
     function QueuePage() { const {showToast} = useContext(AppCtx); const [orders, setOrders] = useState(SAMPLE_ORDERS.map(o=>({...o}))); const pending = orders.filter(o=>o.status==='pending'); const served = orders.filter(o=>o.status==='served'); const markServed = (id) => { setOrders(prev => prev.map(o=>o.id===id?{...o,status:'served'}:o)); showToast('✓ Order marked as served', 'success'); }; const OrderCard = ({o}) => ( <div style={{background:'#fff',border:`1px solid ${o.status==='pending'?'#E2D9CC':'#D3D1C7'}`,borderRadius:12,padding:'12px 14px'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}><div><div style={{fontWeight:700,fontSize:12}}>{o.id}</div><div style={{fontSize:12}}>{o.student}</div></div><Badge color={o.status==='served'?'sage':'amber'}>{o.status==='served'?'Served':'Pending'}</Badge></div><div style={{fontSize:11,color:'var(--muted)',marginBottom:8}}>{o.items.map(it=>`${it.qty}× ${it.name}`).join(' · ')}</div><div style={{display:'flex',justifyContent:'space-between'}}><span style={{fontWeight:700}}>TZS {fmt(o.total)}</span>{o.status==='pending' && <Btn small variant="sage" onClick={()=>markServed(o.id)}>Mark served</Btn>}</div></div> ); return ( <div className="queue-layout" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:0,flex:1,overflow:'auto'}}><div style={{padding:20,borderRight:'1px solid var(--border)',overflowY:'auto'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}><span style={{fontWeight:700}}>Pending</span><span style={{background:'#FEF3DC',color:'#854F0B',borderRadius:10,padding:'2px 8px',fontSize:10}}>{pending.length}</span></div><div style={{display:'flex',flexDirection:'column',gap:10}}>{pending.map(o=><OrderCard key={o.id} o={o}/>)}</div></div><div style={{padding:20,overflowY:'auto',background:'#FAFAF7'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}><span style={{fontWeight:700}}>Served today</span><span style={{background:'#EAF0E8',color:'#4A6741',borderRadius:10,padding:'2px 8px'}}>{served.length}</span></div><div>{served.map(o=><OrderCard key={o.id} o={o}/>)}</div></div></div> ); }
 
