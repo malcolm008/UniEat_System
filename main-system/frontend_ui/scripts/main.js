@@ -2226,7 +2226,650 @@
         );
     }
 
-    function QueuePage() { const {showToast} = useContext(AppCtx); const [orders, setOrders] = useState(SAMPLE_ORDERS.map(o=>({...o}))); const pending = orders.filter(o=>o.status==='pending'); const served = orders.filter(o=>o.status==='served'); const markServed = (id) => { setOrders(prev => prev.map(o=>o.id===id?{...o,status:'served'}:o)); showToast('✓ Order marked as served', 'success'); }; const OrderCard = ({o}) => ( <div style={{background:'#fff',border:`1px solid ${o.status==='pending'?'#E2D9CC':'#D3D1C7'}`,borderRadius:12,padding:'12px 14px'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}><div><div style={{fontWeight:700,fontSize:12}}>{o.id}</div><div style={{fontSize:12}}>{o.student}</div></div><Badge color={o.status==='served'?'sage':'amber'}>{o.status==='served'?'Served':'Pending'}</Badge></div><div style={{fontSize:11,color:'var(--muted)',marginBottom:8}}>{o.items.map(it=>`${it.qty}× ${it.name}`).join(' · ')}</div><div style={{display:'flex',justifyContent:'space-between'}}><span style={{fontWeight:700}}>TZS {fmt(o.total)}</span>{o.status==='pending' && <Btn small variant="sage" onClick={()=>markServed(o.id)}>Mark served</Btn>}</div></div> ); return ( <div className="queue-layout" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:0,flex:1,overflow:'auto'}}><div style={{padding:20,borderRight:'1px solid var(--border)',overflowY:'auto'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}><span style={{fontWeight:700}}>Pending</span><span style={{background:'#FEF3DC',color:'#854F0B',borderRadius:10,padding:'2px 8px',fontSize:10}}>{pending.length}</span></div><div style={{display:'flex',flexDirection:'column',gap:10}}>{pending.map(o=><OrderCard key={o.id} o={o}/>)}</div></div><div style={{padding:20,overflowY:'auto',background:'#FAFAF7'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}><span style={{fontWeight:700}}>Served today</span><span style={{background:'#EAF0E8',color:'#4A6741',borderRadius:10,padding:'2px 8px'}}>{served.length}</span></div><div>{served.map(o=><OrderCard key={o.id} o={o}/>)}</div></div></div> ); }
+    function QueuePage() {
+        const { showToast } = useContext(AppCtx);
+        const [orders, setOrders] = useState([]);
+        const [loading, setLoading] = useState(true);
+        const [filter, setFilter] = useState('all');
+        const [autoRefresh, setAutoRefresh] = useState(true);
+        const [lastUpdated, setLastUpdated] = useState(null);
+        const [activeTab, setActiveTab] = useState('pending'); // For mobile view
+        const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+        const [stats, setStats] = useState({
+            pending: 0,
+            preparing: 0,
+            ready: 0,
+            served: 0,
+            totalRevenue: 0
+        });
+
+        useEffect(() => {
+            const handleResize = () => setIsMobile(window.innerWidth <= 768);
+            window.addEventListener('resize', handleResize);
+            fetchOrders();
+
+            let interval;
+            if (autoRefresh) {
+                interval = setInterval(fetchOrders, 10000);
+            }
+
+            return () => {
+                window.removeEventListener('resize', handleResize);
+                if (interval) clearInterval(interval);
+            };
+        }, [autoRefresh]);
+
+        const fetchOrders = async () => {
+            setLoading(true);
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                const response = await fetch('http://localhost:5000/api/orders', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    const ordersData = result.data;
+                    setOrders(ordersData);
+                    calculateStats(ordersData);
+                    setLastUpdated(new Date());
+                } else if (result.orders) {
+                    setOrders(result.orders);
+                    calculateStats(result.orders);
+                    setLastUpdated(new Date());
+                }
+            } catch (error) {
+                console.error('Failed to fetch orders:', error);
+                showToast('Failed to load orders', 'error');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        const calculateStats = (ordersData) => {
+            const statsData = {
+                pending: ordersData.filter(o => o.status === 'pending' || o.status === 'pending_verification').length,
+                preparing: ordersData.filter(o => o.status === 'preparing').length,
+                ready: ordersData.filter(o => o.status === 'ready' || o.status === 'paid').length,
+                served: ordersData.filter(o => o.status === 'served').length,
+                totalRevenue: ordersData
+                    .filter(o => o.status === 'served' || o.status === 'completed')
+                    .reduce((sum, o) => sum + (o.total || 0), 0)
+            };
+            setStats(statsData);
+        };
+
+        const markAsServed = async (orderId, qrToken) => {
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+                let redeemToken = qrToken;
+
+                if (!redeemToken) {
+                    const qrResponse = await fetch(`http://localhost:5000/api/orders/${orderId}/qr`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const qrResult = await qrResponse.json();
+
+                    if (qrResult.success && qrResult.data && qrResult.data.token) {
+                        redeemToken = qrResult.data.token;
+                    } else {
+                        showToast('No QR token found for this order', 'error');
+                        return;
+                    }
+                }
+
+                const response = await fetch('http://localhost:5000/api/orders/redeem-qr', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ token: redeemToken })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast('✓ Order marked as served!', 'success');
+                    fetchOrders();
+                } else {
+                    showToast(result.message || 'Failed to mark order as served', 'error');
+                }
+            } catch (error) {
+                console.error('Mark as served error:', error);
+                showToast('Failed to mark order as served', 'error');
+            }
+        };
+
+        const getStatusColor = (status) => {
+            switch (status) {
+                case 'pending': return { bg: '#FEF3C7', text: '#92400E', border: '#FDE68A', icon: '⏳' };
+                case 'pending_verification': return { bg: '#FEF3C7', text: '#92400E', border: '#FDE68A', icon: '⏳' };
+                case 'preparing': return { bg: '#DBEAFE', text: '#1E40AF', border: '#BFDBFE', icon: '🍳' };
+                case 'ready': return { bg: '#D1FAE5', text: '#065F46', border: '#A7F3D0', icon: '✅' };
+                case 'paid': return { bg: '#D1FAE5', text: '#065F46', border: '#A7F3D0', icon: '✅' };
+                case 'served': return { bg: '#E5E7EB', text: '#374151', border: '#D1D5DB', icon: '✓' };
+                case 'completed': return { bg: '#E5E7EB', text: '#374151', border: '#D1D5DB', icon: '✓' };
+                case 'cancelled': return { bg: '#FEE2E2', text: '#991B1B', border: '#FECACA', icon: '✗' };
+                default: return { bg: '#F3F4F6', text: '#1F2937', border: '#E5E7EB', icon: '📦' };
+            }
+        };
+
+        const getStatusLabel = (status) => {
+            switch (status) {
+                case 'pending': return 'Pending';
+                case 'pending_verification': return 'Awaiting Verification';
+                case 'preparing': return 'Preparing';
+                case 'ready': return 'Ready for Pickup';
+                case 'paid': return 'Ready for Pickup';
+                case 'served': return 'Served';
+                case 'completed': return 'Completed';
+                case 'cancelled': return 'Cancelled';
+                default: return status;
+            }
+        };
+
+        const formatTime = (dateString) => {
+            if (!dateString) return '—';
+            const date = new Date(dateString);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins} min ago`;
+            if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ${diffMins % 60}m ago`;
+            return date.toLocaleDateString();
+        };
+
+        const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'pending_verification');
+        const preparingOrders = orders.filter(o => o.status === 'preparing');
+        const readyOrders = orders.filter(o => o.status === 'ready' || o.status === 'paid');
+        const servedOrders = orders.filter(o => o.status === 'served');
+
+        // Order Card Component
+        const OrderCard = ({ order, showServeButton = false, onServe }) => {
+            const colors = getStatusColor(order.status);
+
+            return (
+                <div style={{
+                    background: '#fff',
+                    borderRadius: 12,
+                    padding: '14px',
+                    marginBottom: 10,
+                    borderLeft: `4px solid ${colors.text}`,
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                    transition: 'all 0.2s ease'
+                }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                        <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                                <span style={{ fontWeight: 700, fontSize: 13, fontFamily: 'monospace' }}>
+                                    #{order.id?.slice(0, 8)?.toUpperCase()}
+                                </span>
+                                <Badge color={order.status === 'served' ? 'sage' : (order.status === 'ready' || order.status === 'paid' ? 'success' : 'amber')} small>
+                                    {colors.icon} {getStatusLabel(order.status)}
+                                </Badge>
+                            </div>
+                            <div style={{ fontSize: 12, fontWeight: 500, color: '#1C1A17' }}>
+                                {order.customer_name || order.guest_name || 'Guest'}
+                            </div>
+                            {order.guest_phone && (
+                                <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
+                                    📞 {order.guest_phone}
+                                </div>
+                            )}
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontWeight: 700, color: '#C4522A', fontSize: 14 }}>
+                                TZS {fmt(order.total)}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
+                        {order.items && order.items.slice(0, 2).map((it, idx) => (
+                            <span key={idx}>
+                                {idx > 0 && ' · '}{it.quantity}× {it.name}
+                            </span>
+                        ))}
+                        {order.items && order.items.length > 2 && ` +${order.items.length - 2} more`}
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                        <div style={{ fontSize: 10, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <span>🕐</span> {formatTime(order.created_at)}
+                        </div>
+                        {showServeButton && onServe && (
+                            <button
+                                onClick={() => onServe(order.id, order.qr_token)}
+                                style={{
+                                    padding: '6px 14px',
+                                    background: '#4A6741',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: 8,
+                                    cursor: 'pointer',
+                                    fontSize: 11,
+                                    fontWeight: 500,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 4
+                                }}
+                            >
+                                ✓ Serve Order
+                            </button>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        if (loading && orders.length === 0) {
+            return (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }} />
+                        <div>Loading queue...</div>
+                    </div>
+                </div>
+            );
+        }
+
+        return (
+            <div style={{ padding: isMobile ? 12 : 24, overflowY: 'auto', height: '100%' }}>
+                {/* Header */}
+                <div style={{ marginBottom: 20 }}>
+                    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: 12 }}>
+                        <div>
+                            <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: isMobile ? 20 : 24, marginBottom: 4 }}>
+                                Order Queue
+                            </div>
+                            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                                Real-time order status and management
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <button
+                                onClick={() => setAutoRefresh(!autoRefresh)}
+                                style={{
+                                    padding: '6px 12px',
+                                    background: autoRefresh ? '#4A6741' : '#EDE8DF',
+                                    color: autoRefresh ? '#fff' : 'var(--muted)',
+                                    border: 'none',
+                                    borderRadius: 8,
+                                    cursor: 'pointer',
+                                    fontSize: 11,
+                                    whiteSpace: 'nowrap'
+                                }}
+                            >
+                                {autoRefresh ? '🔴 Auto-refresh ON' : '⏸ Auto-refresh OFF'}
+                            </button>
+                            <Btn variant="rust" onClick={fetchOrders} small>
+                                ⟳ Refresh
+                            </Btn>
+                        </div>
+                    </div>
+                    {lastUpdated && (
+                        <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 8 }}>
+                            Last updated: {lastUpdated.toLocaleTimeString()}
+                        </div>
+                    )}
+                </div>
+
+                {/* Stats Cards - Responsive Grid */}
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(5, 1fr)',
+                    gap: 12,
+                    marginBottom: 20
+                }}>
+                    <div style={{ background: '#FEF3C7', borderRadius: 10, padding: 12, textAlign: 'center' }}>
+                        <div style={{ fontSize: 10, color: '#92400E' }}>⏳ Pending</div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: '#92400E' }}>{stats.pending}</div>
+                    </div>
+                    <div style={{ background: '#DBEAFE', borderRadius: 10, padding: 12, textAlign: 'center' }}>
+                        <div style={{ fontSize: 10, color: '#1E40AF' }}>🍳 Preparing</div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: '#1E40AF' }}>{stats.preparing}</div>
+                    </div>
+                    <div style={{ background: '#D1FAE5', borderRadius: 10, padding: 12, textAlign: 'center' }}>
+                        <div style={{ fontSize: 10, color: '#065F46' }}>✅ Ready</div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: '#065F46' }}>{stats.ready}</div>
+                    </div>
+                    <div style={{ background: '#E5E7EB', borderRadius: 10, padding: 12, textAlign: 'center' }}>
+                        <div style={{ fontSize: 10, color: '#374151' }}>✓ Served</div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: '#374151' }}>{stats.served}</div>
+                    </div>
+                    <div style={{ background: '#EAF0E8', borderRadius: 10, padding: 12, textAlign: 'center' }}>
+                        <div style={{ fontSize: 10, color: '#4A6741' }}>💰 Revenue</div>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: '#4A6741' }}>TZS {fmt(stats.totalRevenue)}</div>
+                    </div>
+                </div>
+
+                {/* Mobile: Tab View */}
+                {isMobile ? (
+                    <>
+                        {/* Tab Buttons */}
+                        <div style={{ display: 'flex', gap: 4, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
+                            {[
+                                { key: 'pending', label: '⏳ Pending', count: stats.pending },
+                                { key: 'preparing', label: '🍳 Preparing', count: stats.preparing },
+                                { key: 'ready', label: '✅ Ready', count: stats.ready },
+                                { key: 'served', label: '✓ Served', count: stats.served }
+                            ].map(tab => (
+                                <button
+                                    key={tab.key}
+                                    onClick={() => setActiveTab(tab.key)}
+                                    style={{
+                                        padding: '8px 16px',
+                                        background: activeTab === tab.key ? '#C4522A' : '#FAFAF7',
+                                        color: activeTab === tab.key ? '#fff' : 'var(--muted)',
+                                        border: activeTab === tab.key ? 'none' : '1px solid var(--border)',
+                                        borderRadius: 20,
+                                        cursor: 'pointer',
+                                        fontSize: 12,
+                                        fontWeight: 500,
+                                        whiteSpace: 'nowrap'
+                                    }}
+                                >
+                                    {tab.label} ({tab.count})
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Tab Content */}
+                        <div>
+                            {activeTab === 'pending' && (
+                                <>
+                                    {pendingOrders.length === 0 ? (
+                                        <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', background: '#FAFAF7', borderRadius: 12 }}>
+                                            No pending orders
+                                        </div>
+                                    ) : (
+                                        pendingOrders.map(order => (
+                                            <OrderCard key={order.id} order={order} />
+                                        ))
+                                    )}
+                                </>
+                            )}
+                            {activeTab === 'preparing' && (
+                                <>
+                                    {preparingOrders.length === 0 ? (
+                                        <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', background: '#FAFAF7', borderRadius: 12 }}>
+                                            No orders preparing
+                                        </div>
+                                    ) : (
+                                        preparingOrders.map(order => (
+                                            <OrderCard key={order.id} order={order} />
+                                        ))
+                                    )}
+                                </>
+                            )}
+                            {activeTab === 'ready' && (
+                                <>
+                                    {readyOrders.length === 0 ? (
+                                        <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', background: '#FAFAF7', borderRadius: 12 }}>
+                                            No orders ready for pickup
+                                        </div>
+                                    ) : (
+                                        readyOrders.map(order => (
+                                            <OrderCard
+                                                key={order.id}
+                                                order={order}
+                                                showServeButton={true}
+                                                onServe={markAsServed}
+                                            />
+                                        ))
+                                    )}
+                                </>
+                            )}
+                            {activeTab === 'served' && (
+                                <>
+                                    {servedOrders.length === 0 ? (
+                                        <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', background: '#FAFAF7', borderRadius: 12 }}>
+                                            No orders served yet
+                                        </div>
+                                    ) : (
+                                        servedOrders.slice(0, 30).map(order => (
+                                            <OrderCard key={order.id} order={order} />
+                                        ))
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    </>
+                ) : (
+                    /* Desktop: Column View */
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(4, 1fr)',
+                        gap: 16,
+                        overflowX: 'auto',
+                        minWidth: 800
+                    }}>
+                        {/* Pending Column */}
+                        <div style={{
+                            background: '#FAFAF7',
+                            borderRadius: 12,
+                            padding: 12,
+                            border: '1px solid var(--border)',
+                            minHeight: 500,
+                            maxHeight: 'calc(100vh - 280px)',
+                            overflowY: 'auto'
+                        }}>
+                            <div style={{
+                                fontWeight: 700,
+                                fontSize: 13,
+                                marginBottom: 12,
+                                paddingBottom: 8,
+                                borderBottom: '2px solid #FDE68A',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                position: 'sticky',
+                                top: 0,
+                                background: '#FAFAF7'
+                            }}>
+                                <span>⏳ Awaiting Verification</span>
+                                <span style={{ background: '#FEF3C7', padding: '2px 8px', borderRadius: 12, fontSize: 11 }}>
+                                    {pendingOrders.length}
+                                </span>
+                            </div>
+                            <div>
+                                {pendingOrders.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
+                                        No pending orders
+                                    </div>
+                                ) : (
+                                    pendingOrders.map(order => <OrderCard key={order.id} order={order} />)
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Preparing Column */}
+                        <div style={{
+                            background: '#FAFAF7',
+                            borderRadius: 12,
+                            padding: 12,
+                            border: '1px solid var(--border)',
+                            minHeight: 500,
+                            maxHeight: 'calc(100vh - 280px)',
+                            overflowY: 'auto'
+                        }}>
+                            <div style={{
+                                fontWeight: 700,
+                                fontSize: 13,
+                                marginBottom: 12,
+                                paddingBottom: 8,
+                                borderBottom: '2px solid #BFDBFE',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                position: 'sticky',
+                                top: 0,
+                                background: '#FAFAF7'
+                            }}>
+                                <span>🍳 Preparing</span>
+                                <span style={{ background: '#DBEAFE', padding: '2px 8px', borderRadius: 12, fontSize: 11 }}>
+                                    {preparingOrders.length}
+                                </span>
+                            </div>
+                            <div>
+                                {preparingOrders.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
+                                        No orders preparing
+                                    </div>
+                                ) : (
+                                    preparingOrders.map(order => <OrderCard key={order.id} order={order} />)
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Ready Column */}
+                        <div style={{
+                            background: '#FAFAF7',
+                            borderRadius: 12,
+                            padding: 12,
+                            border: '1px solid var(--border)',
+                            minHeight: 500,
+                            maxHeight: 'calc(100vh - 280px)',
+                            overflowY: 'auto'
+                        }}>
+                            <div style={{
+                                fontWeight: 700,
+                                fontSize: 13,
+                                marginBottom: 12,
+                                paddingBottom: 8,
+                                borderBottom: '2px solid #A7F3D0',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                position: 'sticky',
+                                top: 0,
+                                background: '#FAFAF7'
+                            }}>
+                                <span>✅ Ready for Pickup</span>
+                                <span style={{ background: '#D1FAE5', padding: '2px 8px', borderRadius: 12, fontSize: 11 }}>
+                                    {readyOrders.length}
+                                </span>
+                            </div>
+                            <div>
+                                {readyOrders.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
+                                        No orders ready
+                                    </div>
+                                ) : (
+                                    readyOrders.map(order => (
+                                        <OrderCard
+                                            key={order.id}
+                                            order={order}
+                                            showServeButton={true}
+                                            onServe={markAsServed}
+                                        />
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Served Column */}
+                        <div style={{
+                            background: '#FAFAF7',
+                            borderRadius: 12,
+                            padding: 12,
+                            border: '1px solid var(--border)',
+                            minHeight: 500,
+                            maxHeight: 'calc(100vh - 280px)',
+                            overflowY: 'auto'
+                        }}>
+                            <div style={{
+                                fontWeight: 700,
+                                fontSize: 13,
+                                marginBottom: 12,
+                                paddingBottom: 8,
+                                borderBottom: '2px solid #D1D5DB',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                position: 'sticky',
+                                top: 0,
+                                background: '#FAFAF7'
+                            }}>
+                                <span>✓ Served</span>
+                                <span style={{ background: '#E5E7EB', padding: '2px 8px', borderRadius: 12, fontSize: 11 }}>
+                                    {servedOrders.length}
+                                </span>
+                            </div>
+                            <div>
+                                {servedOrders.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
+                                        No orders served yet
+                                    </div>
+                                ) : (
+                                    servedOrders.slice(0, 30).map(order => <OrderCard key={order.id} order={order} />)
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <style>{`
+                    @keyframes spin {
+                        to { transform: rotate(360deg); }
+                    }
+                `}</style>
+            </div>
+        );
+    }
+
+    const OrderCard = ({ order, onMarkServed, formatTime, getStatusColor, getStatusLabel, showServeButton }) => {
+        const colors = getStatusColor(order.status);
+
+        return (
+            <div style={{
+                background: '#fff',
+                border: `1px solid ${colors.border}`,
+                borderRadius: 12,
+                padding: '12px 14px',
+                transition: 'all 0.2s ease',
+                cursor: 'pointer'
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <div>
+                        <div style={{ fontWeight: 700, fontSize: 12, fontFamily: 'monospace' }}>
+                            #{order.id?.slice(0, 8)?.toUpperCase()}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                            {order.customer_name || order.guest_name || 'Guest'}
+                        </div>
+                    </div>
+                    <Badge color={order.status === 'served' ? 'sage' : (order.status === 'ready' ? 'success' : 'amber')}>
+                        {getStatusLabel(order.status)}
+                    </Badge>
+                </div>
+
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
+                    {order.items && order.items.slice(0, 2).map(it => `${it.quantity}× ${it.name}`).join(' · ')}
+                    {order.items && order.items.length > 2 && ` +${order.items.length - 2} more`}
+                </div>
+
+                <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 8 }}>
+                    ⏰ {formatTime(order.created_at)}
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 700, color: '#C4522A' }}>TZS {fmt(order.total)}</span>
+                    {showServeButton && onMarkServed && (
+                        <Btn
+                            small
+                            variant="sage"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onMarkServed(order.id, order.qr_token);
+                            }}
+                        >
+                            ✓ Serve
+                        </Btn>
+                    )}
+                </div>
+            </div>
+        );
+    };
 
     function DashboardPage() { return ( <div style={{padding:24,overflowY:'auto'}}><div style={{fontWeight:800,fontSize:22}}>Dashboard</div><div style={{fontSize:13,color:'var(--muted)',marginBottom:20}}>{new Date().toLocaleDateString('en-TZ',{weekday:'long',day:'numeric',month:'long'})}</div><div className="admin-dashboard-stats" style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}><StatCard label="Revenue today" value="TZS 143,200" sub="+18%" color="rust" icon="💰"/><StatCard label="Orders placed" value="47" sub="12 pending" color="amber" icon="📋"/><StatCard label="Items sold" value="134" sub="18 types" color="sage" icon="🍽️"/><StatCard label="Avg order" value="TZS 3,047" color="blue" icon="📊"/></div><div className="admin-grid-2col" style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:16,marginBottom:20}}><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Weekly sales</div><MiniBarChart data={SALES_DATA}/></div><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Payment methods</div>{[{label:'M-Pesa',pct:62,col:'#00A651'},{label:'Tigo Pesa',pct:27,col:'#003087'},{label:'HaloPesa',pct:11,col:'#E31837'}].map(p=>(<div key={p.label} style={{marginBottom:12}}><div style={{display:'flex',justifyContent:'space-between',fontSize:12}}><span>{p.label}</span><span>{p.pct}%</span></div><div style={{height:6,background:'#EDE8DF',borderRadius:3}}><div style={{height:'100%',width:p.pct+'%',background:p.col,borderRadius:3}}/></div></div>))}</div></div></div> ); }
 
@@ -3185,8 +3828,588 @@
         );
     }
 
-    function ReportsPage() { return ( <div style={{padding:24,overflowY:'auto'}}><div style={{fontWeight:800,fontSize:20}}>Reports</div><div className="admin-dashboard-stats" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}><StatCard label="This month" value="TZS 2.4M" sub="89 hours" color="rust" icon="📅"/><StatCard label="Total orders" value="1,247" color="amber" icon="📋"/><StatCard label="Top payer" value="M-Pesa" color="sage" icon="📱"/></div><div className="admin-grid-2col" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Daily revenue</div><MiniBarChart data={SALES_DATA}/></div><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Category breakdown</div>{[{label:'Lunch',pct:38},{label:'Dinner',pct:29},{label:'Breakfast',pct:18}].map(c=>(<div key={c.label} style={{display:'flex',gap:8,marginBottom:8}}><span style={{width:70}}>{c.label}</span><div style={{flex:1,height:6,background:'#EDE8DF'}}><div style={{width:c.pct+'%',height:'100%',background:'#C4522A'}}/></div><span>{c.pct}%</span></div>))}</div></div></div> ); }
+function ReportsPage() {
+    const { showToast } = useContext(AppCtx);
+    const [loading, setLoading] = useState(true);
+    const [reportData, setReportData] = useState(null);
+    const [dateRange, setDateRange] = useState('week'); // week, month, year, custom
+    const [customStartDate, setCustomStartDate] = useState('');
+    const [customEndDate, setCustomEndDate] = useState('');
+    const [showCustomDate, setShowCustomDate] = useState(false);
+    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('all');
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
+    // ADD THIS MISSING FUNCTION
+    const formatCurrency = (amount) => {
+        return `TZS ${amount?.toLocaleString() || 0}`;
+    };
+
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth <= 768);
+        window.addEventListener('resize', handleResize);
+        fetchReportData();
+        return () => window.removeEventListener('resize', handleResize);
+    }, [dateRange, customStartDate, customEndDate, selectedPaymentMethod]);
+
+    const fetchReportData = async () => {
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+
+            // Build query params for backend (using from/to format)
+            let params = new URLSearchParams();
+
+            let fromDate, toDate;
+            const today = new Date();
+            toDate = today.toISOString().split('T')[0];
+
+            if (dateRange === 'week') {
+                const start = new Date(today);
+                start.setDate(today.getDate() - 7);
+                fromDate = start.toISOString().split('T')[0];
+            } else if (dateRange === 'month') {
+                const start = new Date(today);
+                start.setDate(today.getDate() - 30);
+                fromDate = start.toISOString().split('T')[0];
+            } else if (dateRange === 'year') {
+                const start = new Date(today);
+                start.setFullYear(today.getFullYear() - 1);
+                fromDate = start.toISOString().split('T')[0];
+            } else if (dateRange === 'custom' && customStartDate && customEndDate) {
+                fromDate = customStartDate;
+                toDate = customEndDate;
+            }
+
+            params.append('from', fromDate);
+            params.append('to', toDate);
+
+            const response = await fetch(`http://localhost:5000/api/reports/sales?${params.toString()}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const result = await response.json();
+
+            if (result.success && result.data) {
+                // Transform backend data to frontend format
+                const transformedData = transformReportData(result.data);
+                setReportData(transformedData);
+            } else {
+                setReportData(getMockReportData());
+                showToast('Using demo data', 'info');
+            }
+        } catch (error) {
+            console.error('Failed to fetch report data:', error);
+            setReportData(getMockReportData());
+            showToast('Failed to load reports. Showing demo data.', 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const transformReportData = (data) => {
+        const summary = data.summary || {};
+        const dailyRevenue = data.daily_revenue || [];
+        const categoryBreakdown = data.by_category || [];
+        const paymentBreakdown = data.by_payment_provider || [];
+        const topItems = data.top_items || [];
+
+        // Calculate derived stats
+        const totalRevenue = summary.total_revenue || 0;
+        const totalOrders = summary.total_orders || 0;
+        const avgOrderValue = summary.avg_order_value || 0;
+
+        // Find top payment method
+        let topPaymentMethod = 'N/A';
+        let topPaymentPercentage = 0;
+        if (paymentBreakdown.length > 0) {
+            const top = paymentBreakdown.reduce((max, p) =>
+                (p.total > max.total) ? p : max, paymentBreakdown[0]);
+            topPaymentMethod = top.provider;
+            topPaymentPercentage = totalRevenue > 0 ? Math.round((top.total / totalRevenue) * 100) : 0;
+        }
+
+        // Calculate category percentages
+        const categoryWithPercentages = categoryBreakdown.map(cat => ({
+            name: cat.category,
+            revenue: cat.revenue,
+            orders: cat.orders,
+            percentage: totalRevenue > 0 ? Math.round((cat.revenue / totalRevenue) * 100) : 0
+        }));
+
+        // Calculate payment percentages
+        const paymentWithPercentages = paymentBreakdown.map(pay => ({
+            method: pay.provider,
+            amount: pay.total,
+            count: pay.transactions,
+            percentage: totalRevenue > 0 ? Math.round((pay.total / totalRevenue) * 100) : 0
+        }));
+
+        return {
+            summary: {
+                totalRevenue: totalRevenue,
+                totalOrders: totalOrders,
+                averageOrderValue: avgOrderValue,
+                topPaymentMethod: topPaymentMethod,
+                topPaymentMethodPercentage: topPaymentPercentage,
+                peakHour: '13:00',
+                peakHourOrders: 0,
+                returningCustomers: 0,
+                newCustomers: totalOrders
+            },
+            dailyRevenue: dailyRevenue.map(d => ({
+                date: d.date,
+                revenue: d.revenue,
+                orders: d.orders
+            })),
+            categoryBreakdown: categoryWithPercentages,
+            paymentBreakdown: paymentWithPercentages,
+            topItems: topItems.map(item => ({
+                name: item.name,
+                quantity: item.qty,
+                revenue: item.revenue
+            })),
+            hourlyDistribution: getHourlyDistribution()
+        };
+    };
+
+    const getHourlyDistribution = () => {
+        // Mock hourly data (you can enhance this with real data from backend)
+        return [
+            { hour: '08:00', orders: 12, revenue: 24000 },
+            { hour: '09:00', orders: 8, revenue: 16000 },
+            { hour: '10:00', orders: 15, revenue: 30000 },
+            { hour: '11:00', orders: 28, revenue: 56000 },
+            { hour: '12:00', orders: 67, revenue: 168000 },
+            { hour: '13:00', orders: 89, revenue: 245000 },
+            { hour: '14:00', orders: 54, revenue: 125000 },
+            { hour: '17:00', orders: 23, revenue: 58000 },
+            { hour: '18:00', orders: 45, revenue: 112000 },
+            { hour: '19:00', orders: 62, revenue: 155000 },
+            { hour: '20:00', orders: 38, revenue: 95000 }
+        ];
+    };
+
+    const getMockReportData = () => ({
+        summary: {
+            totalRevenue: 2847500,
+            totalOrders: 1247,
+            averageOrderValue: 2284,
+            topPaymentMethod: 'M-Pesa',
+            topPaymentMethodPercentage: 58,
+            peakHour: '13:00',
+            peakHourOrders: 89,
+            returningCustomers: 342,
+            newCustomers: 905
+        },
+        dailyRevenue: [
+            { date: '2024-01-01', revenue: 125000, orders: 52 },
+            { date: '2024-01-02', revenue: 148000, orders: 61 },
+            { date: '2024-01-03', revenue: 132000, orders: 55 },
+            { date: '2024-01-04', revenue: 198000, orders: 78 },
+            { date: '2024-01-05', revenue: 225000, orders: 92 },
+            { date: '2024-01-06', revenue: 167000, orders: 68 },
+            { date: '2024-01-07', revenue: 143000, orders: 59 }
+        ],
+        categoryBreakdown: [
+            { name: 'Lunch', revenue: 985000, orders: 412, percentage: 38 },
+            { name: 'Dinner', revenue: 765000, orders: 324, percentage: 29 },
+            { name: 'Breakfast', revenue: 485000, orders: 208, percentage: 18 },
+            { name: 'Snacks', revenue: 285000, orders: 156, percentage: 11 },
+            { name: 'Beverages', revenue: 105000, orders: 112, percentage: 4 }
+        ],
+        paymentBreakdown: [
+            { method: 'M-Pesa', amount: 1652500, count: 724, percentage: 58 },
+            { method: 'Tigo Pesa', amount: 745000, count: 328, percentage: 26 },
+            { method: 'Airtel Money', amount: 285000, count: 124, percentage: 10 },
+            { method: 'Cash', amount: 165000, count: 71, percentage: 6 }
+        ],
+        topItems: [
+            { name: 'Grilled Chicken', quantity: 342, revenue: 1026000 },
+            { name: 'Beef Burger', quantity: 287, revenue: 861000 },
+            { name: 'Pizza Margherita', quantity: 198, revenue: 792000 },
+            { name: 'Caesar Salad', quantity: 156, revenue: 468000 },
+            { name: 'French Fries', quantity: 423, revenue: 211500 }
+        ],
+        hourlyDistribution: [
+            { hour: '08:00', orders: 12, revenue: 24000 },
+            { hour: '09:00', orders: 8, revenue: 16000 },
+            { hour: '10:00', orders: 15, revenue: 30000 },
+            { hour: '11:00', orders: 28, revenue: 56000 },
+            { hour: '12:00', orders: 67, revenue: 168000 },
+            { hour: '13:00', orders: 89, revenue: 245000 },
+            { hour: '14:00', orders: 54, revenue: 125000 },
+            { hour: '17:00', orders: 23, revenue: 58000 },
+            { hour: '18:00', orders: 45, revenue: 112000 },
+            { hour: '19:00', orders: 62, revenue: 155000 },
+            { hour: '20:00', orders: 38, revenue: 95000 }
+        ]
+    });
+
+    const getDateRangeLabel = () => {
+        switch (dateRange) {
+            case 'week': return 'Last 7 Days';
+            case 'month': return 'Last 30 Days';
+            case 'year': return 'Last 12 Months';
+            case 'custom': return `Custom Range`;
+            default: return 'All Time';
+        }
+    };
+
+    if (loading) {
+        return (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }} />
+                    <div>Loading reports...</div>
+                </div>
+            </div>
+        );
+    }
+
+    if (!reportData) {
+        return (
+            <div style={{ padding: 24, textAlign: 'center' }}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
+                <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No Data Available</div>
+                <div style={{ fontSize: 13, color: 'var(--muted)' }}>Try adjusting your filters or check back later.</div>
+            </div>
+        );
+    }
+
+    return (
+        <div style={{ padding: isMobile ? 12 : 24, overflowY: 'auto', height: '100%' }}>
+            {/* Header */}
+            <div style={{ marginBottom: 24 }}>
+                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: 12 }}>
+                    <div>
+                        <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: isMobile ? 20 : 24, marginBottom: 4 }}>
+                            Sales Analytics
+                        </div>
+                        <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                            Comprehensive sales reports and insights
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button onClick={fetchReportData} style={{ padding: '6px 12px', background: '#EDE8DF', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                            ⟳ Refresh
+                        </button>
+                        <button onClick={() => window.print()} style={{ padding: '6px 12px', background: '#EDE8DF', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                            🖨️ Export PDF
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Filter Bar */}
+            <div style={{
+                background: '#fff',
+                border: '1px solid var(--border)',
+                borderRadius: 12,
+                padding: 16,
+                marginBottom: 20,
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 12,
+                alignItems: 'center'
+            }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>Date Range:</span>
+                    <button
+                        onClick={() => { setDateRange('week'); setShowCustomDate(false); }}
+                        style={{ padding: '6px 12px', background: dateRange === 'week' ? '#C4522A' : '#EDE8DF', color: dateRange === 'week' ? '#fff' : '#1C1A17', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+                    >
+                        Last 7 Days
+                    </button>
+                    <button
+                        onClick={() => { setDateRange('month'); setShowCustomDate(false); }}
+                        style={{ padding: '6px 12px', background: dateRange === 'month' ? '#C4522A' : '#EDE8DF', color: dateRange === 'month' ? '#fff' : '#1C1A17', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+                    >
+                        Last 30 Days
+                    </button>
+                    <button
+                        onClick={() => { setDateRange('year'); setShowCustomDate(false); }}
+                        style={{ padding: '6px 12px', background: dateRange === 'year' ? '#C4522A' : '#EDE8DF', color: dateRange === 'year' ? '#fff' : '#1C1A17', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+                    >
+                        Last 12 Months
+                    </button>
+                    <button
+                        onClick={() => { setShowCustomDate(!showCustomDate); setDateRange('custom'); }}
+                        style={{ padding: '6px 12px', background: dateRange === 'custom' ? '#C4522A' : '#EDE8DF', color: dateRange === 'custom' ? '#fff' : '#1C1A17', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+                    >
+                        Custom Range
+                    </button>
+                </div>
+
+                {showCustomDate && (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input
+                            type="date"
+                            value={customStartDate}
+                            onChange={e => setCustomStartDate(e.target.value)}
+                            style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
+                        />
+                        <span>to</span>
+                        <input
+                            type="date"
+                            value={customEndDate}
+                            onChange={e => setCustomEndDate(e.target.value)}
+                            style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
+                        />
+                    </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
+                    <select
+                        value={selectedPaymentMethod}
+                        onChange={e => setSelectedPaymentMethod(e.target.value)}
+                        style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: '#fff' }}
+                    >
+                        <option value="all">All Payment Methods</option>
+                        <option value="M-Pesa">M-Pesa</option>
+                        <option value="Tigo Pesa">Tigo Pesa</option>
+                        <option value="Airtel Money">Airtel Money</option>
+                        <option value="Cash">Cash</option>
+                    </select>
+                </div>
+            </div>
+
+            {/* KPI Cards */}
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(6, 1fr)',
+                gap: 12,
+                marginBottom: 20
+            }}>
+                <KPICard label="Total Revenue" value={formatCurrency(reportData.summary.totalRevenue)} icon="💰" color="#C4522A" />
+                <KPICard label="Total Orders" value={reportData.summary.totalOrders.toLocaleString()} icon="📋" color="#4A6741" />
+                <KPICard label="Avg. Order Value" value={formatCurrency(reportData.summary.averageOrderValue)} icon="📊" color="#2563eb" />
+                <KPICard label="Top Payment" value={reportData.summary.topPaymentMethod} sub={`${reportData.summary.topPaymentMethodPercentage}% of sales`} icon="💳" color="#7C3AED" />
+                <KPICard label="Peak Hour" value={reportData.summary.peakHour} sub={`${reportData.summary.peakHourOrders} orders`} icon="⏰" color="#EA580C" />
+                <KPICard label="Customer Split" value={`${reportData.summary.returningCustomers} Returning`} sub={`${reportData.summary.newCustomers} New`} icon="👥" color="#0891B2" />
+            </div>
+
+            {/* Charts Row 1 */}
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                {/* Revenue Chart */}
+                <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+                        <span>📈 Revenue Trend</span>
+                        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{getDateRangeLabel()}</span>
+                    </div>
+                    <RevenueChart data={reportData.dailyRevenue} />
+                </div>
+
+                {/* Category Breakdown */}
+                <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>📊 Sales by Category</div>
+                    {reportData.categoryBreakdown.map(cat => (
+                        <div key={cat.name} style={{ marginBottom: 12 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                <span style={{ fontSize: 12 }}>{cat.name}</span>
+                                <span style={{ fontSize: 12, fontWeight: 600, color: '#C4522A' }}>{formatCurrency(cat.revenue)}</span>
+                            </div>
+                            <div style={{ height: 8, background: '#EDE8DF', borderRadius: 4, overflow: 'hidden' }}>
+                                <div style={{ width: `${cat.percentage}%`, height: '100%', background: '#C4522A', borderRadius: 4 }} />
+                            </div>
+                            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{cat.orders} orders ({cat.percentage}%)</div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Charts Row 2 */}
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                {/* Payment Method Breakdown */}
+                <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>💳 Payment Methods</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {reportData.paymentBreakdown.map(payment => (
+                            <div key={payment.method} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <div style={{ width: 80, fontSize: 12 }}>{payment.method}</div>
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ height: 24, background: '#EDE8DF', borderRadius: 6, overflow: 'hidden', position: 'relative' }}>
+                                        <div style={{ width: `${payment.percentage}%`, height: '100%', background: '#4A6741', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 6 }}>
+                                            <span style={{ fontSize: 10, color: '#fff', fontWeight: 500 }}>{payment.percentage}%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style={{ width: 100, fontSize: 12, textAlign: 'right' }}>{formatCurrency(payment.amount)}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Hourly Distribution */}
+                <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>⏰ Orders by Hour</div>
+                    <HourlyChart data={reportData.hourlyDistribution} />
+                </div>
+            </div>
+
+            {/* Top Items Table */}
+            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', marginBottom: 16 }}>
+                <div style={{ padding: 18, borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 15 }}>
+                    🏆 Top Selling Items
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                            <tr style={{ background: '#FAFAF7', borderBottom: '1px solid var(--border)' }}>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Item Name</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 600 }}>Quantity Sold</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 600 }}>Revenue</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 11, fontWeight: 600 }}>Popularity</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {reportData.topItems.map((item, idx) => {
+                                const maxQty = Math.max(...reportData.topItems.map(i => i.quantity));
+                                const popularity = (item.quantity / maxQty) * 100;
+                                return (
+                                    <tr key={idx} style={{ borderBottom: idx !== reportData.topItems.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                                        <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500 }}>{item.name}</td>
+                                        <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13 }}>{item.quantity.toLocaleString()}</td>
+                                        <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13, fontWeight: 600, color: '#C4522A' }}>{formatCurrency(item.revenue)}</td>
+                                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                            <div style={{ display: 'inline-block', width: 80, height: 6, background: '#EDE8DF', borderRadius: 3, overflow: 'hidden' }}>
+                                                <div style={{ width: `${popularity}%`, height: '100%', background: '#C4522A', borderRadius: 3 }} />
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Export Section */}
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', padding: '8px 0' }}>
+                <button
+                    onClick={() => {
+                        showToast('Export feature coming soon!', 'info');
+                    }}
+                    style={{ padding: '8px 16px', background: '#EDE8DF', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12 }}
+                >
+                    📊 Export as CSV
+                </button>
+                <button
+                    onClick={() => {
+                        showToast('Print feature coming soon!', 'info');
+                    }}
+                    style={{ padding: '8px 16px', background: '#EDE8DF', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12 }}
+                >
+                    🖨️ Print Report
+                </button>
+            </div>
+
+            <style>{`
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
+                }
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+            `}</style>
+        </div>
+    );
+}
+
+// KPI Card Component
+const KPICard = ({ label, value, sub, icon, color }) => (
+    <div style={{
+        background: '#fff',
+        border: '1px solid var(--border)',
+        borderRadius: 12,
+        padding: 14,
+        textAlign: 'center',
+        transition: 'all 0.2s ease'
+    }}>
+        <div style={{ fontSize: 28, marginBottom: 4 }}>{icon}</div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>{label}</div>
+        <div style={{ fontSize: 16, fontWeight: 800, color: color }}>{value}</div>
+        {sub && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>{sub}</div>}
+    </div>
+);
+
+// Revenue Chart Component - Add formatCurrency
+const RevenueChart = ({ data }) => {
+    const maxRevenue = Math.max(...data.map(d => d.revenue));
+    const canvasRef = useRef(null);
+
+    // Add this helper function
+    const formatCurrency = (amount) => {
+        return `TZS ${amount?.toLocaleString() || 0}`;
+    };
+
+    useEffect(() => {
+        if (!canvasRef.current || !data.length) return;
+
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+
+        ctx.clearRect(0, 0, width, height);
+
+        const barWidth = (width - 40) / data.length - 4;
+        const maxHeight = height - 60;
+
+        data.forEach((item, idx) => {
+            const barHeight = (item.revenue / maxRevenue) * maxHeight;
+            const x = 20 + idx * (barWidth + 4);
+            const y = height - 30 - barHeight;
+
+            ctx.fillStyle = '#C4522A';
+            ctx.fillRect(x, y, barWidth, barHeight);
+
+            ctx.fillStyle = '#6B7280';
+            ctx.font = '8px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(item.date.slice(5), x + barWidth / 2, height - 15);
+        });
+    }, [data]);
+
+    const totalRevenue = data.reduce((sum, d) => sum + d.revenue, 0);
+
+    return (
+        <div>
+            <canvas ref={canvasRef} width={500} height={200} style={{ width: '100%', height: 'auto', maxHeight: 200 }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: 11, color: 'var(--muted)' }}>
+                <span>📅 Daily Revenue</span>
+                <span>💰 Total: {formatCurrency(totalRevenue)}</span>
+            </div>
+        </div>
+    );
+};
+
+// Hourly Chart Component
+const HourlyChart = ({ data }) => {
+    const maxOrders = Math.max(...data.map(d => d.orders));
+
+    return (
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 150, marginBottom: 16 }}>
+            {data.map((item, idx) => {
+                const barHeight = (item.orders / maxOrders) * 120;
+                return (
+                    <div key={idx} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <div style={{
+                            height: barHeight,
+                            width: '100%',
+                            background: '#4A6741',
+                            borderRadius: 4,
+                            transition: 'height 0.3s ease'
+                        }} />
+                        <div style={{ fontSize: 8, color: 'var(--muted)', marginTop: 4, transform: 'rotate(-45deg)' }}>
+                            {item.hour}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
     function LoginScreen({ onLogin }) {
         const [role, setRole] = useState('student');
         const [id, setId] = useState('');

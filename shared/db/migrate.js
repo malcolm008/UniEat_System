@@ -315,6 +315,22 @@ const migrations = [
   `ALTER TABLE qr_tokens ADD COLUMN IF NOT EXISTS university_id UUID REFERENCES universities(id) ON DELETE CASCADE`,
   `ALTER TABLE daily_menus ADD COLUMN IF NOT EXISTS university_id UUID REFERENCES universities(id) ON DELETE CASCADE`,
 
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS transaction_code VARCHAR(100)`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS transaction_id UUID REFERENCES transactions(id) ON DELETE SET NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_orders_transaction_code ON orders(transaction_code)`,
+
+  `ALTER TABLE qr_codes ADD COLUMN IF NOT EXISTS hovercode_id VARCHAR(255)`,
+  `CREATE INDEX IF NOT EXISTS idx_qr_codes_hovercode_id ON qr_codes(hovercode_id)`,
+
+  `ALTER TABLE menu_items ALTER COLUMN price SET DEFAULT 0`,
+  `ALTER TABLE menu_items ADD CONSTRAINT IF NOT EXISTS price_positive CHECK (price >= 0)`,
+
+  `ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check`,
+  `ALTER TABLE orders ADD CONSTRAINT orders_status_check
+   CHECK (status IN ('pending','pending_verification','paid','preparing','ready','served','cancelled','refunded','completed'))`,
+
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(120)`,
+
   // ── DROP old category_id if exists ─────────────────────────────
   `DO $$
    BEGIN

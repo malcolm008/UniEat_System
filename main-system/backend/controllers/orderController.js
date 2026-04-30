@@ -674,41 +674,107 @@ const regenerateOrderQR = async (req, res, next) => {
 const redeemQr = async (req, res, next) => {
     try {
         const { token } = req.body;
-        const vendor_id = req.user.id;
+        // FIXED: Use req.user.id, not vendorId
+        const userId = req.user.id;
         const universityId = req.user.university_id;
+        const userRole = req.user.role;
 
+        if (!token) {
+            return error(res, 'QR token is required', 400);
+        }
+
+        logger.info(`Redeeming QR token: ${token} for user: ${userId}`);
+
+        // Find the QR code - handle both full token and short versions
         const { rows: [qr] } = await query(
-            `SELECT q.*, o.vendor_id, o.id as order_id, o.status as order_status
+            `SELECT q.*, o.vendor_id, o.id as order_id, o.status as order_status,
+                    o.user_id as customer_id, o.total, o.guest_name, o.guest_phone
              FROM qr_codes q
              JOIN orders o ON q.order_id = o.id
-             WHERE q.token = $1 AND q.is_used = false AND q.expires_at > NOW() AND o.university_id = $2`,
+             WHERE q.token = $1
+               AND q.is_used = false
+               AND q.expires_at > NOW()
+               AND o.university_id = $2`,
             [token, universityId]
         );
 
-        if (!qr) return error(res, 'Invalid or expired QR code', 404);
+        if (!qr) {
+            // Check if QR exists but is expired or used
+            const { rows: [expiredQR] } = await query(
+                `SELECT q.*, o.status as order_status
+                 FROM qr_codes q
+                 JOIN orders o ON q.order_id = o.id
+                 WHERE q.token = $1 AND o.university_id = $2`,
+                [token, universityId]
+            );
 
-        if (qr.vendor_id !== vendorId && req.user.role !== 'admin') {
+            if (expiredQR) {
+                if (expiredQR.is_used) {
+                    return error(res, 'QR code has already been used', 400);
+                }
+                if (expiredQR.expires_at <= new Date()) {
+                    return error(res, 'QR code has expired', 400);
+                }
+            }
+
+            return error(res, 'Invalid or expired QR code', 404);
+        }
+
+        // Check authorization - staff or admin can redeem, or the vendor who owns the order
+        const isAuthorized = userRole === 'admin' ||
+                            userRole === 'staff' ||
+                            qr.vendor_id === userId;
+
+        if (!isAuthorized) {
+            logger.warn(`Unauthorized redemption attempt: user ${userId} tried to redeem QR for order ${qr.order_id} owned by vendor ${qr.vendor_id}`);
             return error(res, 'Unauthorized to redeem this QR code', 403);
         }
 
-        if (qr.order_status === 'served' || qr.order_status === 'completed') {
+        // Check if order can be served
+        if (qr.order_status === 'served') {
             return error(res, 'Order has already been served', 400);
         }
 
-        await withTransaction(async (client) => {
-            await client.query(
-                `UPDATE qr_codes SET is_used = true, used_by = $1, used_at = NOW() WHERE id = $2`,
-                [vendorId, qr.id]
+        if (qr.order_status === 'completed') {
+            return error(res, 'Order has already been completed', 400);
+        }
+
+        if (qr.order_status !== 'paid' && qr.order_status !== 'ready') {
+            return error(res, `Order cannot be served. Current status: ${qr.order_status}`, 400);
+        }
+
+        // Use transaction to update both tables
+        const result = await withTransaction(async (client) => {
+            // Mark QR as used
+            const { rows: [updatedQR] } = await client.query(
+                `UPDATE qr_codes
+                 SET is_used = true,
+                     used_by = $1,
+                     used_at = NOW()
+                 WHERE id = $2
+                 RETURNING *`,
+                [userId, qr.id]
             );
 
-            await client.query(
-                `UPDATE orders SET status = 'served', updated_at = NOW() WHERE id = $1`,
+            // Update order status to served
+            const { rows: [updatedOrder] } = await client.query(
+                `UPDATE orders
+                 SET status = 'served',
+                     updated_at = NOW()
+                 WHERE id = $1
+                 RETURNING id, status, updated_at`,
                 [qr.order_id]
             );
+
+            logger.info(`Order ${qr.order_id} marked as served by user ${userId} (role: ${userRole})`);
+            return { updatedQR, updatedOrder };
         });
 
-        logger.info(`QR code redeemed for order ${qr.order_id} by vendor ${vendorId}`);
-        return success(res, { order_id: qr.order_id }, 'Order marked as served');
+        return success(res, {
+            order_id: qr.order_id,
+            message: 'Order marked as served successfully'
+        }, 'Order served');
+
     } catch (err) {
         logger.error('Redeem QR error:', err);
         next(err);
