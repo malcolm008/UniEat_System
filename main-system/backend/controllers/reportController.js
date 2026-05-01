@@ -1,5 +1,6 @@
 const { query } = require('../../../shared/db/db');
 const { success } = require('../../../shared/utils/response');
+const { logger } = require('../../../shared/utils/logger');
 
 const getSalesReport = async (req, res, next) => {
     try {

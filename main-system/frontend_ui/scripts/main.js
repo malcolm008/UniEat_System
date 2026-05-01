@@ -3828,588 +3828,586 @@
         );
     }
 
-function ReportsPage() {
-    const { showToast } = useContext(AppCtx);
-    const [loading, setLoading] = useState(true);
-    const [reportData, setReportData] = useState(null);
-    const [dateRange, setDateRange] = useState('week'); // week, month, year, custom
-    const [customStartDate, setCustomStartDate] = useState('');
-    const [customEndDate, setCustomEndDate] = useState('');
-    const [showCustomDate, setShowCustomDate] = useState(false);
-    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('all');
-    const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+    function ReportsPage() {
+        const { showToast } = useContext(AppCtx);
+        const [loading, setLoading] = useState(true);
+        const [reportData, setReportData] = useState(null);
+        const [dateRange, setDateRange] = useState('week'); // week, month, year, custom
+        const [customStartDate, setCustomStartDate] = useState('');
+        const [customEndDate, setCustomEndDate] = useState('');
+        const [showCustomDate, setShowCustomDate] = useState(false);
+        const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('all');
+        const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
-    // ADD THIS MISSING FUNCTION
-    const formatCurrency = (amount) => {
-        return `TZS ${amount?.toLocaleString() || 0}`;
-    };
-
-    useEffect(() => {
-        const handleResize = () => setIsMobile(window.innerWidth <= 768);
-        window.addEventListener('resize', handleResize);
-        fetchReportData();
-        return () => window.removeEventListener('resize', handleResize);
-    }, [dateRange, customStartDate, customEndDate, selectedPaymentMethod]);
-
-    const fetchReportData = async () => {
-        setLoading(true);
-        try {
-            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-
-            // Build query params for backend (using from/to format)
-            let params = new URLSearchParams();
-
-            let fromDate, toDate;
-            const today = new Date();
-            toDate = today.toISOString().split('T')[0];
-
-            if (dateRange === 'week') {
-                const start = new Date(today);
-                start.setDate(today.getDate() - 7);
-                fromDate = start.toISOString().split('T')[0];
-            } else if (dateRange === 'month') {
-                const start = new Date(today);
-                start.setDate(today.getDate() - 30);
-                fromDate = start.toISOString().split('T')[0];
-            } else if (dateRange === 'year') {
-                const start = new Date(today);
-                start.setFullYear(today.getFullYear() - 1);
-                fromDate = start.toISOString().split('T')[0];
-            } else if (dateRange === 'custom' && customStartDate && customEndDate) {
-                fromDate = customStartDate;
-                toDate = customEndDate;
-            }
-
-            params.append('from', fromDate);
-            params.append('to', toDate);
-
-            const response = await fetch(`http://localhost:5000/api/reports/sales?${params.toString()}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            const result = await response.json();
-
-            if (result.success && result.data) {
-                // Transform backend data to frontend format
-                const transformedData = transformReportData(result.data);
-                setReportData(transformedData);
-            } else {
-                setReportData(getMockReportData());
-                showToast('Using demo data', 'info');
-            }
-        } catch (error) {
-            console.error('Failed to fetch report data:', error);
-            setReportData(getMockReportData());
-            showToast('Failed to load reports. Showing demo data.', 'error');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const transformReportData = (data) => {
-        const summary = data.summary || {};
-        const dailyRevenue = data.daily_revenue || [];
-        const categoryBreakdown = data.by_category || [];
-        const paymentBreakdown = data.by_payment_provider || [];
-        const topItems = data.top_items || [];
-
-        // Calculate derived stats
-        const totalRevenue = summary.total_revenue || 0;
-        const totalOrders = summary.total_orders || 0;
-        const avgOrderValue = summary.avg_order_value || 0;
-
-        // Find top payment method
-        let topPaymentMethod = 'N/A';
-        let topPaymentPercentage = 0;
-        if (paymentBreakdown.length > 0) {
-            const top = paymentBreakdown.reduce((max, p) =>
-                (p.total > max.total) ? p : max, paymentBreakdown[0]);
-            topPaymentMethod = top.provider;
-            topPaymentPercentage = totalRevenue > 0 ? Math.round((top.total / totalRevenue) * 100) : 0;
-        }
-
-        // Calculate category percentages
-        const categoryWithPercentages = categoryBreakdown.map(cat => ({
-            name: cat.category,
-            revenue: cat.revenue,
-            orders: cat.orders,
-            percentage: totalRevenue > 0 ? Math.round((cat.revenue / totalRevenue) * 100) : 0
-        }));
-
-        // Calculate payment percentages
-        const paymentWithPercentages = paymentBreakdown.map(pay => ({
-            method: pay.provider,
-            amount: pay.total,
-            count: pay.transactions,
-            percentage: totalRevenue > 0 ? Math.round((pay.total / totalRevenue) * 100) : 0
-        }));
-
-        return {
-            summary: {
-                totalRevenue: totalRevenue,
-                totalOrders: totalOrders,
-                averageOrderValue: avgOrderValue,
-                topPaymentMethod: topPaymentMethod,
-                topPaymentMethodPercentage: topPaymentPercentage,
-                peakHour: '13:00',
-                peakHourOrders: 0,
-                returningCustomers: 0,
-                newCustomers: totalOrders
-            },
-            dailyRevenue: dailyRevenue.map(d => ({
-                date: d.date,
-                revenue: d.revenue,
-                orders: d.orders
-            })),
-            categoryBreakdown: categoryWithPercentages,
-            paymentBreakdown: paymentWithPercentages,
-            topItems: topItems.map(item => ({
-                name: item.name,
-                quantity: item.qty,
-                revenue: item.revenue
-            })),
-            hourlyDistribution: getHourlyDistribution()
+        // ADD THIS MISSING FUNCTION
+        const formatCurrency = (amount) => {
+            return `TZS ${amount?.toLocaleString() || 0}`;
         };
-    };
 
-    const getHourlyDistribution = () => {
-        // Mock hourly data (you can enhance this with real data from backend)
-        return [
-            { hour: '08:00', orders: 12, revenue: 24000 },
-            { hour: '09:00', orders: 8, revenue: 16000 },
-            { hour: '10:00', orders: 15, revenue: 30000 },
-            { hour: '11:00', orders: 28, revenue: 56000 },
-            { hour: '12:00', orders: 67, revenue: 168000 },
-            { hour: '13:00', orders: 89, revenue: 245000 },
-            { hour: '14:00', orders: 54, revenue: 125000 },
-            { hour: '17:00', orders: 23, revenue: 58000 },
-            { hour: '18:00', orders: 45, revenue: 112000 },
-            { hour: '19:00', orders: 62, revenue: 155000 },
-            { hour: '20:00', orders: 38, revenue: 95000 }
-        ];
-    };
+        useEffect(() => {
+            const handleResize = () => setIsMobile(window.innerWidth <= 768);
+            window.addEventListener('resize', handleResize);
+            fetchReportData();
+            return () => window.removeEventListener('resize', handleResize);
+        }, [dateRange, customStartDate, customEndDate, selectedPaymentMethod]);
 
-    const getMockReportData = () => ({
-        summary: {
-            totalRevenue: 2847500,
-            totalOrders: 1247,
-            averageOrderValue: 2284,
-            topPaymentMethod: 'M-Pesa',
-            topPaymentMethodPercentage: 58,
-            peakHour: '13:00',
-            peakHourOrders: 89,
-            returningCustomers: 342,
-            newCustomers: 905
-        },
-        dailyRevenue: [
-            { date: '2024-01-01', revenue: 125000, orders: 52 },
-            { date: '2024-01-02', revenue: 148000, orders: 61 },
-            { date: '2024-01-03', revenue: 132000, orders: 55 },
-            { date: '2024-01-04', revenue: 198000, orders: 78 },
-            { date: '2024-01-05', revenue: 225000, orders: 92 },
-            { date: '2024-01-06', revenue: 167000, orders: 68 },
-            { date: '2024-01-07', revenue: 143000, orders: 59 }
-        ],
-        categoryBreakdown: [
-            { name: 'Lunch', revenue: 985000, orders: 412, percentage: 38 },
-            { name: 'Dinner', revenue: 765000, orders: 324, percentage: 29 },
-            { name: 'Breakfast', revenue: 485000, orders: 208, percentage: 18 },
-            { name: 'Snacks', revenue: 285000, orders: 156, percentage: 11 },
-            { name: 'Beverages', revenue: 105000, orders: 112, percentage: 4 }
-        ],
-        paymentBreakdown: [
-            { method: 'M-Pesa', amount: 1652500, count: 724, percentage: 58 },
-            { method: 'Tigo Pesa', amount: 745000, count: 328, percentage: 26 },
-            { method: 'Airtel Money', amount: 285000, count: 124, percentage: 10 },
-            { method: 'Cash', amount: 165000, count: 71, percentage: 6 }
-        ],
-        topItems: [
-            { name: 'Grilled Chicken', quantity: 342, revenue: 1026000 },
-            { name: 'Beef Burger', quantity: 287, revenue: 861000 },
-            { name: 'Pizza Margherita', quantity: 198, revenue: 792000 },
-            { name: 'Caesar Salad', quantity: 156, revenue: 468000 },
-            { name: 'French Fries', quantity: 423, revenue: 211500 }
-        ],
-        hourlyDistribution: [
-            { hour: '08:00', orders: 12, revenue: 24000 },
-            { hour: '09:00', orders: 8, revenue: 16000 },
-            { hour: '10:00', orders: 15, revenue: 30000 },
-            { hour: '11:00', orders: 28, revenue: 56000 },
-            { hour: '12:00', orders: 67, revenue: 168000 },
-            { hour: '13:00', orders: 89, revenue: 245000 },
-            { hour: '14:00', orders: 54, revenue: 125000 },
-            { hour: '17:00', orders: 23, revenue: 58000 },
-            { hour: '18:00', orders: 45, revenue: 112000 },
-            { hour: '19:00', orders: 62, revenue: 155000 },
-            { hour: '20:00', orders: 38, revenue: 95000 }
-        ]
-    });
+        const fetchReportData = async () => {
+            setLoading(true);
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
 
-    const getDateRangeLabel = () => {
-        switch (dateRange) {
-            case 'week': return 'Last 7 Days';
-            case 'month': return 'Last 30 Days';
-            case 'year': return 'Last 12 Months';
-            case 'custom': return `Custom Range`;
-            default: return 'All Time';
+                // Build query params for backend (using from/to format)
+                let params = new URLSearchParams();
+
+                let fromDate, toDate;
+                const today = new Date();
+                toDate = today.toISOString().split('T')[0];
+
+                if (dateRange === 'week') {
+                    const start = new Date(today);
+                    start.setDate(today.getDate() - 7);
+                    fromDate = start.toISOString().split('T')[0];
+                } else if (dateRange === 'month') {
+                    const start = new Date(today);
+                    start.setDate(today.getDate() - 30);
+                    fromDate = start.toISOString().split('T')[0];
+                } else if (dateRange === 'year') {
+                    const start = new Date(today);
+                    start.setFullYear(today.getFullYear() - 1);
+                    fromDate = start.toISOString().split('T')[0];
+                } else if (dateRange === 'custom' && customStartDate && customEndDate) {
+                    fromDate = customStartDate;
+                    toDate = customEndDate;
+                }
+
+                params.append('from', fromDate);
+                params.append('to', toDate);
+
+                const response = await fetch(`http://localhost:5000/api/reports/sales?${params.toString()}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    // Transform backend data to frontend format
+                    const transformedData = transformReportData(result.data);
+                    setReportData(transformedData);
+                } else {
+                    setReportData(getMockReportData());
+                    showToast('Using demo data', 'info');
+                }
+            } catch (error) {
+                console.error('Failed to fetch report data:', error);
+                setReportData(getMockReportData());
+                showToast('Failed to load reports. Showing demo data.', 'error');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        const transformReportData = (data) => {
+            const summary = data.summary || {};
+            const dailyRevenue = data.daily_revenue || [];
+            const categoryBreakdown = data.by_category || [];
+            const paymentBreakdown = data.by_payment_provider || [];
+            const topItems = data.top_items || [];
+
+            // Calculate derived stats
+            const totalRevenue = summary.total_revenue || 0;
+            const totalOrders = summary.total_orders || 0;
+            const avgOrderValue = summary.avg_order_value || 0;
+
+            // Find top payment method
+            let topPaymentMethod = 'N/A';
+            let topPaymentPercentage = 0;
+            if (paymentBreakdown.length > 0) {
+                const top = paymentBreakdown.reduce((max, p) =>
+                    (p.total > max.total) ? p : max, paymentBreakdown[0]);
+                topPaymentMethod = top.provider;
+                topPaymentPercentage = totalRevenue > 0 ? Math.round((top.total / totalRevenue) * 100) : 0;
+            }
+
+            // Calculate category percentages
+            const categoryWithPercentages = categoryBreakdown.map(cat => ({
+                name: cat.category,
+                revenue: cat.revenue,
+                orders: cat.orders,
+                percentage: totalRevenue > 0 ? Math.round((cat.revenue / totalRevenue) * 100) : 0
+            }));
+
+            // Calculate payment percentages
+            const paymentWithPercentages = paymentBreakdown.map(pay => ({
+                method: pay.provider,
+                amount: pay.total,
+                count: pay.transactions,
+                percentage: totalRevenue > 0 ? Math.round((pay.total / totalRevenue) * 100) : 0
+            }));
+
+            return {
+                summary: {
+                    totalRevenue: totalRevenue,
+                    totalOrders: totalOrders,
+                    averageOrderValue: avgOrderValue,
+                    topPaymentMethod: topPaymentMethod,
+                    topPaymentMethodPercentage: topPaymentPercentage,
+                    peakHour: '13:00',
+                    peakHourOrders: 0,
+                    returningCustomers: 0,
+                    newCustomers: totalOrders
+                },
+                dailyRevenue: dailyRevenue.map(d => ({
+                    date: d.date,
+                    revenue: d.revenue,
+                    orders: d.orders
+                })),
+                categoryBreakdown: categoryWithPercentages,
+                paymentBreakdown: paymentWithPercentages,
+                topItems: topItems.map(item => ({
+                    name: item.name,
+                    quantity: item.qty,
+                    revenue: item.revenue
+                })),
+                hourlyDistribution: getHourlyDistribution()
+            };
+        };
+
+        const getHourlyDistribution = () => {
+            // Mock hourly data (you can enhance this with real data from backend)
+            return [
+                { hour: '08:00', orders: 12, revenue: 24000 },
+                { hour: '09:00', orders: 8, revenue: 16000 },
+                { hour: '10:00', orders: 15, revenue: 30000 },
+                { hour: '11:00', orders: 28, revenue: 56000 },
+                { hour: '12:00', orders: 67, revenue: 168000 },
+                { hour: '13:00', orders: 89, revenue: 245000 },
+                { hour: '14:00', orders: 54, revenue: 125000 },
+                { hour: '17:00', orders: 23, revenue: 58000 },
+                { hour: '18:00', orders: 45, revenue: 112000 },
+                { hour: '19:00', orders: 62, revenue: 155000 },
+                { hour: '20:00', orders: 38, revenue: 95000 }
+            ];
+        };
+
+        const getMockReportData = () => ({
+            summary: {
+                totalRevenue: 2847500,
+                totalOrders: 1247,
+                averageOrderValue: 2284,
+                topPaymentMethod: 'M-Pesa',
+                topPaymentMethodPercentage: 58,
+                peakHour: '13:00',
+                peakHourOrders: 89,
+                returningCustomers: 342,
+                newCustomers: 905
+            },
+            dailyRevenue: [
+                { date: '2024-01-01', revenue: 125000, orders: 52 },
+                { date: '2024-01-02', revenue: 148000, orders: 61 },
+                { date: '2024-01-03', revenue: 132000, orders: 55 },
+                { date: '2024-01-04', revenue: 198000, orders: 78 },
+                { date: '2024-01-05', revenue: 225000, orders: 92 },
+                { date: '2024-01-06', revenue: 167000, orders: 68 },
+                { date: '2024-01-07', revenue: 143000, orders: 59 }
+            ],
+            categoryBreakdown: [
+                { name: 'Lunch', revenue: 985000, orders: 412, percentage: 38 },
+                { name: 'Dinner', revenue: 765000, orders: 324, percentage: 29 },
+                { name: 'Breakfast', revenue: 485000, orders: 208, percentage: 18 },
+                { name: 'Snacks', revenue: 285000, orders: 156, percentage: 11 },
+                { name: 'Beverages', revenue: 105000, orders: 112, percentage: 4 }
+            ],
+            paymentBreakdown: [
+                { method: 'M-Pesa', amount: 1652500, count: 724, percentage: 58 },
+                { method: 'Tigo Pesa', amount: 745000, count: 328, percentage: 26 },
+                { method: 'Airtel Money', amount: 285000, count: 124, percentage: 10 },
+                { method: 'Cash', amount: 165000, count: 71, percentage: 6 }
+            ],
+            topItems: [
+                { name: 'Grilled Chicken', quantity: 342, revenue: 1026000 },
+                { name: 'Beef Burger', quantity: 287, revenue: 861000 },
+                { name: 'Pizza Margherita', quantity: 198, revenue: 792000 },
+                { name: 'Caesar Salad', quantity: 156, revenue: 468000 },
+                { name: 'French Fries', quantity: 423, revenue: 211500 }
+            ],
+            hourlyDistribution: [
+                { hour: '08:00', orders: 12, revenue: 24000 },
+                { hour: '09:00', orders: 8, revenue: 16000 },
+                { hour: '10:00', orders: 15, revenue: 30000 },
+                { hour: '11:00', orders: 28, revenue: 56000 },
+                { hour: '12:00', orders: 67, revenue: 168000 },
+                { hour: '13:00', orders: 89, revenue: 245000 },
+                { hour: '14:00', orders: 54, revenue: 125000 },
+                { hour: '17:00', orders: 23, revenue: 58000 },
+                { hour: '18:00', orders: 45, revenue: 112000 },
+                { hour: '19:00', orders: 62, revenue: 155000 },
+                { hour: '20:00', orders: 38, revenue: 95000 }
+            ]
+        });
+
+        const getDateRangeLabel = () => {
+            switch (dateRange) {
+                case 'week': return 'Last 7 Days';
+                case 'month': return 'Last 30 Days';
+                case 'year': return 'Last 12 Months';
+                case 'custom': return `Custom Range`;
+                default: return 'All Time';
+            }
+        };
+
+        if (loading) {
+            return (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }} />
+                        <div>Loading reports...</div>
+                    </div>
+                </div>
+            );
         }
-    };
 
-    if (loading) {
-        return (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
-                <div style={{ textAlign: 'center' }}>
-                    <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }} />
-                    <div>Loading reports...</div>
+        if (!reportData) {
+            return (
+                <div style={{ padding: 24, textAlign: 'center' }}>
+                    <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
+                    <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No Data Available</div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)' }}>Try adjusting your filters or check back later.</div>
                 </div>
-            </div>
-        );
-    }
+            );
+        }
 
-    if (!reportData) {
         return (
-            <div style={{ padding: 24, textAlign: 'center' }}>
-                <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
-                <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No Data Available</div>
-                <div style={{ fontSize: 13, color: 'var(--muted)' }}>Try adjusting your filters or check back later.</div>
-            </div>
-        );
-    }
-
-    return (
-        <div style={{ padding: isMobile ? 12 : 24, overflowY: 'auto', height: '100%' }}>
-            {/* Header */}
-            <div style={{ marginBottom: 24 }}>
-                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: 12 }}>
-                    <div>
-                        <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: isMobile ? 20 : 24, marginBottom: 4 }}>
-                            Sales Analytics
+            <div style={{ padding: isMobile ? 12 : 24, overflowY: 'auto', height: '100%' }}>
+                {/* Header */}
+                <div style={{ marginBottom: 24 }}>
+                    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: 12 }}>
+                        <div>
+                            <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: isMobile ? 20 : 24, marginBottom: 4 }}>
+                                Sales Analytics
+                            </div>
+                            <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                                Comprehensive sales reports and insights
+                            </div>
                         </div>
-                        <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                            Comprehensive sales reports and insights
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button onClick={fetchReportData} style={{ padding: '6px 12px', background: '#EDE8DF', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                                ⟳ Refresh
+                            </button>
+                            <button onClick={() => window.print()} style={{ padding: '6px 12px', background: '#EDE8DF', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                                🖨️ Export PDF
+                            </button>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button onClick={fetchReportData} style={{ padding: '6px 12px', background: '#EDE8DF', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
-                            ⟳ Refresh
-                        </button>
-                        <button onClick={() => window.print()} style={{ padding: '6px 12px', background: '#EDE8DF', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
-                            🖨️ Export PDF
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            {/* Filter Bar */}
-            <div style={{
-                background: '#fff',
-                border: '1px solid var(--border)',
-                borderRadius: 12,
-                padding: 16,
-                marginBottom: 20,
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 12,
-                alignItems: 'center'
-            }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 12, fontWeight: 600 }}>Date Range:</span>
-                    <button
-                        onClick={() => { setDateRange('week'); setShowCustomDate(false); }}
-                        style={{ padding: '6px 12px', background: dateRange === 'week' ? '#C4522A' : '#EDE8DF', color: dateRange === 'week' ? '#fff' : '#1C1A17', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
-                    >
-                        Last 7 Days
-                    </button>
-                    <button
-                        onClick={() => { setDateRange('month'); setShowCustomDate(false); }}
-                        style={{ padding: '6px 12px', background: dateRange === 'month' ? '#C4522A' : '#EDE8DF', color: dateRange === 'month' ? '#fff' : '#1C1A17', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
-                    >
-                        Last 30 Days
-                    </button>
-                    <button
-                        onClick={() => { setDateRange('year'); setShowCustomDate(false); }}
-                        style={{ padding: '6px 12px', background: dateRange === 'year' ? '#C4522A' : '#EDE8DF', color: dateRange === 'year' ? '#fff' : '#1C1A17', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
-                    >
-                        Last 12 Months
-                    </button>
-                    <button
-                        onClick={() => { setShowCustomDate(!showCustomDate); setDateRange('custom'); }}
-                        style={{ padding: '6px 12px', background: dateRange === 'custom' ? '#C4522A' : '#EDE8DF', color: dateRange === 'custom' ? '#fff' : '#1C1A17', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
-                    >
-                        Custom Range
-                    </button>
                 </div>
 
-                {showCustomDate && (
+                {/* Filter Bar */}
+                <div style={{
+                    background: '#fff',
+                    border: '1px solid var(--border)',
+                    borderRadius: 12,
+                    padding: 16,
+                    marginBottom: 20,
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 12,
+                    alignItems: 'center'
+                }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <input
-                            type="date"
-                            value={customStartDate}
-                            onChange={e => setCustomStartDate(e.target.value)}
-                            style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
-                        />
-                        <span>to</span>
-                        <input
-                            type="date"
-                            value={customEndDate}
-                            onChange={e => setCustomEndDate(e.target.value)}
-                            style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
-                        />
+                        <span style={{ fontSize: 12, fontWeight: 600 }}>Date Range:</span>
+                        <button
+                            onClick={() => { setDateRange('week'); setShowCustomDate(false); }}
+                            style={{ padding: '6px 12px', background: dateRange === 'week' ? '#C4522A' : '#EDE8DF', color: dateRange === 'week' ? '#fff' : '#1C1A17', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+                        >
+                            Last 7 Days
+                        </button>
+                        <button
+                            onClick={() => { setDateRange('month'); setShowCustomDate(false); }}
+                            style={{ padding: '6px 12px', background: dateRange === 'month' ? '#C4522A' : '#EDE8DF', color: dateRange === 'month' ? '#fff' : '#1C1A17', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+                        >
+                            Last 30 Days
+                        </button>
+                        <button
+                            onClick={() => { setDateRange('year'); setShowCustomDate(false); }}
+                            style={{ padding: '6px 12px', background: dateRange === 'year' ? '#C4522A' : '#EDE8DF', color: dateRange === 'year' ? '#fff' : '#1C1A17', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+                        >
+                            Last 12 Months
+                        </button>
+                        <button
+                            onClick={() => { setShowCustomDate(!showCustomDate); setDateRange('custom'); }}
+                            style={{ padding: '6px 12px', background: dateRange === 'custom' ? '#C4522A' : '#EDE8DF', color: dateRange === 'custom' ? '#fff' : '#1C1A17', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+                        >
+                            Custom Range
+                        </button>
                     </div>
-                )}
 
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
-                    <select
-                        value={selectedPaymentMethod}
-                        onChange={e => setSelectedPaymentMethod(e.target.value)}
-                        style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: '#fff' }}
-                    >
-                        <option value="all">All Payment Methods</option>
-                        <option value="M-Pesa">M-Pesa</option>
-                        <option value="Tigo Pesa">Tigo Pesa</option>
-                        <option value="Airtel Money">Airtel Money</option>
-                        <option value="Cash">Cash</option>
-                    </select>
-                </div>
-            </div>
-
-            {/* KPI Cards */}
-            <div style={{
-                display: 'grid',
-                gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(6, 1fr)',
-                gap: 12,
-                marginBottom: 20
-            }}>
-                <KPICard label="Total Revenue" value={formatCurrency(reportData.summary.totalRevenue)} icon="💰" color="#C4522A" />
-                <KPICard label="Total Orders" value={reportData.summary.totalOrders.toLocaleString()} icon="📋" color="#4A6741" />
-                <KPICard label="Avg. Order Value" value={formatCurrency(reportData.summary.averageOrderValue)} icon="📊" color="#2563eb" />
-                <KPICard label="Top Payment" value={reportData.summary.topPaymentMethod} sub={`${reportData.summary.topPaymentMethodPercentage}% of sales`} icon="💳" color="#7C3AED" />
-                <KPICard label="Peak Hour" value={reportData.summary.peakHour} sub={`${reportData.summary.peakHourOrders} orders`} icon="⏰" color="#EA580C" />
-                <KPICard label="Customer Split" value={`${reportData.summary.returningCustomers} Returning`} sub={`${reportData.summary.newCustomers} New`} icon="👥" color="#0891B2" />
-            </div>
-
-            {/* Charts Row 1 */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16, marginBottom: 16 }}>
-                {/* Revenue Chart */}
-                <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-                        <span>📈 Revenue Trend</span>
-                        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{getDateRangeLabel()}</span>
-                    </div>
-                    <RevenueChart data={reportData.dailyRevenue} />
-                </div>
-
-                {/* Category Breakdown */}
-                <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>📊 Sales by Category</div>
-                    {reportData.categoryBreakdown.map(cat => (
-                        <div key={cat.name} style={{ marginBottom: 12 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                                <span style={{ fontSize: 12 }}>{cat.name}</span>
-                                <span style={{ fontSize: 12, fontWeight: 600, color: '#C4522A' }}>{formatCurrency(cat.revenue)}</span>
-                            </div>
-                            <div style={{ height: 8, background: '#EDE8DF', borderRadius: 4, overflow: 'hidden' }}>
-                                <div style={{ width: `${cat.percentage}%`, height: '100%', background: '#C4522A', borderRadius: 4 }} />
-                            </div>
-                            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{cat.orders} orders ({cat.percentage}%)</div>
+                    {showCustomDate && (
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <input
+                                type="date"
+                                value={customStartDate}
+                                onChange={e => setCustomStartDate(e.target.value)}
+                                style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
+                            />
+                            <span>to</span>
+                            <input
+                                type="date"
+                                value={customEndDate}
+                                onChange={e => setCustomEndDate(e.target.value)}
+                                style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
+                            />
                         </div>
-                    ))}
-                </div>
-            </div>
+                    )}
 
-            {/* Charts Row 2 */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16, marginBottom: 16 }}>
-                {/* Payment Method Breakdown */}
-                <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>💳 Payment Methods</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        {reportData.paymentBreakdown.map(payment => (
-                            <div key={payment.method} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                <div style={{ width: 80, fontSize: 12 }}>{payment.method}</div>
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ height: 24, background: '#EDE8DF', borderRadius: 6, overflow: 'hidden', position: 'relative' }}>
-                                        <div style={{ width: `${payment.percentage}%`, height: '100%', background: '#4A6741', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 6 }}>
-                                            <span style={{ fontSize: 10, color: '#fff', fontWeight: 500 }}>{payment.percentage}%</span>
-                                        </div>
-                                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
+                        <select
+                            value={selectedPaymentMethod}
+                            onChange={e => setSelectedPaymentMethod(e.target.value)}
+                            style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: '#fff' }}
+                        >
+                            <option value="all">All Payment Methods</option>
+                            <option value="M-Pesa">M-Pesa</option>
+                            <option value="Tigo Pesa">Tigo Pesa</option>
+                            <option value="Airtel Money">Airtel Money</option>
+                            <option value="Cash">Cash</option>
+                        </select>
+                    </div>
+                </div>
+
+                {/* KPI Cards */}
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(6, 1fr)',
+                    gap: 12,
+                    marginBottom: 20
+                }}>
+                    <KPICard label="Total Revenue" value={formatCurrency(reportData.summary.totalRevenue)} icon="💰" color="#C4522A" />
+                    <KPICard label="Total Orders" value={reportData.summary.totalOrders.toLocaleString()} icon="📋" color="#4A6741" />
+                    <KPICard label="Avg. Order Value" value={formatCurrency(reportData.summary.averageOrderValue)} icon="📊" color="#2563eb" />
+                    <KPICard label="Top Payment" value={reportData.summary.topPaymentMethod} sub={`${reportData.summary.topPaymentMethodPercentage}% of sales`} icon="💳" color="#7C3AED" />
+                    <KPICard label="Peak Hour" value={reportData.summary.peakHour} sub={`${reportData.summary.peakHourOrders} orders`} icon="⏰" color="#EA580C" />
+                    <KPICard label="Customer Split" value={`${reportData.summary.returningCustomers} Returning`} sub={`${reportData.summary.newCustomers} New`} icon="👥" color="#0891B2" />
+                </div>
+
+                {/* Charts Row 1 */}
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                    {/* Revenue Chart */}
+                    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
+                        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+                            <span>📈 Revenue Trend</span>
+                            <span style={{ fontSize: 11, color: 'var(--muted)' }}>{getDateRangeLabel()}</span>
+                        </div>
+                        <RevenueChart data={reportData.dailyRevenue} />
+                    </div>
+
+                    {/* Category Breakdown */}
+                    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
+                        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>📊 Sales by Category</div>
+                        {reportData.categoryBreakdown.map(cat => (
+                            <div key={cat.name} style={{ marginBottom: 12 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                    <span style={{ fontSize: 12 }}>{cat.name}</span>
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: '#C4522A' }}>{formatCurrency(cat.revenue)}</span>
                                 </div>
-                                <div style={{ width: 100, fontSize: 12, textAlign: 'right' }}>{formatCurrency(payment.amount)}</div>
+                                <div style={{ height: 8, background: '#EDE8DF', borderRadius: 4, overflow: 'hidden' }}>
+                                    <div style={{ width: `${cat.percentage}%`, height: '100%', background: '#C4522A', borderRadius: 4 }} />
+                                </div>
+                                <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{cat.orders} orders ({cat.percentage}%)</div>
                             </div>
                         ))}
                     </div>
                 </div>
 
-                {/* Hourly Distribution */}
-                <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>⏰ Orders by Hour</div>
-                    <HourlyChart data={reportData.hourlyDistribution} />
-                </div>
-            </div>
-
-            {/* Top Items Table */}
-            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', marginBottom: 16 }}>
-                <div style={{ padding: 18, borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 15 }}>
-                    🏆 Top Selling Items
-                </div>
-                <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                            <tr style={{ background: '#FAFAF7', borderBottom: '1px solid var(--border)' }}>
-                                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Item Name</th>
-                                <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 600 }}>Quantity Sold</th>
-                                <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 600 }}>Revenue</th>
-                                <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 11, fontWeight: 600 }}>Popularity</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {reportData.topItems.map((item, idx) => {
-                                const maxQty = Math.max(...reportData.topItems.map(i => i.quantity));
-                                const popularity = (item.quantity / maxQty) * 100;
-                                return (
-                                    <tr key={idx} style={{ borderBottom: idx !== reportData.topItems.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                                        <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500 }}>{item.name}</td>
-                                        <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13 }}>{item.quantity.toLocaleString()}</td>
-                                        <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13, fontWeight: 600, color: '#C4522A' }}>{formatCurrency(item.revenue)}</td>
-                                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                                            <div style={{ display: 'inline-block', width: 80, height: 6, background: '#EDE8DF', borderRadius: 3, overflow: 'hidden' }}>
-                                                <div style={{ width: `${popularity}%`, height: '100%', background: '#C4522A', borderRadius: 3 }} />
+                {/* Charts Row 2 */}
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                    {/* Payment Method Breakdown */}
+                    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
+                        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>💳 Payment Methods</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            {reportData.paymentBreakdown.map(payment => (
+                                <div key={payment.method} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                    <div style={{ width: 80, fontSize: 12 }}>{payment.method}</div>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ height: 24, background: '#EDE8DF', borderRadius: 6, overflow: 'hidden', position: 'relative' }}>
+                                            <div style={{ width: `${payment.percentage}%`, height: '100%', background: '#4A6741', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 6 }}>
+                                                <span style={{ fontSize: 10, color: '#fff', fontWeight: 500 }}>{payment.percentage}%</span>
                                             </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            {/* Export Section */}
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', padding: '8px 0' }}>
-                <button
-                    onClick={() => {
-                        showToast('Export feature coming soon!', 'info');
-                    }}
-                    style={{ padding: '8px 16px', background: '#EDE8DF', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12 }}
-                >
-                    📊 Export as CSV
-                </button>
-                <button
-                    onClick={() => {
-                        showToast('Print feature coming soon!', 'info');
-                    }}
-                    style={{ padding: '8px 16px', background: '#EDE8DF', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12 }}
-                >
-                    🖨️ Print Report
-                </button>
-            </div>
-
-            <style>{`
-                @keyframes spin {
-                    to { transform: rotate(360deg); }
-                }
-                @keyframes fadeIn {
-                    from { opacity: 0; transform: translateY(10px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
-            `}</style>
-        </div>
-    );
-}
-
-// KPI Card Component
-const KPICard = ({ label, value, sub, icon, color }) => (
-    <div style={{
-        background: '#fff',
-        border: '1px solid var(--border)',
-        borderRadius: 12,
-        padding: 14,
-        textAlign: 'center',
-        transition: 'all 0.2s ease'
-    }}>
-        <div style={{ fontSize: 28, marginBottom: 4 }}>{icon}</div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>{label}</div>
-        <div style={{ fontSize: 16, fontWeight: 800, color: color }}>{value}</div>
-        {sub && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>{sub}</div>}
-    </div>
-);
-
-// Revenue Chart Component - Add formatCurrency
-const RevenueChart = ({ data }) => {
-    const maxRevenue = Math.max(...data.map(d => d.revenue));
-    const canvasRef = useRef(null);
-
-    // Add this helper function
-    const formatCurrency = (amount) => {
-        return `TZS ${amount?.toLocaleString() || 0}`;
-    };
-
-    useEffect(() => {
-        if (!canvasRef.current || !data.length) return;
-
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        const width = canvas.width;
-        const height = canvas.height;
-
-        ctx.clearRect(0, 0, width, height);
-
-        const barWidth = (width - 40) / data.length - 4;
-        const maxHeight = height - 60;
-
-        data.forEach((item, idx) => {
-            const barHeight = (item.revenue / maxRevenue) * maxHeight;
-            const x = 20 + idx * (barWidth + 4);
-            const y = height - 30 - barHeight;
-
-            ctx.fillStyle = '#C4522A';
-            ctx.fillRect(x, y, barWidth, barHeight);
-
-            ctx.fillStyle = '#6B7280';
-            ctx.font = '8px monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText(item.date.slice(5), x + barWidth / 2, height - 15);
-        });
-    }, [data]);
-
-    const totalRevenue = data.reduce((sum, d) => sum + d.revenue, 0);
-
-    return (
-        <div>
-            <canvas ref={canvasRef} width={500} height={200} style={{ width: '100%', height: 'auto', maxHeight: 200 }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: 11, color: 'var(--muted)' }}>
-                <span>📅 Daily Revenue</span>
-                <span>💰 Total: {formatCurrency(totalRevenue)}</span>
-            </div>
-        </div>
-    );
-};
-
-// Hourly Chart Component
-const HourlyChart = ({ data }) => {
-    const maxOrders = Math.max(...data.map(d => d.orders));
-
-    return (
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 150, marginBottom: 16 }}>
-            {data.map((item, idx) => {
-                const barHeight = (item.orders / maxOrders) * 120;
-                return (
-                    <div key={idx} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                        <div style={{
-                            height: barHeight,
-                            width: '100%',
-                            background: '#4A6741',
-                            borderRadius: 4,
-                            transition: 'height 0.3s ease'
-                        }} />
-                        <div style={{ fontSize: 8, color: 'var(--muted)', marginTop: 4, transform: 'rotate(-45deg)' }}>
-                            {item.hour}
+                                        </div>
+                                    </div>
+                                    <div style={{ width: 100, fontSize: 12, textAlign: 'right' }}>{formatCurrency(payment.amount)}</div>
+                                </div>
+                            ))}
                         </div>
                     </div>
-                );
-            })}
+
+                    {/* Hourly Distribution */}
+                    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
+                        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>⏰ Orders by Hour</div>
+                        <HourlyChart data={reportData.hourlyDistribution} />
+                    </div>
+                </div>
+
+                {/* Top Items Table */}
+                <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', marginBottom: 16 }}>
+                    <div style={{ padding: 18, borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 15 }}>
+                        🏆 Top Selling Items
+                    </div>
+                    <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ background: '#FAFAF7', borderBottom: '1px solid var(--border)' }}>
+                                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Item Name</th>
+                                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 600 }}>Quantity Sold</th>
+                                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 600 }}>Revenue</th>
+                                    <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 11, fontWeight: 600 }}>Popularity</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {reportData.topItems.map((item, idx) => {
+                                    const maxQty = Math.max(...reportData.topItems.map(i => i.quantity));
+                                    const popularity = (item.quantity / maxQty) * 100;
+                                    return (
+                                        <tr key={idx} style={{ borderBottom: idx !== reportData.topItems.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                                            <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500 }}>{item.name}</td>
+                                            <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13 }}>{item.quantity.toLocaleString()}</td>
+                                            <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13, fontWeight: 600, color: '#C4522A' }}>{formatCurrency(item.revenue)}</td>
+                                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                                <div style={{ display: 'inline-block', width: 80, height: 6, background: '#EDE8DF', borderRadius: 3, overflow: 'hidden' }}>
+                                                    <div style={{ width: `${popularity}%`, height: '100%', background: '#C4522A', borderRadius: 3 }} />
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Export Section */}
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', padding: '8px 0' }}>
+                    <button
+                        onClick={() => {
+                            showToast('Export feature coming soon!', 'info');
+                        }}
+                        style={{ padding: '8px 16px', background: '#EDE8DF', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12 }}
+                    >
+                        📊 Export as CSV
+                    </button>
+                    <button
+                        onClick={() => {
+                            showToast('Print feature coming soon!', 'info');
+                        }}
+                        style={{ padding: '8px 16px', background: '#EDE8DF', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12 }}
+                    >
+                        🖨️ Print Report
+                    </button>
+                </div>
+
+                <style>{`
+                    @keyframes spin {
+                        to { transform: rotate(360deg); }
+                    }
+                    @keyframes fadeIn {
+                        from { opacity: 0; transform: translateY(10px); }
+                        to { opacity: 1; transform: translateY(0); }
+                    }
+                `}</style>
+            </div>
+        );
+    }
+
+    const KPICard = ({ label, value, sub, icon, color }) => (
+        <div style={{
+            background: '#fff',
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            padding: 14,
+            textAlign: 'center',
+            transition: 'all 0.2s ease'
+        }}>
+            <div style={{ fontSize: 28, marginBottom: 4 }}>{icon}</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>{label}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: color }}>{value}</div>
+            {sub && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>{sub}</div>}
         </div>
     );
-};
+
+    const RevenueChart = ({ data }) => {
+        const maxRevenue = Math.max(...data.map(d => d.revenue));
+        const canvasRef = useRef(null);
+
+        // Add this helper function
+        const formatCurrency = (amount) => {
+            return `TZS ${amount?.toLocaleString() || 0}`;
+        };
+
+        useEffect(() => {
+            if (!canvasRef.current || !data.length) return;
+
+            const canvas = canvasRef.current;
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+
+            ctx.clearRect(0, 0, width, height);
+
+            const barWidth = (width - 40) / data.length - 4;
+            const maxHeight = height - 60;
+
+            data.forEach((item, idx) => {
+                const barHeight = (item.revenue / maxRevenue) * maxHeight;
+                const x = 20 + idx * (barWidth + 4);
+                const y = height - 30 - barHeight;
+
+                ctx.fillStyle = '#C4522A';
+                ctx.fillRect(x, y, barWidth, barHeight);
+
+                ctx.fillStyle = '#6B7280';
+                ctx.font = '8px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(item.date.slice(5), x + barWidth / 2, height - 15);
+            });
+        }, [data]);
+
+        const totalRevenue = data.reduce((sum, d) => sum + d.revenue, 0);
+
+        return (
+            <div>
+                <canvas ref={canvasRef} width={500} height={200} style={{ width: '100%', height: 'auto', maxHeight: 200 }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: 11, color: 'var(--muted)' }}>
+                    <span>📅 Daily Revenue</span>
+                    <span>💰 Total: {formatCurrency(totalRevenue)}</span>
+                </div>
+            </div>
+        );
+    };
+
+    const HourlyChart = ({ data }) => {
+        const maxOrders = Math.max(...data.map(d => d.orders));
+
+        return (
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 150, marginBottom: 16 }}>
+                {data.map((item, idx) => {
+                    const barHeight = (item.orders / maxOrders) * 120;
+                    return (
+                        <div key={idx} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                            <div style={{
+                                height: barHeight,
+                                width: '100%',
+                                background: '#4A6741',
+                                borderRadius: 4,
+                                transition: 'height 0.3s ease'
+                            }} />
+                            <div style={{ fontSize: 8, color: 'var(--muted)', marginTop: 4, transform: 'rotate(-45deg)' }}>
+                                {item.hour}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    };
+
     function LoginScreen({ onLogin }) {
         const [role, setRole] = useState('student');
         const [id, setId] = useState('');

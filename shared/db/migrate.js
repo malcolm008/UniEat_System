@@ -345,6 +345,118 @@ const migrations = [
    BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
    $$ LANGUAGE plpgsql`,
 
+    // ── REPORTING FUNCTIONS & VIEWS ────────────────────────────────────
+
+    // Create a view for daily sales summary
+    `CREATE OR REPLACE VIEW daily_sales_summary AS
+    SELECT
+        DATE(o.created_at) AS date,
+        COUNT(DISTINCT o.id) AS total_orders,
+        SUM(o.total) AS total_revenue,
+        COUNT(DISTINCT CASE WHEN o.status = 'served' THEN o.id END) AS served_orders,
+        COUNT(DISTINCT CASE WHEN o.status = 'cancelled' THEN o.id END) AS cancelled_orders,
+        COUNT(DISTINCT o.user_id) AS unique_customers,
+        ROUND(AVG(o.total)::numeric, 0) AS avg_order_value
+    FROM orders o
+    WHERE o.status NOT IN ('refunded')
+    GROUP BY DATE(o.created_at)
+    ORDER BY date DESC`,
+
+    // Create a view for payment method performance
+    `CREATE OR REPLACE VIEW payment_method_performance AS
+    SELECT
+        COALESCE(p.provider, 'pending') AS provider,
+        COUNT(DISTINCT p.order_id) AS transaction_count,
+        SUM(p.amount) AS total_amount,
+        COUNT(DISTINCT CASE WHEN p.status = 'success' THEN p.order_id END) AS successful_count,
+        ROUND((COUNT(DISTINCT CASE WHEN p.status = 'success' THEN p.order_id END)::numeric /
+               NULLIF(COUNT(DISTINCT p.order_id), 0) * 100), 1) AS success_rate
+    FROM payments p
+    GROUP BY p.provider
+    ORDER BY total_amount DESC`,
+
+    // Create a view for hourly order distribution
+    `CREATE OR REPLACE VIEW hourly_order_distribution AS
+    SELECT
+        EXTRACT(HOUR FROM created_at) AS hour,
+        COUNT(*) AS order_count,
+        SUM(total) AS revenue,
+        ROUND(AVG(total)::numeric, 0) AS avg_order_value
+    FROM orders
+    WHERE status NOT IN ('cancelled', 'refunded')
+    GROUP BY EXTRACT(HOUR FROM created_at)
+    ORDER BY hour`,
+
+    // Create a function to get category sales breakdown
+    `CREATE OR REPLACE FUNCTION get_category_sales(start_date DATE, end_date DATE)
+    RETURNS TABLE(
+        category_name VARCHAR,
+        total_orders BIGINT,
+        total_revenue BIGINT,
+        percentage NUMERIC
+    ) AS $$
+    BEGIN
+        RETURN QUERY
+        WITH category_totals AS (
+            SELECT
+                COALESCE(mi.category, 'Other') AS cat_name,
+                COUNT(DISTINCT oi.order_id) AS orders,
+                SUM(oi.subtotal) AS revenue
+            FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+            LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
+            WHERE DATE(o.created_at) BETWEEN start_date AND end_date
+                AND o.status NOT IN ('cancelled', 'refunded')
+            GROUP BY mi.category
+        ),
+        total_revenue AS (
+            SELECT SUM(revenue) AS grand_total FROM category_totals
+        )
+        SELECT
+            ct.cat_name,
+            ct.orders,
+            ct.revenue,
+            ROUND((ct.revenue::numeric / NULLIF(tr.grand_total, 0) * 100), 1) AS pct
+        FROM category_totals ct, total_revenue tr
+        ORDER BY ct.revenue DESC;
+    END;
+    $$ LANGUAGE plpgsql`,
+
+    // Create a function to get top selling items
+    `CREATE OR REPLACE FUNCTION get_top_items(start_date DATE, end_date DATE, limit_count INTEGER DEFAULT 10)
+    RETURNS TABLE(
+        item_name VARCHAR,
+        quantity_sold BIGINT,
+        total_revenue BIGINT,
+        order_count BIGINT
+    ) AS $$
+    BEGIN
+        RETURN QUERY
+        SELECT
+            oi.name,
+            SUM(oi.quantity) AS qty,
+            SUM(oi.subtotal) AS revenue,
+            COUNT(DISTINCT oi.order_id) AS orders
+        FROM order_items oi
+        JOIN orders o ON o.id = oi.order_id
+        WHERE DATE(o.created_at) BETWEEN start_date AND end_date
+            AND o.status NOT IN ('cancelled', 'refunded')
+        GROUP BY oi.name
+        ORDER BY revenue DESC
+        LIMIT limit_count;
+    END;
+    $$ LANGUAGE plpgsql`,
+
+    // Create a stored procedure to refresh report cache (optional)
+    `CREATE OR REPLACE FUNCTION refresh_report_cache()
+    RETURNS void AS $$
+    BEGIN
+        -- Refresh materialized views if you create them
+        REFRESH MATERIALIZED VIEW CONCURRENTLY IF EXISTS daily_sales_summary_mv;
+        RAISE NOTICE 'Report cache refreshed at %', NOW();
+    END;
+    $$ LANGUAGE plpgsql`,
+
   `DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='trg_users_updated_at')
     THEN CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users
