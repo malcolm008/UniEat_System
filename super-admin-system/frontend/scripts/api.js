@@ -97,3 +97,67 @@ const apiService = {
     },
 };
 
+const checkSubscriptionStatus = async (req, res, next) => {
+    try {
+        if (req.admin.role === 'super_admin') {
+            const result = await pool.query(
+                `SELECT u.* FROM universities u
+                 WHERE u.super_admin_id = $1 OR u.id = (
+                     SELECT university_id FROM users WHERE id = $1
+                 )`,
+                [req.admin.id]
+            );
+
+            if (result.rows.length === 0) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'No university associated with your account. Contact system owner.'
+                });
+            }
+
+            const university = result.rows[0];
+
+            const isActive = university.subscription_status === 'active' && university.status === 'active' && (!university.subscription_end || new Date(university.subscription_end) > new Date());
+
+            if (!isActive) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Subscription has expired or is inactive. Please contact system administrator/owner to renew.',
+                    subscription_expired: true
+                });
+            }
+
+            req.university = university;
+        }
+
+        next();
+    } catch (error) {
+        console.error('Subscription check error:', error);
+        next(error);
+    }
+};
+
+const requireRole = (roles) => {
+    return (req, res, next) => {
+        if (!req.admin) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
+
+        const userRole = req.admin.role;
+
+        if (userRole === 'system_owner') {
+            return next();
+        }
+
+        if (roles.includes(userRole)) {
+            return next();
+        }
+
+        return res.status(403).json({
+            success: false,
+            message: 'Access denied. Insufficient permissions.'
+        });
+    };
+};
+
+const requireSupervisorAccess = requireRole(['super_admin', 'system_owner']);

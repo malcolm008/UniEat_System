@@ -304,6 +304,8 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_transactions_order ON transactions(order_id)`,
   `CREATE INDEX IF NOT EXISTS idx_transactions_code ON transactions(transaction_code)`,
 
+  `ALTER TABLE universities ADD COLUMN IF NOT EXISTS super_admin_id UUID REFERENCES super_admins(id)`,
+
   // ── ADD missing columns to existing tables ─────────────────────
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS university_id UUID REFERENCES universities(id) ON DELETE CASCADE`,
   `ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS university_id UUID REFERENCES universities(id) ON DELETE CASCADE`,

@@ -32,6 +32,76 @@ const verifyToken = (req, res, next) => {
     }
 };
 
+// ========== SUBSCRIPTION STATUS CHECK MIDDLEWARE ==========
+const checkSubscriptionStatus = async (req, res, next) => {
+    try {
+        // Only check for super_admin role (not system_owner)
+        if (req.admin.role === 'super_admin') {
+            // Find the university this super_admin manages
+            const result = await pool.query(
+                `SELECT u.* FROM universities u
+                 WHERE u.super_admin_id = $1`,
+                [req.admin.id]
+            );
+
+            if (result.rows.length === 0) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'No university associated with your account. Contact system owner.'
+                });
+            }
+
+            const university = result.rows[0];
+
+            // Check if subscription is active
+            const isActive = university.subscription_status === 'active' &&
+                            university.status === 'active' &&
+                            (!university.subscription_end || new Date(university.subscription_end) > new Date());
+
+            if (!isActive) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Subscription has expired or is inactive. Please contact system administrator to renew.',
+                    subscription_expired: true
+                });
+            }
+
+            // Attach university info to request
+            req.university = university;
+        }
+        next();
+    } catch (error) {
+        console.error('Subscription check error:', error);
+        next(error);
+    }
+};
+
+// ========== ROLE-BASED ACCESS CONTROL ==========
+const requireRole = (roles) => {
+    return (req, res, next) => {
+        if (!req.admin) {
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
+
+        const userRole = req.admin.role;
+
+        // system_owner has access to everything
+        if (userRole === 'system_owner') {
+            return next();
+        }
+
+        // Check if user's role is allowed
+        if (roles.includes(userRole)) {
+            return next();
+        }
+
+        return res.status(403).json({
+            success: false,
+            message: 'Access denied. Insufficient permissions.'
+        });
+    };
+};
+
 // ========== SUPER ADMIN LOGIN ==========
 app.post('/api/super-admin/login', async (req, res) => {
     const { email, password } = req.body;
@@ -53,8 +123,6 @@ app.post('/api/super-admin/login', async (req, res) => {
         }
 
         const admin = result.rows[0];
-
-        // Verify password (for demo, accept plain password)
         const validPassword = (password === 'SuperAdmin123!' || password === 'Admin123!');
 
         if (!validPassword) {
@@ -62,6 +130,31 @@ app.post('/api/super-admin/login', async (req, res) => {
                 success: false,
                 message: 'Invalid credentials. Wrong password.'
             });
+        }
+
+        // For super_admin role, check subscription status of their university
+        let subscriptionWarning = null;
+        if (admin.role === 'super_admin') {
+            // Find the university this super_admin manages
+            const uniResult = await pool.query(
+                `SELECT u.* FROM universities u
+                 WHERE u.super_admin_id = $1`,
+                [admin.id]
+            );
+
+            if (uniResult.rows.length > 0) {
+                const university = uniResult.rows[0];
+                const isSubscriptionActive = university.subscription_status === 'active' &&
+                                            university.status === 'active' &&
+                                            (!university.subscription_end || new Date(university.subscription_end) > new Date());
+
+                if (!isSubscriptionActive) {
+                    subscriptionWarning = {
+                        message: 'Your university subscription has expired. Please contact system administrator to renew.',
+                        expired: true
+                    };
+                }
+            }
         }
 
         // Generate JWT token
@@ -74,6 +167,7 @@ app.post('/api/super-admin/login', async (req, res) => {
         res.json({
             success: true,
             token,
+            subscriptionWarning,
             admin: {
                 id: admin.id,
                 name: admin.name,
@@ -88,96 +182,152 @@ app.post('/api/super-admin/login', async (req, res) => {
     }
 });
 
-// ========== GET STATISTICS ==========
-app.get('/api/super-admin/stats', verifyToken, async (req, res) => {
+// ========== CHECK SUBSCRIPTION STATUS ENDPOINT ==========
+app.get('/api/super-admin/subscription-status', verifyToken, async (req, res) => {
     try {
-        // Get total universities
-        const universities = await pool.query('SELECT COUNT(*) FROM universities');
+        if (req.admin.role === 'super_admin') {
+            const uniResult = await pool.query(
+                `SELECT subscription_status, status, subscription_end FROM universities
+                 WHERE super_admin_id = $1`,
+                [req.admin.id]
+            );
 
-        // Get active subscriptions
-        const activeSubscriptions = await pool.query(
-            'SELECT COUNT(*) FROM universities WHERE subscription_status = $1',
-            ['active']
-        );
+            if (uniResult.rows.length > 0) {
+                const uni = uniResult.rows[0];
+                const isActive = uni.subscription_status === 'active' &&
+                                uni.status === 'active' &&
+                                (!uni.subscription_end || new Date(uni.subscription_end) > new Date());
 
-        // Get total users across all universities
-        const totalUsers = await pool.query('SELECT COUNT(*) FROM users');
-
-        // Calculate monthly revenue from subscriptions table
-        // Get current month's start and end dates
-        const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-        const monthlyRevenueResult = await pool.query(
-            `SELECT COALESCE(SUM(amount), 0) as total
-             FROM subscriptions
-             WHERE status = 'active'
-               AND start_date <= $1
-               AND end_date >= $2
-               AND billing_cycle = 'monthly'`,
-            [endOfMonth, startOfMonth]
-        );
-
-        // Calculate annual revenue (yearly from subscriptions table)
-        const startOfYear = new Date(now.getFullYear(), 0, 1);
-        const endOfYear = new Date(now.getFullYear(), 11, 31);
-
-        const annualRevenueResult = await pool.query(
-            `SELECT COALESCE(SUM(amount), 0) as total
-             FROM subscriptions
-             WHERE status = 'active'
-               AND start_date <= $1
-               AND end_date >= $2
-               AND billing_cycle = 'annual'`,
-            [endOfYear, startOfYear]
-        );
-
-        // Total monthly revenue = monthly subscriptions + (annual subscriptions / 12)
-        const monthlyFromAnnual = annualRevenueResult.rows[0].total / 12;
-        const totalMonthlyRevenue = Math.round(monthlyRevenueResult.rows[0].total + monthlyFromAnnual);
-
-        // Get total revenue all time
-        const totalRevenueResult = await pool.query(
-            'SELECT COALESCE(SUM(amount), 0) as total FROM subscriptions WHERE status = $1',
-            ['active']
-        );
-
-        // Get pending subscriptions count
-        const pendingSubscriptions = await pool.query(
-            'SELECT COUNT(*) FROM universities WHERE subscription_status = $1',
-            ['inactive']
-        );
-
-        // Get expired subscriptions count
-        const expiredSubscriptions = await pool.query(
-            'SELECT COUNT(*) FROM universities WHERE subscription_status = $1 AND subscription_end < NOW()',
-            ['active']
-        );
-
-        // Get recent activities (last 5 subscription activations)
-        const recentActivities = await pool.query(
-            `SELECT s.*, u.name as university_name
-             FROM subscriptions s
-             JOIN universities u ON s.university_id = u.id
-             ORDER BY s.created_at DESC
-             LIMIT 5`
-        );
-
-        res.json({
-            success: true,
-            stats: {
-                totalUniversities: parseInt(universities.rows[0].count),
-                activeSubscriptions: parseInt(activeSubscriptions.rows[0].count),
-                totalUsers: parseInt(totalUsers.rows[0].count),
-                monthlyRevenue: totalMonthlyRevenue,
-                annualRevenue: annualRevenueResult.rows[0].total,
-                totalRevenue: totalRevenueResult.rows[0].total,
-                pendingSubscriptions: parseInt(pendingSubscriptions.rows[0].count),
-                expiredSubscriptions: parseInt(expiredSubscriptions.rows[0].count),
-                recentActivities: recentActivities.rows
+                return res.json({
+                    success: true,
+                    active: isActive,
+                    expiryDate: uni.subscription_end,
+                    status: uni.subscription_status
+                });
             }
-        });
+        }
+        res.json({ success: true, active: true });
+    } catch (error) {
+        console.error('Subscription status error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// ========== GET STATISTICS ==========
+// system_owner sees global stats, super_admin sees only their university stats
+app.get('/api/super-admin/stats', verifyToken, checkSubscriptionStatus, async (req, res) => {
+    try {
+        if (req.admin.role === 'system_owner') {
+            // Global stats for system_owner
+            const universities = await pool.query('SELECT COUNT(*) FROM universities');
+            const activeSubscriptions = await pool.query(
+                'SELECT COUNT(*) FROM universities WHERE subscription_status = $1',
+                ['active']
+            );
+            const totalUsers = await pool.query('SELECT COUNT(*) FROM users');
+
+            // Revenue calculations (global)
+            const now = new Date();
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+            const monthlyRevenueResult = await pool.query(
+                `SELECT COALESCE(SUM(amount), 0) as total
+                 FROM subscriptions
+                 WHERE status = 'active'
+                   AND start_date <= $1
+                   AND end_date >= $2
+                   AND billing_cycle = 'monthly'`,
+                [endOfMonth, startOfMonth]
+            );
+
+            const startOfYear = new Date(now.getFullYear(), 0, 1);
+            const endOfYear = new Date(now.getFullYear(), 11, 31);
+
+            const annualRevenueResult = await pool.query(
+                `SELECT COALESCE(SUM(amount), 0) as total
+                 FROM subscriptions
+                 WHERE status = 'active'
+                   AND start_date <= $1
+                   AND end_date >= $2
+                   AND billing_cycle = 'annual'`,
+                [endOfYear, startOfYear]
+            );
+
+            const monthlyFromAnnual = annualRevenueResult.rows[0].total / 12;
+            const totalMonthlyRevenue = Math.round(monthlyRevenueResult.rows[0].total + monthlyFromAnnual);
+
+            const totalRevenueResult = await pool.query(
+                'SELECT COALESCE(SUM(amount), 0) as total FROM subscriptions WHERE status = $1',
+                ['active']
+            );
+
+            const pendingSubscriptions = await pool.query(
+                'SELECT COUNT(*) FROM universities WHERE subscription_status = $1',
+                ['inactive']
+            );
+
+            const expiredSubscriptions = await pool.query(
+                'SELECT COUNT(*) FROM universities WHERE subscription_status = $1 AND subscription_end < NOW()',
+                ['active']
+            );
+
+            const recentActivities = await pool.query(
+                `SELECT s.*, u.name as university_name
+                 FROM subscriptions s
+                 JOIN universities u ON s.university_id = u.id
+                 ORDER BY s.created_at DESC
+                 LIMIT 5`
+            );
+
+            res.json({
+                success: true,
+                stats: {
+                    totalUniversities: parseInt(universities.rows[0].count),
+                    activeSubscriptions: parseInt(activeSubscriptions.rows[0].count),
+                    totalUsers: parseInt(totalUsers.rows[0].count),
+                    monthlyRevenue: totalMonthlyRevenue,
+                    annualRevenue: annualRevenueResult.rows[0].total,
+                    totalRevenue: totalRevenueResult.rows[0].total,
+                    pendingSubscriptions: parseInt(pendingSubscriptions.rows[0].count),
+                    expiredSubscriptions: parseInt(expiredSubscriptions.rows[0].count),
+                    recentActivities: recentActivities.rows
+                }
+            });
+        } else {
+            // Limited stats for super_admin (only their university)
+            const university = req.university;
+
+            const usersCount = await pool.query(
+                'SELECT COUNT(*) FROM users WHERE university_id = $1',
+                [university.id]
+            );
+
+            const ordersStats = await pool.query(
+                `SELECT
+                    COUNT(*) as total_orders,
+                    COALESCE(SUM(total), 0) as total_revenue,
+                    COUNT(*) FILTER (WHERE status = 'pending_verification') as pending_orders,
+                    COUNT(*) FILTER (WHERE status = 'served') as served_orders
+                 FROM orders
+                 WHERE university_id = $1`,
+                [university.id]
+            );
+
+            res.json({
+                success: true,
+                stats: {
+                    universityName: university.name,
+                    totalUsers: parseInt(usersCount.rows[0].count),
+                    totalOrders: parseInt(ordersStats.rows[0].total_orders),
+                    totalRevenue: parseInt(ordersStats.rows[0].total_revenue),
+                    pendingOrders: parseInt(ordersStats.rows[0].pending_orders),
+                    servedOrders: parseInt(ordersStats.rows[0].served_orders),
+                    subscriptionStatus: university.subscription_status,
+                    subscriptionEnd: university.subscription_end
+                }
+            });
+        }
     } catch (error) {
         console.error('Error fetching stats:', error);
         res.status(500).json({ success: false, message: 'Server error: ' + error.message });
@@ -185,7 +335,8 @@ app.get('/api/super-admin/stats', verifyToken, async (req, res) => {
 });
 
 // ========== GET ALL UNIVERSITIES ==========
-app.get('/api/super-admin/universities', verifyToken, async (req, res) => {
+// Only system_owner can access this
+app.get('/api/super-admin/universities', verifyToken, checkSubscriptionStatus, requireRole(['system_owner']), async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT u.*, COUNT(us.id) as users_count
@@ -202,7 +353,8 @@ app.get('/api/super-admin/universities', verifyToken, async (req, res) => {
 });
 
 // ========== ADD NEW UNIVERSITY ==========
-app.post('/api/super-admin/universities', verifyToken, async (req, res) => {
+// Only system_owner can access this
+app.post('/api/super-admin/universities', verifyToken, checkSubscriptionStatus, requireRole(['system_owner']), async (req, res) => {
     const { name, email, phone, address, city, country } = req.body;
 
     try {
@@ -220,7 +372,8 @@ app.post('/api/super-admin/universities', verifyToken, async (req, res) => {
 });
 
 // ========== ACTIVATE/EXTEND SUBSCRIPTION ==========
-app.post('/api/super-admin/universities/:id/activate-subscription', verifyToken, async (req, res) => {
+// Only system_owner can access this
+app.post('/api/super-admin/universities/:id/activate-subscription', verifyToken, checkSubscriptionStatus, requireRole(['system_owner']), async (req, res) => {
     const { id } = req.params;
     const { duration, amount } = req.body;
 
@@ -298,13 +451,13 @@ app.post('/api/super-admin/universities/:id/activate-subscription', verifyToken,
 });
 
 // ========== SUSPEND UNIVERSITY ==========
-app.post('/api/super-admin/universities/:id/suspend', verifyToken, async (req, res) => {
+// Only system_owner can access this
+app.post('/api/super-admin/universities/:id/suspend', verifyToken, checkSubscriptionStatus, requireRole(['system_owner']), async (req, res) => {
     const { id } = req.params;
 
     console.log('Suspend request for university ID:', id);
 
     try {
-        // Check if university exists first
         const checkResult = await pool.query(
             'SELECT id, name, status FROM universities WHERE id = $1',
             [id]
@@ -319,7 +472,6 @@ app.post('/api/super-admin/universities/:id/suspend', verifyToken, async (req, r
 
         console.log('Found university:', checkResult.rows[0].name);
 
-        // Update university status - FIXED: using 'result' instead of 'updatedResult'
         const result = await pool.query(
             `UPDATE universities
              SET status = 'suspended',
@@ -348,7 +500,8 @@ app.post('/api/super-admin/universities/:id/suspend', verifyToken, async (req, r
 });
 
 // ========== GET ALL USERS ==========
-app.get('/api/super-admin/users', verifyToken, async (req, res) => {
+// super_admin can only see users from their university
+app.get('/api/super-admin/users', verifyToken, checkSubscriptionStatus, async (req, res) => {
     const { universityId, role } = req.query;
 
     let query = `
@@ -359,7 +512,11 @@ app.get('/api/super-admin/users', verifyToken, async (req, res) => {
     `;
     const params = [];
 
-    if (universityId) {
+    // If user is super_admin (not system_owner), filter by their university
+    if (req.admin.role === 'super_admin' && req.university) {
+        params.push(req.university.id);
+        query += ` AND u.university_id = $${params.length}`;
+    } else if (universityId && req.admin.role === 'system_owner') {
         params.push(universityId);
         query += ` AND u.university_id = $${params.length}`;
     }
@@ -380,12 +537,28 @@ app.get('/api/super-admin/users', verifyToken, async (req, res) => {
     }
 });
 
-// ========== CREATE NEW USER (via Super Admin) ==========
-app.post('/api/super-admin/users', verifyToken, async (req, res) => {
+// ========== CREATE NEW USER ==========
+// super_admin can only create users for their university and cannot create admins
+app.post('/api/super-admin/users', verifyToken, checkSubscriptionStatus, async (req, res) => {
     const { name, email, reg_number, password, role, university_id } = req.body;
 
+    // For super_admin, force restrictions
+    let targetUniversityId = university_id;
+    let targetRole = role;
+
+    if (req.admin.role === 'super_admin' && req.university) {
+        targetUniversityId = req.university.id;
+
+        // Super admins cannot create other admin users
+        if (role === 'admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Super admins cannot create other admin users.'
+            });
+        }
+    }
+
     try {
-        // Check if user already exists
         const existing = await pool.query(
             'SELECT id FROM users WHERE reg_number = $1 OR email = $2',
             [reg_number, email]
@@ -398,14 +571,13 @@ app.post('/api/super-admin/users', verifyToken, async (req, res) => {
             });
         }
 
-        // Hash the password
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const result = await pool.query(
             `INSERT INTO users (id, name, email, reg_number, password, role, university_id, is_active)
              VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, true)
              RETURNING id, name, email, reg_number, role, university_id`,
-            [name, email, reg_number, hashedPassword, role, university_id]
+            [name, email, reg_number, hashedPassword, targetRole, targetUniversityId]
         );
 
         res.json({ success: true, user: result.rows[0] });
@@ -416,9 +588,37 @@ app.post('/api/super-admin/users', verifyToken, async (req, res) => {
 });
 
 // ========== UPDATE USER ==========
-app.put('/api/super-admin/users/:id', verifyToken, async (req, res) => {
+// super_admin can only update users from their university
+app.put('/api/super-admin/users/:id', verifyToken, checkSubscriptionStatus, async (req, res) => {
     const { id } = req.params;
     const { name, email, reg_number, role, university_id } = req.body;
+
+    // Verify super_admin can only update users from their university
+    if (req.admin.role === 'super_admin' && req.university) {
+        const userCheck = await pool.query(
+            'SELECT university_id FROM users WHERE id = $1',
+            [id]
+        );
+
+        if (userCheck.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        if (userCheck.rows[0].university_id !== req.university.id) {
+            return res.status(403).json({
+                success: false,
+                message: 'You can only update users from your own university.'
+            });
+        }
+
+        // Super admins cannot change a user to admin role
+        if (role === 'admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Super admins cannot promote users to admin role.'
+            });
+        }
+    }
 
     try {
         await pool.query(
@@ -435,8 +635,28 @@ app.put('/api/super-admin/users/:id', verifyToken, async (req, res) => {
 });
 
 // ========== DELETE USER ==========
-app.delete('/api/super-admin/users/:id', verifyToken, async (req, res) => {
+// super_admin can only delete users from their university
+app.delete('/api/super-admin/users/:id', verifyToken, checkSubscriptionStatus, async (req, res) => {
     const { id } = req.params;
+
+    // Verify super_admin can only delete users from their university
+    if (req.admin.role === 'super_admin' && req.university) {
+        const userCheck = await pool.query(
+            'SELECT university_id FROM users WHERE id = $1',
+            [id]
+        );
+
+        if (userCheck.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        if (userCheck.rows[0].university_id !== req.university.id) {
+            return res.status(403).json({
+                success: false,
+                message: 'You can only delete users from your own university.'
+            });
+        }
+    }
 
     try {
         await pool.query('DELETE FROM users WHERE id = $1', [id]);
@@ -448,7 +668,8 @@ app.delete('/api/super-admin/users/:id', verifyToken, async (req, res) => {
 });
 
 // ========== GET SUBSCRIPTIONS HISTORY ==========
-app.get('/api/super-admin/subscriptions', verifyToken, async (req, res) => {
+// Only system_owner can view all subscriptions
+app.get('/api/super-admin/subscriptions', verifyToken, checkSubscriptionStatus, requireRole(['system_owner']), async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT s.*, u.name as university_name
@@ -464,7 +685,8 @@ app.get('/api/super-admin/subscriptions', verifyToken, async (req, res) => {
 });
 
 // ========== GET SYSTEM SETTINGS ==========
-app.get('/api/super-admin/settings', verifyToken, async (req, res) => {
+// Only system_owner can view settings
+app.get('/api/super-admin/settings', verifyToken, checkSubscriptionStatus, requireRole(['system_owner']), async (req, res) => {
     try {
         const result = await pool.query(
             'SELECT setting_key, setting_value, setting_type FROM system_settings'
@@ -484,7 +706,6 @@ app.get('/api/super-admin/settings', verifyToken, async (req, res) => {
         res.json({ success: true, settings });
     } catch (error) {
         console.error('Error fetching settings:', error);
-        // Return default settings if table doesn't exist yet
         res.json({
             success: true,
             settings: {
@@ -500,7 +721,8 @@ app.get('/api/super-admin/settings', verifyToken, async (req, res) => {
 });
 
 // ========== UPDATE SYSTEM SETTINGS ==========
-app.put('/api/super-admin/settings', verifyToken, async (req, res) => {
+// Only system_owner can update settings
+app.put('/api/super-admin/settings', verifyToken, checkSubscriptionStatus, requireRole(['system_owner']), async (req, res) => {
     const { settings } = req.body;
 
     try {

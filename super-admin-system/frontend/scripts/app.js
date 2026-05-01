@@ -1082,6 +1082,59 @@ function SubscriptionManagement() {
     );
 }
 
+// Subscription Expired Warning Component
+function SubscriptionWarning({ onLogout }) {
+    const [dismissed, setDismissed] = useState(false);
+
+    if (dismissed) return null;
+
+    return (
+        <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            background: '#dc2626',
+            color: '#fff',
+            padding: '12px 20px',
+            textAlign: 'center',
+            zIndex: 10000,
+            animation: 'slideDown 0.3s ease'
+        }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <span>⚠️ Your subscription has expired. Please contact the system administrator to renew.</span>
+                <button
+                    onClick={onLogout}
+                    style={{
+                        background: '#fff',
+                        color: '#dc2626',
+                        border: 'none',
+                        padding: '6px 16px',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        fontWeight: 600
+                    }}
+                >
+                    Logout
+                </button>
+                <button
+                    onClick={() => setDismissed(true)}
+                    style={{
+                        background: 'transparent',
+                        color: '#fff',
+                        border: '1px solid #fff',
+                        padding: '6px 16px',
+                        borderRadius: 6,
+                        cursor: 'pointer'
+                    }}
+                >
+                    Dismiss
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // ========== SETTINGS ==========
 function Settings() {
     const [settings, setSettings] = useState({
@@ -1405,6 +1458,7 @@ function App() {
     const [toast, setToast] = useState(null);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+    const [subscriptionExpired, setSubscriptionExpired] = useState(false);
     const [stats, setStats] = useState({
         totalUniversities: 0,
         activeSubscriptions: 0,
@@ -1416,6 +1470,32 @@ function App() {
         expiredSubscriptions: 0,
         recentActivities: []
     });
+
+    const checkSubscriptionStatus = async () => {
+        const token = localStorage.getItem('superAdminToken');
+        const savedAdmin = localStorage.getItem('superAdmin');
+
+        if (token && savedAdmin) {
+            const adminDate = JSON.parse(savedAdmin);
+            if (adminDate.role === 'super_admin') {
+                try {
+                    const response = await fetch('http://localhost:5001/api/super-admin/subscription-status', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const result = await response.json();
+
+                    if (result.success && !result.active) {
+                        setSubscriptionExpired(true);
+                    } else {
+                        setSubscriptionExpired(false);
+                    }
+                } catch (error) {
+                    console.error('Failed to check subscription:', error);
+                }
+            }
+        }
+    };
+
     const loadStats = async () => {
         try {
             const result = await apiService.getSystemStats();
@@ -1434,6 +1514,10 @@ function App() {
             setIsAuthenticated(true);
             setAdmin(JSON.parse(savedAdmin));
             loadStats();
+            checkSubscriptionStatus();
+
+            const interval = setInterval(checkSubscriptionStatus, 5 * 60 * 1000);
+            return () => clearInterval(interval);
         }
 
         const handleResize = () => {
@@ -1446,20 +1530,34 @@ function App() {
     }, []);
 
     const showToast = (message) => { setToast(message); setTimeout(() => setToast(null), 3000); };
-    const handleLogout = () => { localStorage.removeItem('superAdminToken'); localStorage.removeItem('superAdmin'); setIsAuthenticated(false); setAdmin(null); showToast('Logged out successfully'); };
+    const handleLogout = () => { localStorage.removeItem('superAdminToken'); localStorage.removeItem('superAdmin'); setIsAuthenticated(false); setAdmin(null); setSubscriptionExpired(false); showToast('Logged out successfully'); };
 
-    if (!isAuthenticated) return <LoginScreen onLogin={(adminData) => { setIsAuthenticated(true); setAdmin(adminData); showToast(`Welcome back, ${adminData.name}`); }} />;
+    if (!isAuthenticated) return <LoginScreen onLogin={(adminData) => { setIsAuthenticated(true); setAdmin(adminData); checkSubscriptionStatus(); showToast(`Welcome back, ${adminData.name}`); }} />;
 
-    const menuItems = [
-        { id: 'dashboard', label: 'Dashboard', icon: '📊' },
-        { id: 'universities', label: 'Universities', icon: '🏛️' },
-        { id: 'users', label: 'Users', icon: '👥' },
-        { id: 'subscriptions', label: 'Subscriptions', icon: '💰' },
-        { id: 'settings', label: 'Settings', icon: '⚙️' }
-    ];
+    const menuItems = [];
+
+    if (admin?.role === 'system_owner') {
+        menuItems.push(
+            { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+            { id: 'universities', label: 'Universities', icon: '🏛️' },
+            { id: 'users', label: 'Users', icon: '👥' },
+            { id: 'subscriptions', label: 'Subscriptions', icon: '💰' },
+            { id: 'settings', label: 'Settings', icon: '⚙️' }
+        );
+    } else if (admin?.role === 'super_admin') {
+        menuItems.push(
+            { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+            { id: 'users', label: 'User Management', icon: '👥' }
+        );
+    }
 
     return (
         <div style={{ display: 'flex', minHeight: '100vh', background: '#0a0a0a', color: '#fff' }}>
+
+            {subscriptionExpired && admin?.role === 'super_admin' && (
+                <SubscriptionWarning onLogout={handleLogout} />
+            )}
+
             {/* Mobile Menu Toggle */}
             {isMobile && (
                 <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} style={{
