@@ -273,4 +273,21 @@ const getAuditLog = async (req, res, next) => {
   }
 };
 
-module.exports = { getSalesReport, getAuditLog };
+const getCategorySales = async (req, res, next) => {
+    try {
+        const { from , to } = req.query;
+        const fromDate = from || new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0];
+        const toDate = to || new Date().toISOString().split('T')[0];
+
+        const { rows } = await query(
+            'SELECT * FROM get_category_sales($1, $2)',
+            [fromDate, toDate]
+        );
+
+        return success(res, rows);
+    } catch (err) {
+        next(err);
+    }
+};
+
+module.exports = { getSalesReport, getAuditLog, getCategorySales };
