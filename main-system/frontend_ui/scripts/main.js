@@ -2871,7 +2871,328 @@
         );
     };
 
-    function DashboardPage() { return ( <div style={{padding:24,overflowY:'auto'}}><div style={{fontWeight:800,fontSize:22}}>Dashboard</div><div style={{fontSize:13,color:'var(--muted)',marginBottom:20}}>{new Date().toLocaleDateString('en-TZ',{weekday:'long',day:'numeric',month:'long'})}</div><div className="admin-dashboard-stats" style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}><StatCard label="Revenue today" value="TZS 143,200" sub="+18%" color="rust" icon="💰"/><StatCard label="Orders placed" value="47" sub="12 pending" color="amber" icon="📋"/><StatCard label="Items sold" value="134" sub="18 types" color="sage" icon="🍽️"/><StatCard label="Avg order" value="TZS 3,047" color="blue" icon="📊"/></div><div className="admin-grid-2col" style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:16,marginBottom:20}}><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Weekly sales</div><MiniBarChart data={SALES_DATA}/></div><div style={{background:'#fff',border:'1px solid var(--border)',borderRadius:14,padding:18}}><div style={{fontWeight:700,fontSize:15}}>Payment methods</div>{[{label:'M-Pesa',pct:62,col:'#00A651'},{label:'Tigo Pesa',pct:27,col:'#003087'},{label:'HaloPesa',pct:11,col:'#E31837'}].map(p=>(<div key={p.label} style={{marginBottom:12}}><div style={{display:'flex',justifyContent:'space-between',fontSize:12}}><span>{p.label}</span><span>{p.pct}%</span></div><div style={{height:6,background:'#EDE8DF',borderRadius:3}}><div style={{height:'100%',width:p.pct+'%',background:p.col,borderRadius:3}}/></div></div>))}</div></div></div> ); }
+    function DashboardPage() {
+        const { showToast } = useContext(AppCtx);
+        const [dashboardData, setDashboardData] = useState(null);
+        const [loading, setLoading] = useState(true);
+        const [recentOrders, setRecentOrders] = useState([]);
+        const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+        useEffect(() => {
+            const handleResize = () => setIsMobile(window.innerWidth <= 768);
+            window.addEventListener('resize', handleResize);
+            fetchDashboardData();
+            return () => window.removeEventListener('resize', handleResize);
+        }, []);
+
+        const fetchDashboardData = async () => {
+            setLoading(true);
+            try {
+                const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+
+                // Fetch today's stats
+                const today = new Date();
+                const todayStr = today.toISOString().split('T')[0];
+
+                // Fetch summary stats for today
+                const statsResponse = await fetch(`http://localhost:5000/api/orders/stats?date=${todayStr}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const statsResult = await statsResponse.json();
+
+                // Fetch recent orders
+                const ordersResponse = await fetch('http://localhost:5000/api/orders?limit=10', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const ordersResult = await ordersResponse.json();
+
+                // Fetch top selling items
+                const reportsResponse = await fetch(`http://localhost:5000/api/reports/sales?from=${todayStr}&to=${todayStr}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const reportsResult = await reportsResponse.json();
+
+                // Process data
+                const stats = statsResult.success ? statsResult.data : {};
+                const orders = ordersResult.success && ordersResult.data ? ordersResult.data : (ordersResult.orders || []);
+                const topItems = reportsResult.success && reportsResult.data ? reportsResult.data.top_items || [] : [];
+
+                // Calculate derived metrics
+                const activeOrders = orders.filter(o => o.status === 'pending' || o.status === 'pending_verification' || o.status === 'preparing').length;
+                const readyOrders = orders.filter(o => o.status === 'paid' || o.status === 'ready').length;
+                const completedOrders = stats.today?.served_today || 0;
+                const totalRevenue = stats.today?.revenue_today || 0;
+
+                setDashboardData({
+                    today: {
+                        revenue: totalRevenue,
+                        orders: stats.today?.orders_today || 0,
+                        activeOrders: activeOrders,
+                        readyOrders: readyOrders,
+                        completedOrders: completedOrders,
+                        avgOrderValue: stats.today?.avg_order_value || 0,
+                        topItems: topItems.slice(0, 5)
+                    },
+                    recentOrders: orders.slice(0, 8)
+                });
+
+            } catch (error) {
+                console.error('Failed to fetch dashboard data:', error);
+                showToast('Failed to load dashboard', 'error');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        const formatCurrency = (amount) => {
+            return `TZS ${amount?.toLocaleString() || 0}`;
+        };
+
+        const getStatusBadge = (status) => {
+            const statusConfig = {
+                pending: { color: '#FEF3C7', text: '#92400E', label: 'Pending', icon: '⏳' },
+                pending_verification: { color: '#FEF3C7', text: '#92400E', label: 'Awaiting Verification', icon: '⏳' },
+                preparing: { color: '#DBEAFE', text: '#1E40AF', label: 'Preparing', icon: '🍳' },
+                paid: { color: '#D1FAE5', text: '#065F46', label: 'Ready', icon: '✅' },
+                ready: { color: '#D1FAE5', text: '#065F46', label: 'Ready', icon: '✅' },
+                served: { color: '#E5E7EB', text: '#374151', label: 'Served', icon: '✓' },
+                completed: { color: '#E5E7EB', text: '#374151', label: 'Completed', icon: '✓' },
+                cancelled: { color: '#FEE2E2', text: '#991B1B', label: 'Cancelled', icon: '✗' }
+            };
+            const config = statusConfig[status] || { color: '#F3F4F6', text: '#1F2937', label: status, icon: '📦' };
+            return (
+                <span style={{
+                    background: config.color,
+                    color: config.text,
+                    padding: '2px 8px',
+                    borderRadius: 12,
+                    fontSize: 10,
+                    fontWeight: 500,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4
+                }}>
+                    {config.icon} {config.label}
+                </span>
+            );
+        };
+
+        const formatTime = (dateString) => {
+            if (!dateString) return '—';
+            const date = new Date(dateString);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins} min ago`;
+            if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ${diffMins % 60}m ago`;
+            return date.toLocaleDateString();
+        };
+
+        if (loading) {
+            return (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: '#C4522A', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin .7s linear infinite' }} />
+                        <div>Loading dashboard...</div>
+                    </div>
+                </div>
+            );
+        }
+
+        if (!dashboardData) {
+            return (
+                <div style={{ padding: 24, textAlign: 'center' }}>
+                    <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
+                    <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Unable to load dashboard</div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)' }}>Please check your connection and try again.</div>
+                </div>
+            );
+        }
+
+        return (
+            <div style={{ padding: isMobile ? 12 : 24, overflowY: 'auto', height: '100%' }}>
+                {/* Header */}
+                <div style={{ marginBottom: 24 }}>
+                    <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 800, fontSize: isMobile ? 20 : 22, marginBottom: 4 }}>
+                        Dashboard
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                        {new Date().toLocaleDateString('en-TZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                    </div>
+                </div>
+
+                {/* KPI Cards - Today's Performance */}
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+                    gap: 12,
+                    marginBottom: 20
+                }}>
+                    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            <div style={{ fontSize: 24 }}>💰</div>
+                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>Today's Revenue</div>
+                        </div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: '#C4522A' }}>{formatCurrency(dashboardData.today.revenue)}</div>
+                        <div style={{ fontSize: 10, color: '#4A6741', marginTop: 4 }}>{dashboardData.today.orders} orders</div>
+                    </div>
+
+                    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            <div style={{ fontSize: 24 }}>📋</div>
+                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>Active Orders</div>
+                        </div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: '#F59E0B' }}>{dashboardData.today.activeOrders}</div>
+                        <div style={{ fontSize: 10, color: '#4A6741', marginTop: 4 }}>{dashboardData.today.readyOrders} ready for pickup</div>
+                    </div>
+
+                    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            <div style={{ fontSize: 24 }}>✅</div>
+                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>Completed Today</div>
+                        </div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: '#4A6741' }}>{dashboardData.today.completedOrders}</div>
+                        <div style={{ fontSize: 10, color: '#4A6741', marginTop: 4 }}>orders served</div>
+                    </div>
+
+                    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            <div style={{ fontSize: 24 }}>📊</div>
+                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>Avg Order Value</div>
+                        </div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: '#2563eb' }}>{formatCurrency(dashboardData.today.avgOrderValue)}</div>
+                        <div style={{ fontSize: 10, color: '#4A6741', marginTop: 4 }}>per transaction</div>
+                    </div>
+                </div>
+
+                {/* Recent Orders and Top Items */}
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? '1fr' : '1.5fr 1fr',
+                    gap: 16,
+                    marginBottom: 16
+                }}>
+                    {/* Recent Orders Table */}
+                    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
+                        <div style={{ padding: 16, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ fontWeight: 700, fontSize: 15 }}>🕐 Recent Orders</div>
+                            <button
+                                onClick={fetchDashboardData}
+                                style={{ padding: '4px 8px', background: '#EDE8DF', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 10 }}
+                            >
+                                ⟳ Refresh
+                            </button>
+                        </div>
+                        <div style={{ overflowX: 'auto' }}>
+                            {dashboardData.recentOrders.length === 0 ? (
+                                <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>
+                                    No recent orders
+                                </div>
+                            ) : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr style={{ background: '#FAFAF7', borderBottom: '1px solid var(--border)' }}>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Order ID</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Customer</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Amount</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Status</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600 }}>Time</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {dashboardData.recentOrders.map((order, idx) => (
+                                            <tr key={order.id} style={{ borderBottom: idx !== dashboardData.recentOrders.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                                                <td style={{ padding: '10px 12px', fontSize: 11, fontFamily: 'monospace' }}>
+                                                    #{order.id?.slice(0, 8)?.toUpperCase()}
+                                                </td>
+                                                <td style={{ padding: '10px 12px', fontSize: 12 }}>
+                                                    {order.customer_name || order.guest_name || 'Guest'}
+                                                </td>
+                                                <td style={{ padding: '10px 12px', fontSize: 12, fontWeight: 600, color: '#C4522A' }}>
+                                                    {formatCurrency(order.total)}
+                                                </td>
+                                                <td style={{ padding: '10px 12px' }}>
+                                                    {getStatusBadge(order.status)}
+                                                </td>
+                                                <td style={{ padding: '10px 12px', fontSize: 10, color: 'var(--muted)' }}>
+                                                    {formatTime(order.created_at)}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                        <div style={{ padding: 12, borderTop: '1px solid var(--border)', textAlign: 'center' }}>
+                            <a href="/orders" style={{ fontSize: 11, color: '#C4522A', textDecoration: 'none' }}>View all orders →</a>
+                        </div>
+                    </div>
+
+                    {/* Top Items & Quick Actions */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {/* Top Selling Items Today */}
+                        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 16 }}>
+                            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>🏆 Top Items Today</div>
+                            {dashboardData.today.topItems.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)', fontSize: 12 }}>
+                                    No sales data for today
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                    {dashboardData.today.topItems.map((item, idx) => {
+                                        const maxQty = Math.max(...dashboardData.today.topItems.map(i => i.quantity || 0));
+                                        const popularity = maxQty > 0 ? ((item.quantity || 0) / maxQty) * 100 : 0;
+                                        return (
+                                            <div key={idx}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                                    <span style={{ fontSize: 12, fontWeight: 500 }}>{item.name}</span>
+                                                    <span style={{ fontSize: 11, color: '#C4522A', fontWeight: 600 }}>{item.quantity || 0} sold</span>
+                                                </div>
+                                                <div style={{ height: 4, background: '#EDE8DF', borderRadius: 2, overflow: 'hidden' }}>
+                                                    <div style={{ width: `${popularity}%`, height: '100%', background: '#C4522A', borderRadius: 2 }} />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Order Status Summary */}
+                        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 16 }}>
+                            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>📈 Order Status Summary</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                                <div style={{ textAlign: 'center', padding: 8, background: '#FAFAF7', borderRadius: 8 }}>
+                                    <div style={{ fontSize: 18, fontWeight: 800, color: '#F59E0B' }}>{dashboardData.today.activeOrders}</div>
+                                    <div style={{ fontSize: 10, color: 'var(--muted)' }}>Active</div>
+                                </div>
+                                <div style={{ textAlign: 'center', padding: 8, background: '#FAFAF7', borderRadius: 8 }}>
+                                    <div style={{ fontSize: 18, fontWeight: 800, color: '#4A6741' }}>{dashboardData.today.readyOrders}</div>
+                                    <div style={{ fontSize: 10, color: 'var(--muted)' }}>Ready for Pickup</div>
+                                </div>
+                                <div style={{ textAlign: 'center', padding: 8, background: '#FAFAF7', borderRadius: 8 }}>
+                                    <div style={{ fontSize: 18, fontWeight: 800, color: '#2563eb' }}>{dashboardData.today.completedOrders}</div>
+                                    <div style={{ fontSize: 10, color: 'var(--muted)' }}>Completed Today</div>
+                                </div>
+                                <div style={{ textAlign: 'center', padding: 8, background: '#FAFAF7', borderRadius: 8 }}>
+                                    <div style={{ fontSize: 18, fontWeight: 800, color: '#C4522A' }}>{formatCurrency(dashboardData.today.revenue)}</div>
+                                    <div style={{ fontSize: 10, color: 'var(--muted)' }}>Revenue Today</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <style>{`
+                    @keyframes spin {
+                        to { transform: rotate(360deg); }
+                    }
+                `}</style>
+            </div>
+        );
+    }
 
     function MenuMgmtPage() {
         const { showToast } = useContext(AppCtx);
