@@ -502,11 +502,17 @@ function UserManagement() {
         cursor: 'pointer',
         boxSizing: 'border-box'
     };
+
     const [users, setUsers] = useState([]);
     const [universities, setUniversities] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showAddModal, setShowAddModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
+    const [showResetModal, setShowResetModal] = useState(false);
+    const [resetUser, setResetUser] = useState(null);
+    const [newPassword, setNewPassword] = useState('');
+    const [generatedPassword, setGeneratedPassword] = useState('');
+    const [resettingPassword, setResettingPassword] = useState(false);
     const [selectedUser, setSelectedUser] = useState(null);
     const [filterRole, setFilterRole] = useState('all');
     const [filterUniversity, setFilterUniversity] = useState('all');
@@ -515,20 +521,14 @@ function UserManagement() {
     const loadData = async () => {
         setLoading(true);
         try {
-            // Load universities first (important for dropdown)
             const uniResult = await apiService.getUniversities();
-            console.log('Universities loaded:', uniResult);
-
             if (uniResult.success && uniResult.universities) {
                 setUniversities(uniResult.universities);
             } else if (uniResult.universities) {
                 setUniversities(uniResult.universities);
             }
 
-            // Load users
             const usersResult = await apiService.getUsers();
-            console.log('Users loaded:', usersResult);
-
             if (usersResult.success && usersResult.users) {
                 setUsers(usersResult.users);
             } else if (usersResult.users) {
@@ -544,10 +544,12 @@ function UserManagement() {
         loadData();
     }, []);
 
-    const generatePassword = () => {
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$';
+    const generateRandomPassword = () => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
         let p = '';
-        for (let i = 0; i < 10; i++) p += chars[Math.floor(Math.random() * chars.length)];
+        for (let i = 0; i < 12; i++) p += chars[Math.floor(Math.random() * chars.length)];
+        setGeneratedPassword(p);
+        setNewPassword(p);
         return p;
     };
 
@@ -562,7 +564,7 @@ function UserManagement() {
             return;
         }
 
-        const newPassword = generatePassword();
+        const newPassword = generateRandomPassword();
         const userData = {
             name: formData.name,
             email: formData.email,
@@ -572,17 +574,13 @@ function UserManagement() {
             university_id: formData.university_id
         };
 
-        console.log('Creating user:', userData);
-
         try {
             const result = await apiService.createUser(userData);
-            console.log('Create user result:', result);
-
             if (result.success) {
                 await loadData();
                 setShowAddModal(false);
                 setFormData({ name: '', email: '', reg_number: '', role: 'student', university_id: '' });
-                alert(`User created successfully!\n\nUsername: ${formData.reg_number}\nPassword: ${newPassword}\n\nPlease share these credentials with the user.`);
+                alert(`✅ User created successfully!\n\nName: ${formData.name}\nUsername: ${formData.reg_number}\nPassword: ${newPassword}\n\n📧 An email with credentials has been sent to the user.`);
             } else {
                 alert('Error: ' + (result.message || 'Failed to create user'));
             }
@@ -603,18 +601,14 @@ function UserManagement() {
             university_id: formData.university_id
         };
 
-        console.log('Updating user:', selectedUser.id, updateData);
-
         try {
             const result = await apiService.updateUser(selectedUser.id, updateData);
-            console.log('Update user result:', result);
-
             if (result.success) {
                 await loadData();
                 setShowEditModal(false);
                 setSelectedUser(null);
                 setFormData({ name: '', email: '', reg_number: '', role: 'student', university_id: '' });
-                alert('User updated successfully!');
+                alert('✅ User updated successfully!');
             } else {
                 alert('Error: ' + (result.message || 'Failed to update user'));
             }
@@ -625,15 +619,13 @@ function UserManagement() {
     };
 
     const deleteUser = async (user) => {
-        if (!confirm(`⚠️ Are you sure you want to delete ${user.name}?\n\nThis action cannot be undone.`)) return;
+        if (!confirm(`⚠️ Are you sure you want to delete ${user.name}?\n\nThis action cannot be undone.\n\nAn email notification will be sent to the user.`)) return;
 
         try {
             const result = await apiService.deleteUser(user.id);
-            console.log('Delete user result:', result);
-
             if (result.success) {
                 await loadData();
-                alert(`✅ ${user.name} has been deleted.`);
+                alert(`✅ ${user.name} has been deleted.\n\n📧 A notification email has been sent to the user.`);
             } else {
                 alert('❌ Error: ' + (result.message || 'Failed to delete user'));
             }
@@ -643,18 +635,64 @@ function UserManagement() {
         }
     };
 
+    const openResetModal = (user) => {
+        setResetUser(user);
+        generateRandomPassword();
+        setShowResetModal(true);
+    };
+
+    const resetUserPassword = async () => {
+        if (!resetUser) return;
+
+        const passwordToUse = newPassword || generatedPassword;
+
+        if (!passwordToUse || passwordToUse.length < 6) {
+            alert('Password must be at least 6 characters');
+            return;
+        }
+
+        setResettingPassword(true);
+
+        try {
+            const token = localStorage.getItem('superAdminToken');
+            const response = await fetch(`${API_BASE_URL}/users/${resetUser.id}/reset-password`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ newPassword: passwordToUse })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                alert(`✅ Password reset for ${resetUser.name}!\n\nNew Password: ${passwordToUse}\n\n📧 An email has been sent to the user with their new password.`);
+                setShowResetModal(false);
+                setResetUser(null);
+                setNewPassword('');
+                setGeneratedPassword('');
+                loadData();
+            } else {
+                alert('Error: ' + (result.message || 'Failed to reset password'));
+            }
+        } catch (error) {
+            console.error('Error resetting password:', error);
+            alert('Network error. Please try again.');
+        } finally {
+            setResettingPassword(false);
+        }
+    };
+
     const filteredUsers = users.filter(u => {
         if (filterRole !== 'all' && u.role !== filterRole) return false;
-        if (filterUniversity !== 'all' && u.university_id !== parseInt(filterUniversity)) return false;
+        if (filterUniversity !== 'all' && u.university_id !== filterUniversity) return false;
         return true;
     });
-
-    console.log('Universities available for dropdown:', universities);
 
     if (loading) return <div style={{ textAlign: 'center', padding: 40 }}>Loading users...</div>;
 
     return (
-
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
                 <div>
@@ -680,7 +718,7 @@ function UserManagement() {
 
             {/* Users Table */}
             <div style={{ overflowX: 'auto', width: '100%' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
                     <thead>
                         <tr style={{ borderBottom: '1px solid #2a2a2a', textAlign: 'left' }}>
                             <th style={{ padding: '12px' }}>Name</th>
@@ -719,7 +757,7 @@ function UserManagement() {
                                         </Badge>
                                     </td>
                                     <td style={{ padding: '12px' }}>
-                                        <div style={{ display: 'flex', gap: 8 }}>
+                                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                             <Btn variant="secondary" onClick={() => {
                                                 setSelectedUser(user);
                                                 setFormData({
@@ -731,6 +769,7 @@ function UserManagement() {
                                                 });
                                                 setShowEditModal(true);
                                             }}>Edit</Btn>
+                                            <Btn variant="warning" onClick={() => openResetModal(user)}>Reset Pwd</Btn>
                                             <Btn variant="danger" onClick={() => deleteUser(user)}>Delete</Btn>
                                         </div>
                                     </td>
@@ -743,149 +782,84 @@ function UserManagement() {
 
             {/* Add User Modal */}
             <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="Add New User">
-                <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 12,
-                    width: '100%'
-                }}>
-                    <input
-                        type="text"
-                        placeholder="Full Name *"
-                        value={formData.name}
-                        onChange={e => setFormData({...formData, name: e.target.value})}
-                        style={inputStyle}
-                    />
-                    <input
-                        type="email"
-                        placeholder="Email *"
-                        value={formData.email}
-                        onChange={e => setFormData({...formData, email: e.target.value})}
-                        style={inputStyle}
-                    />
-                    <input
-                        type="text"
-                        placeholder="ID/Registration Number *"
-                        value={formData.reg_number}
-                        onChange={e => setFormData({...formData, reg_number: e.target.value})}
-                        style={inputStyle}
-                    />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
+                    <input type="text" placeholder="Full Name *" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={inputStyle} />
+                    <input type="email" placeholder="Email *" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} style={inputStyle} />
+                    <input type="text" placeholder="ID/Registration Number *" value={formData.reg_number} onChange={e => setFormData({...formData, reg_number: e.target.value})} style={inputStyle} />
 
-                    <select
-                        value={formData.role}
-                        onChange={e => setFormData({...formData, role: e.target.value})}
-                        style={selectStyle}
-                    >
+                    <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} style={selectStyle}>
                         <option value="student">Student</option>
                         <option value="staff">Staff</option>
                         <option value="admin">Admin</option>
                     </select>
 
-                    <select
-                        value={formData.university_id}
-                        onChange={e => setFormData({...formData, university_id: e.target.value})}
-                        style={selectStyle}
-                    >
+                    <select value={formData.university_id} onChange={e => setFormData({...formData, university_id: e.target.value})} style={selectStyle}>
                         <option value="">Select University *</option>
-                        {universities.length === 0 ? (
-                            <option value="" disabled>No universities available. Please add a university first.</option>
-                        ) : (
-                            universities.map(u => <option key={u.id} value={u.id}>{u.name}</option>)
-                        )}
+                        {universities.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                     </select>
 
-                    {universities.length === 0 && (
-                        <div style={{
-                            padding: 'clamp(10px, 4vw, 12px)',
-                            background: '#5a1a1a',
-                            borderRadius: 8,
-                            marginBottom: 12,
-                            color: '#ef5350',
-                            fontSize: 'clamp(11px, 3vw, 12px)'
-                        }}>
-                            ⚠️ No universities found. Please add a university first in the Universities tab.
-                        </div>
-                    )}
-
-                    <div style={{
-                        padding: 'clamp(10px, 4vw, 12px)',
-                        background: '#1a3a5a',
-                        borderRadius: 8,
-                        marginBottom: 12
-                    }}>
-                        <div style={{ fontSize: 'clamp(11px, 3.5vw, 12px)', color: '#64b5f6', marginBottom: 4 }}>🔐 Password</div>
-                        <div style={{ fontSize: 'clamp(10px, 3vw, 11px)', color: '#aaa' }}>A secure password will be generated automatically. You'll be able to share it with the user after creation.</div>
+                    <div style={{ padding: 12, background: '#1a3a5a', borderRadius: 8, marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, color: '#64b5f6', marginBottom: 4 }}>📧 Email Notification</div>
+                        <div style={{ fontSize: 10, color: '#aaa' }}>The user will receive an email with their login credentials. Admins will also be notified.</div>
                     </div>
 
-                    <div style={{
-                        display: 'flex',
-                        gap: 12,
-                        flexDirection: window.innerWidth <= 480 ? 'column' : 'row',
-                        marginTop: 8
-                    }}>
-                        <Btn variant="secondary" onClick={() => setShowAddModal(false)} fullWidth={window.innerWidth <= 480}>Cancel</Btn>
-                        <Btn onClick={addUser} fullWidth={window.innerWidth <= 480}>Create User</Btn>
+                    <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                        <Btn variant="secondary" onClick={() => setShowAddModal(false)}>Cancel</Btn>
+                        <Btn onClick={addUser}>Create User</Btn>
                     </div>
                 </div>
             </Modal>
 
             {/* Edit User Modal */}
             <Modal open={showEditModal} onClose={() => setShowEditModal(false)} title="Edit User">
-                <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 12,
-                    width: '100%'
-                }}>
-                    <input
-                        type="text"
-                        placeholder="Full Name"
-                        value={formData.name}
-                        onChange={e => setFormData({...formData, name: e.target.value})}
-                        style={inputStyle}
-                    />
-                    <input
-                        type="email"
-                        placeholder="Email"
-                        value={formData.email}
-                        onChange={e => setFormData({...formData, email: e.target.value})}
-                        style={inputStyle}
-                    />
-                    <input
-                        type="text"
-                        placeholder="ID/Registration Number"
-                        value={formData.reg_number}
-                        onChange={e => setFormData({...formData, reg_number: e.target.value})}
-                        style={inputStyle}
-                    />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
+                    <input type="text" placeholder="Full Name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={inputStyle} />
+                    <input type="email" placeholder="Email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} style={inputStyle} />
+                    <input type="text" placeholder="ID/Registration Number" value={formData.reg_number} onChange={e => setFormData({...formData, reg_number: e.target.value})} style={inputStyle} />
 
-                    <select
-                        value={formData.role}
-                        onChange={e => setFormData({...formData, role: e.target.value})}
-                        style={selectStyle}
-                    >
+                    <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} style={selectStyle}>
                         <option value="student">Student</option>
                         <option value="staff">Staff</option>
                         <option value="admin">Admin</option>
                     </select>
 
-                    <select
-                        value={formData.university_id}
-                        onChange={e => setFormData({...formData, university_id: e.target.value})}
-                        style={selectStyle}
-                    >
+                    <select value={formData.university_id} onChange={e => setFormData({...formData, university_id: e.target.value})} style={selectStyle}>
                         <option value="">Select University</option>
                         {universities.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                     </select>
 
-                    <div style={{
-                        display: 'flex',
-                        gap: 12,
-                        flexDirection: window.innerWidth <= 480 ? 'column' : 'row',
-                        marginTop: 8
-                    }}>
-                        <Btn variant="secondary" onClick={() => setShowEditModal(false)} fullWidth={window.innerWidth <= 480}>Cancel</Btn>
-                        <Btn onClick={editUser} fullWidth={window.innerWidth <= 480}>Save Changes</Btn>
+                    <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                        <Btn variant="secondary" onClick={() => setShowEditModal(false)}>Cancel</Btn>
+                        <Btn onClick={editUser}>Save Changes</Btn>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Reset Password Modal */}
+            <Modal open={showResetModal} onClose={() => { setShowResetModal(false); setResetUser(null); }} title="Reset User Password">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <p>Reset password for: <strong>{resetUser?.name}</strong> ({resetUser?.reg_number})</p>
+
+                    <div>
+                        <label style={{ fontSize: 12, color: '#aaa', marginBottom: 4, display: 'block' }}>New Password</label>
+                        <input type="text" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={inputStyle} placeholder="Enter new password" />
+                    </div>
+
+                    <Btn variant="secondary" onClick={generateRandomPassword}>Generate Random Password</Btn>
+
+                    <div style={{ padding: 12, background: '#1a3a5a', borderRadius: 8, marginTop: 8 }}>
+                        <div style={{ fontSize: 11, color: '#64b5f6', marginBottom: 4 }}>📧 Email Notification</div>
+                        <div style={{ fontSize: 10, color: '#aaa' }}>
+                            The user will receive an email with their new password.<br />
+                            Admins will also be notified of this change.
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                        <Btn variant="secondary" onClick={() => { setShowResetModal(false); setResetUser(null); }}>Cancel</Btn>
+                        <Btn variant="warning" onClick={resetUserPassword} disabled={resettingPassword}>
+                            {resettingPassword ? 'Resetting...' : 'Reset Password'}
+                        </Btn>
                     </div>
                 </div>
             </Modal>

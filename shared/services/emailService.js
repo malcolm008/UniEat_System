@@ -1,13 +1,15 @@
 const nodemailer = require('nodemailer');
 
 const createTransporter = () => {
+    const password = process.env.SMTP_PASS || 'GetThatBag_0375';
+
     const config = {
         host: 'mail.mecs.co.tz',
         port: 465,
         secure: true,
         auth: {
             user: 'uni-eat@mecs.co.tz',
-            pass: process.env.SMTP_PASS || 'your-actual-password-here'
+            pass: password
         },
         tls: {
             rejectUnauthorized: false,
@@ -23,6 +25,7 @@ const createTransporter = () => {
 };
 
 let transporter = null;
+let verificationPromise = null;
 
 const getTransporter = () => {
     if (!transporter) {
@@ -33,17 +36,28 @@ const getTransporter = () => {
 };
 
 const verifyTransporter = async () => {
-    try {
-        const transport = getTransporter();
-        await transport.verify();
-        console.log('Email service configured successfully');
-        console.log(`   SMTP Host: mail.mecs.co.tz`);
-        console.log(`   SMTP User: uni-eat@mecs.co.tz`);
-        return true;
-    } catch (error) {
-        console.error('Email service configuration error:', error.message);
-        return false;
+    if (verificationPromise) {
+        return verificationPromise;
     }
+
+    verificationPromise = (async () => {
+        try {
+            const transport = getTransporter();
+            await transport.verify();
+            console.log('Email service configured successfully');
+            console.log(`   SMTP Host: mail.mecs.co.tz`);
+            console.log(`   SMTP User: uni-eat@mecs.co.tz`);
+            return true;
+        } catch (error) {
+            console.error('Email service configuration error:', error.message);
+            console.error('   Please check your SMTP credentials and network connection');
+            return false;
+        } finally {
+            verificationPromise = null;
+        }
+    })();
+
+    return verificationPromise;
 };
 
 verifyTransporter();
@@ -70,27 +84,53 @@ const sendEmail = async (to, subject, html, text = null) => {
     }
 };
 
+const sendEmailWithRetry = async (to, subject, html, maxRetries = 3, delay = 2000) => {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            const result = await sendEmail(to, subject, html);
+            if (result.success) {
+                return result;
+            }
+            console.log(`Retry ${i + 1}/${maxRetries} for ${to}`);
+            await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
+        } catch (error) {
+            console.error(`Attempt ${i + 1} failed for ${to}:`, error.message);
+            if (i === maxRetries - 1) {
+                return { success: false, error: error.message };
+            }
+            await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
+        }
+    }
+    return { success: false, error: 'Max retries exceeded' };
+};
+
 const testConnection = async () => {
     console.log('Testing SMTP connection...');
-    const transport = getTransporter();
+
+    const isVerified = await verifyTransporter();
+
+    if (!isVerified) {
+        console.log('❌ Cannot proceed with test - verification failed');
+        return false;
+    }
 
     try {
-        await transport.verify();
-        console.log('✅ SMTP connection verified!');
-
         const result = await sendEmail(
-            'mackymusa1000@gmail.com',
+            'mkeuloicy@gmail.com',
             'UniEat SMTP Test',
             '<h1>Connection Successful!</h1><p>Your SMTP is working correctly.</p><p>Time: ' + new Date().toLocaleString() + '</p>'
         );
 
         if (result.success) {
             console.log('✅ Test email sent! Check your inbox.');
+            return true;
         } else {
             console.log('❌ Test email failed:', result.error);
+            return false;
         }
     } catch (error) {
         console.error('❌ Connection failed:', error.message);
+        return false;
     }
 };
 
@@ -274,10 +314,12 @@ const getUserDeletionEmail = (userDetails) => {
 
 module.exports = {
     sendEmail,
+    sendEmailWithRetry,
     getAdminEmails,
     getUserCreationEmail,
     getAdminNotificationEmail,
     getPasswordResetEmail,
     getUserDeletionEmail,
-    verifyTransporter
+    verifyTransporter,
+    testConnection
 };

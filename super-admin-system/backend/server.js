@@ -4,7 +4,7 @@ const cors = require('cors');
 const { pool } = require('../../shared/db/db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-
+const { sendEmail, sendEmailWithRetry, getAdminEmails, getUserCreationEmail, getAdminNotificationEmail, getPasswordResetEmail, getUserDeletionEmail } = require('../../shared/services/emailService');
 const app = express();
 const PORT = process.env.PORT || 5001;
 
@@ -335,7 +335,6 @@ app.get('/api/super-admin/stats', verifyToken, checkSubscriptionStatus, async (r
 });
 
 // ========== GET ALL UNIVERSITIES ==========
-// Only system_owner can access this
 app.get('/api/super-admin/universities', verifyToken, checkSubscriptionStatus, requireRole(['system_owner']), async (req, res) => {
     try {
         const result = await pool.query(`
@@ -353,7 +352,6 @@ app.get('/api/super-admin/universities', verifyToken, checkSubscriptionStatus, r
 });
 
 // ========== ADD NEW UNIVERSITY ==========
-// Only system_owner can access this
 app.post('/api/super-admin/universities', verifyToken, checkSubscriptionStatus, requireRole(['system_owner']), async (req, res) => {
     const { name, email, phone, address, city, country } = req.body;
 
@@ -372,7 +370,6 @@ app.post('/api/super-admin/universities', verifyToken, checkSubscriptionStatus, 
 });
 
 // ========== ACTIVATE/EXTEND SUBSCRIPTION ==========
-// Only system_owner can access this
 app.post('/api/super-admin/universities/:id/activate-subscription', verifyToken, checkSubscriptionStatus, requireRole(['system_owner']), async (req, res) => {
     const { id } = req.params;
     const { duration, amount } = req.body;
@@ -451,7 +448,6 @@ app.post('/api/super-admin/universities/:id/activate-subscription', verifyToken,
 });
 
 // ========== SUSPEND UNIVERSITY ==========
-// Only system_owner can access this
 app.post('/api/super-admin/universities/:id/suspend', verifyToken, checkSubscriptionStatus, requireRole(['system_owner']), async (req, res) => {
     const { id } = req.params;
 
@@ -500,7 +496,6 @@ app.post('/api/super-admin/universities/:id/suspend', verifyToken, checkSubscrip
 });
 
 // ========== GET ALL USERS ==========
-// super_admin can only see users from their university
 app.get('/api/super-admin/users', verifyToken, checkSubscriptionStatus, async (req, res) => {
     const { universityId, role } = req.query;
 
@@ -546,8 +541,6 @@ app.post('/api/super-admin/users', verifyToken, checkSubscriptionStatus, async (
 
     if (req.admin.role === 'super_admin' && req.university) {
         targetUniversityId = req.university.id;
-
-        // Super admins cannot create other admin users
         if (role === 'admin') {
             return res.status(403).json({
                 success: false,
@@ -572,32 +565,89 @@ app.post('/api/super-admin/users', verifyToken, checkSubscriptionStatus, async (
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const result = await pool.query(
-            `INSERT INTO users (id, name, email, reg_number, password, role, university_id, is_active)
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, true)
-             RETURNING id, name, email, reg_number, role, university_id`,
+            `INSERT INTO users (id, name, email, reg_number, password, role, university_id, is_active, created_at)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, true, NOW())
+             RETURNING id, name, email, reg_number, role, university_id, created_at`,
             [name, email, reg_number, hashedPassword, targetRole, targetUniversityId]
         );
 
         const newUser = result.rows[0];
 
-        const universityResult = await pool.query('SELECT name FROM universities WHERE id = $1', [university_id]);
-        const universityName = universityResult.rows[0]?.name;
+        const uniResult = await pool.query('SELECT name FROM universities WHERE id = $1', [targetUniversityId]);
+        const universityName = uniResult.rows[0]?.name || 'your university';
 
         const userEmailTemplate = getUserCreationEmail(newUser, password);
-        sendEmail(newUser.email, userEmailTemplate.subject, userEmailTemplate.html);
+        const emailResult = await sendEmailWithRetry(newUser.email, userEmailTemplate.subject, userEmailTemplate.html, 3, 2000);
 
-        const adminEmails = await getAdminEmails(university_id, pool);
-        const adminNotificationTemplate = getAdminNotificationEmail(newUser, password, 'created', req.admin?.name || 'Super Admin');
-
-        for (const admin of adminEmails) {
-            sendEmail(admin.email, adminNotificationTemplate.subject, adminNotificationTemplate.html);
+        if (!emailResult.success) {
+            console.warn(`Failed to send email to ${newUser.email} after retries:`, emailResult.error);
         }
 
-        console.log(`User ${newUser.name} created via Super Admin. Email notifications sent.`);
+        const adminEmails = await getAdminEmails(targetUniversityId, pool);
+        const creatorName = req.admin?.name || 'Super Admin';
+        const adminNotificationTemplate = getAdminNotificationEmail(newUser, password, 'created', creatorName);
 
-        res.json({ success: true, user: result.rows[0] });
+        for (const admin of adminEmails) {
+            await sendEmail(admin.email, adminNotificationTemplate.subject, adminNotificationTemplate.html);
+        }
+
+        console.log(`📧 User ${newUser.name} created via Super Admin. Emails sent to user and ${adminEmails.length} admins.`);
+
+        res.json({ success: true, user: newUser });
     } catch (error) {
         console.error('Error creating user:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// ========== RESET USER PASSWORD ==========
+app.post('/api/super-admin/users/:id/reset-password', verifyToken, checkSubscriptionStatus, async (req, res) => {
+    const { id } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+        return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+
+    try {
+        // Get user details first
+        let userQuery = `SELECT id, name, email, reg_number, role, university_id FROM users WHERE id = $1`;
+        let params = [id];
+
+        if (req.admin.role === 'super_admin' && req.university) {
+            userQuery += ` AND university_id = $2`;
+            params.push(req.university.id);
+        }
+
+        const userResult = await pool.query(userQuery, params);
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        const user = userResult.rows[0];
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [hashedPassword, id]);
+
+        // === SEND EMAIL NOTIFICATIONS ===
+        // 1. Send email to the user with new password
+        const resetEmailTemplate = getPasswordResetEmail(user, newPassword);
+        await sendEmail(user.email, resetEmailTemplate.subject, resetEmailTemplate.html);
+
+        // 2. Notify admins about password reset
+        const adminEmails = await getAdminEmails(user.university_id, pool);
+        const adminName = req.admin?.name || 'Super Admin';
+        const adminNotificationTemplate = getAdminNotificationEmail(user, newPassword, 'password_reset', adminName);
+
+        for (const admin of adminEmails) {
+            await sendEmail(admin.email, adminNotificationTemplate.subject, adminNotificationTemplate.html);
+        }
+
+        console.log(`📧 Password reset for user ${user.name}. Emails sent.`);
+
+        res.json({ success: true, message: 'Password reset successfully. Email sent to user.' });
+    } catch (error) {
+        console.error('Error resetting password:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
@@ -650,32 +700,50 @@ app.put('/api/super-admin/users/:id', verifyToken, checkSubscriptionStatus, asyn
 });
 
 // ========== DELETE USER ==========
-// super_admin can only delete users from their university
 app.delete('/api/super-admin/users/:id', verifyToken, checkSubscriptionStatus, async (req, res) => {
     const { id } = req.params;
 
-    // Verify super_admin can only delete users from their university
-    if (req.admin.role === 'super_admin' && req.university) {
-        const userCheck = await pool.query(
-            'SELECT university_id FROM users WHERE id = $1',
-            [id]
-        );
+    try {
+        let userQuery = `SELECT id, name, email, reg_number, role, university_id, created_at FROM users WHERE id = $1`;
+        let params = [id];
 
-        if (userCheck.rows.length === 0) {
+        if (req.admin.role === 'super_admin' && req.university) {
+            userQuery += ` AND university_id = $2`;
+            params.push(req.university.id);
+        }
+
+        const userResult = await pool.query(userQuery, params);
+        if (userResult.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        if (userCheck.rows[0].university_id !== req.university.id) {
+        const user = userResult.rows[0];
+        user.created_at = user.created_at || new Date();
+
+        // Check if user is admin and current user is super_admin
+        if (user.role === 'admin' && req.admin.role === 'super_admin') {
             return res.status(403).json({
                 success: false,
-                message: 'You can only delete users from your own university.'
+                message: 'Super admins cannot delete admin users.'
             });
         }
-    }
 
-    try {
         await pool.query('DELETE FROM users WHERE id = $1', [id]);
-        res.json({ success: true, message: 'User deleted' });
+
+        const deletionEmailTemplate = getUserDeletionEmail(user);
+        await sendEmail(user.email, deletionEmailTemplate.subject, deletionEmailTemplate.html);
+
+        const adminEmails = await getAdminEmails(user.university_id, pool);
+        const adminName = req.admin?.name || 'Super Admin';
+        const adminNotificationTemplate = getAdminNotificationEmail(user, null, 'deleted', adminName);
+
+        for (const admin of adminEmails) {
+            await sendEmail(admin.email, adminNotificationTemplate.subject, adminNotificationTemplate.html);
+        }
+
+        console.log(`📧 User ${user.name} deleted. Emails sent.`);
+
+        res.json({ success: true, message: 'User deleted successfully' });
     } catch (error) {
         console.error('Error deleting user:', error);
         res.status(500).json({ success: false, message: error.message });
