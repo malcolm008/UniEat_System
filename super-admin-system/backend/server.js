@@ -4,7 +4,8 @@ const cors = require('cors');
 const { pool } = require('../../shared/db/db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { sendEmail, sendEmailWithRetry, getAdminEmails, getUserCreationEmail, getAdminNotificationEmail, getPasswordResetEmail, getUserDeletionEmail } = require('../../shared/services/emailService');
+const { emailQueue } = require('../../shared/services/emailQueue');
+const { sendEmail, sendEmailAsync, sendEmailWithRetry, getAdminEmails, getUserCreationEmail, getAdminNotificationEmail, getPasswordResetEmail, getUserDeletionEmail } = require('../../shared/services/emailService');
 const app = express();
 const PORT = process.env.PORT || 5001;
 
@@ -573,30 +574,40 @@ app.post('/api/super-admin/users', verifyToken, checkSubscriptionStatus, async (
 
         const newUser = result.rows[0];
 
-        const uniResult = await pool.query('SELECT name FROM universities WHERE id = $1', [targetUniversityId]);
-        const universityName = uniResult.rows[0]?.name || 'your university';
-
-        const userEmailTemplate = getUserCreationEmail(newUser, password);
-        const emailResult = await sendEmailWithRetry(newUser.email, userEmailTemplate.subject, userEmailTemplate.html, 3, 2000);
-
-        if (!emailResult.success) {
-            console.warn(`Failed to send email to ${newUser.email} after retries:`, emailResult.error);
-        }
-
-        const adminEmails = await getAdminEmails(targetUniversityId, pool);
-        const creatorName = req.admin?.name || 'Super Admin';
-        const adminNotificationTemplate = getAdminNotificationEmail(newUser, password, 'created', creatorName);
-
-        for (const admin of adminEmails) {
-            await sendEmail(admin.email, adminNotificationTemplate.subject, adminNotificationTemplate.html);
-        }
-
-        console.log(`📧 User ${newUser.name} created via Super Admin. Emails sent to user and ${adminEmails.length} admins.`);
-
         res.json({ success: true, user: newUser });
+
+        setImmediate(async () => {
+            try {
+                const userEmailTemplate = getUserCreationEmail(newUser, password);
+                await emailOptions.add({
+                    to: newUser.email,
+                    subject: userEmailTemplate.subject,
+                    html: userEmailTemplate.html
+                });
+
+                const adminEmails = await getAdminEmails(targetUniversityId, pool);
+                const creatorName = req.admin?.name || 'Super Admin';
+                const adminNotificationTemplate = getAdminNotificationEmail(newUser, password, 'created', creatorName);
+
+                for (const admin of adminEmails) {
+                    await emailQueue.add({
+                        to: admin.email,
+                        subject: adminNotificationTemplate.subject,
+                        html: adminNotificationTemplate.html
+                    });
+                }
+
+                console.log(`Queued emails for user ${newUser.name} (${adminEmails.length + 1} emails)`);
+            } catch (queueError) {
+                console.error('Failed to queue emails:', queueError);
+            }
+        });
+
     } catch (error) {
         console.error('Error creating user:', error);
-        res.status(500).json({ success: false, message: error.message });
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: error.message });
+        }
     }
 });
 

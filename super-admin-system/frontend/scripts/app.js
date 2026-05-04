@@ -518,6 +518,17 @@ function UserManagement() {
     const [filterUniversity, setFilterUniversity] = useState('all');
     const [formData, setFormData] = useState({ name: '', email: '', reg_number: '', role: 'student', university_id: '' });
 
+    // Loading states for actions
+    const [isCreating, setIsCreating] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(null);
+    const [isEditing, setIsEditing] = useState(false);
+    const [toast, setToast] = useState(null);
+
+    const showToast = (message, type = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 4000);
+    };
+
     const loadData = async () => {
         setLoading(true);
         try {
@@ -536,6 +547,7 @@ function UserManagement() {
             }
         } catch (error) {
             console.error('Error loading data:', error);
+            showToast('Failed to load data', 'error');
         }
         setLoading(false);
     };
@@ -555,15 +567,16 @@ function UserManagement() {
 
     const addUser = async () => {
         if (!formData.name || !formData.email || !formData.reg_number) {
-            alert('Please fill required fields');
+            showToast('Please fill all required fields', 'error');
             return;
         }
 
         if (!formData.university_id) {
-            alert('Please select a university');
+            showToast('Please select a university', 'error');
             return;
         }
 
+        setIsCreating(true);
         const newPassword = generateRandomPassword();
         const userData = {
             name: formData.name,
@@ -580,19 +593,22 @@ function UserManagement() {
                 await loadData();
                 setShowAddModal(false);
                 setFormData({ name: '', email: '', reg_number: '', role: 'student', university_id: '' });
-                alert(`✅ User created successfully!\n\nName: ${formData.name}\nUsername: ${formData.reg_number}\nPassword: ${newPassword}\n\n📧 An email with credentials has been sent to the user.`);
+                showToast(`✅ User "${formData.name}" created successfully! Password sent via email.`, 'success');
             } else {
-                alert('Error: ' + (result.message || 'Failed to create user'));
+                showToast(result.message || 'Failed to create user', 'error');
             }
         } catch (error) {
             console.error('Error adding user:', error);
-            alert('Network error. Please try again.');
+            showToast('Network error. Please try again.', 'error');
+        } finally {
+            setIsCreating(false);
         }
     };
 
     const editUser = async () => {
         if (!selectedUser) return;
 
+        setIsEditing(true);
         const updateData = {
             name: formData.name,
             email: formData.email,
@@ -608,30 +624,35 @@ function UserManagement() {
                 setShowEditModal(false);
                 setSelectedUser(null);
                 setFormData({ name: '', email: '', reg_number: '', role: 'student', university_id: '' });
-                alert('✅ User updated successfully!');
+                showToast(`✅ User "${formData.name}" updated successfully!`, 'success');
             } else {
-                alert('Error: ' + (result.message || 'Failed to update user'));
+                showToast(result.message || 'Failed to update user', 'error');
             }
         } catch (error) {
             console.error('Error updating user:', error);
-            alert('Network error. Please try again.');
+            showToast('Network error. Please try again.', 'error');
+        } finally {
+            setIsEditing(false);
         }
     };
 
     const deleteUser = async (user) => {
         if (!confirm(`⚠️ Are you sure you want to delete ${user.name}?\n\nThis action cannot be undone.\n\nAn email notification will be sent to the user.`)) return;
 
+        setIsDeleting(user.id);
         try {
             const result = await apiService.deleteUser(user.id);
             if (result.success) {
                 await loadData();
-                alert(`✅ ${user.name} has been deleted.\n\n📧 A notification email has been sent to the user.`);
+                showToast(`✅ ${user.name} has been deleted. Notification email sent.`, 'success');
             } else {
-                alert('❌ Error: ' + (result.message || 'Failed to delete user'));
+                showToast(result.message || 'Failed to delete user', 'error');
             }
         } catch (error) {
             console.error('Error deleting user:', error);
-            alert('Network error. Please try again.');
+            showToast('Network error. Please try again.', 'error');
+        } finally {
+            setIsDeleting(null);
         }
     };
 
@@ -647,7 +668,7 @@ function UserManagement() {
         const passwordToUse = newPassword || generatedPassword;
 
         if (!passwordToUse || passwordToUse.length < 6) {
-            alert('Password must be at least 6 characters');
+            showToast('Password must be at least 6 characters', 'error');
             return;
         }
 
@@ -667,18 +688,18 @@ function UserManagement() {
             const result = await response.json();
 
             if (result.success) {
-                alert(`✅ Password reset for ${resetUser.name}!\n\nNew Password: ${passwordToUse}\n\n📧 An email has been sent to the user with their new password.`);
+                showToast(`✅ Password reset for ${resetUser.name}! New password sent via email.`, 'success');
                 setShowResetModal(false);
                 setResetUser(null);
                 setNewPassword('');
                 setGeneratedPassword('');
                 loadData();
             } else {
-                alert('Error: ' + (result.message || 'Failed to reset password'));
+                showToast(result.message || 'Failed to reset password', 'error');
             }
         } catch (error) {
             console.error('Error resetting password:', error);
-            alert('Network error. Please try again.');
+            showToast('Network error. Please try again.', 'error');
         } finally {
             setResettingPassword(false);
         }
@@ -690,16 +711,49 @@ function UserManagement() {
         return true;
     });
 
-    if (loading) return <div style={{ textAlign: 'center', padding: 40 }}>Loading users...</div>;
+    if (loading) return (
+        <div style={{ textAlign: 'center', padding: 40 }}>
+            <div style={{ width: 40, height: 40, border: '3px solid #2a2a2a', borderTopColor: '#2563eb', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 0.7s linear infinite' }} />
+            <div>Loading users...</div>
+        </div>
+    );
 
     return (
         <div>
+            {/* Toast Notification */}
+            {toast && (
+                <div style={{
+                    position: 'fixed',
+                    bottom: 20,
+                    right: 20,
+                    zIndex: 10000,
+                    animation: 'slideIn 0.3s ease'
+                }}>
+                    <div style={{
+                        background: toast.type === 'success' ? '#1a5a3a' : toast.type === 'error' ? '#5a1a1a' : '#1a3a5a',
+                        color: toast.type === 'success' ? '#8bc34a' : toast.type === 'error' ? '#ef5350' : '#64b5f6',
+                        padding: '12px 20px',
+                        borderRadius: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                        borderLeft: `4px solid ${toast.type === 'success' ? '#4caf50' : toast.type === 'error' ? '#f44336' : '#2196f3'}`
+                    }}>
+                        <span style={{ fontSize: 18 }}>
+                            {toast.type === 'success' ? '✅' : toast.type === 'error' ? '❌' : 'ℹ️'}
+                        </span>
+                        <span style={{ fontSize: 13 }}>{toast.message}</span>
+                    </div>
+                </div>
+            )}
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
                 <div>
                     <h1 style={{ fontSize: 24, marginBottom: 4 }}>User Management</h1>
                     <p style={{ color: '#aaa' }}>Manage all users across all universities</p>
                 </div>
-                <Btn onClick={() => setShowAddModal(true)}>+ Add User</Btn>
+                <Btn onClick={() => setShowAddModal(true)} disabled={isCreating}>+ Add User</Btn>
             </div>
 
             {/* Filters */}
@@ -770,7 +824,9 @@ function UserManagement() {
                                                 setShowEditModal(true);
                                             }}>Edit</Btn>
                                             <Btn variant="warning" onClick={() => openResetModal(user)}>Reset Pwd</Btn>
-                                            <Btn variant="danger" onClick={() => deleteUser(user)}>Delete</Btn>
+                                            <Btn variant="danger" onClick={() => deleteUser(user)} disabled={isDeleting === user.id}>
+                                                {isDeleting === user.id ? '...' : 'Delete'}
+                                            </Btn>
                                         </div>
                                     </td>
                                 </tr>
@@ -781,7 +837,7 @@ function UserManagement() {
             </div>
 
             {/* Add User Modal */}
-            <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="Add New User">
+            <Modal open={showAddModal} onClose={() => !isCreating && setShowAddModal(false)} title="Add New User">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
                     <input type="text" placeholder="Full Name *" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={inputStyle} />
                     <input type="email" placeholder="Email *" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} style={inputStyle} />
@@ -804,14 +860,16 @@ function UserManagement() {
                     </div>
 
                     <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-                        <Btn variant="secondary" onClick={() => setShowAddModal(false)}>Cancel</Btn>
-                        <Btn onClick={addUser}>Create User</Btn>
+                        <Btn variant="secondary" onClick={() => setShowAddModal(false)} disabled={isCreating}>Cancel</Btn>
+                        <Btn onClick={addUser} disabled={isCreating}>
+                            {isCreating ? 'Creating...' : 'Create User'}
+                        </Btn>
                     </div>
                 </div>
             </Modal>
 
             {/* Edit User Modal */}
-            <Modal open={showEditModal} onClose={() => setShowEditModal(false)} title="Edit User">
+            <Modal open={showEditModal} onClose={() => !isEditing && setShowEditModal(false)} title="Edit User">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
                     <input type="text" placeholder="Full Name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={inputStyle} />
                     <input type="email" placeholder="Email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} style={inputStyle} />
@@ -829,14 +887,16 @@ function UserManagement() {
                     </select>
 
                     <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-                        <Btn variant="secondary" onClick={() => setShowEditModal(false)}>Cancel</Btn>
-                        <Btn onClick={editUser}>Save Changes</Btn>
+                        <Btn variant="secondary" onClick={() => setShowEditModal(false)} disabled={isEditing}>Cancel</Btn>
+                        <Btn onClick={editUser} disabled={isEditing}>
+                            {isEditing ? 'Saving...' : 'Save Changes'}
+                        </Btn>
                     </div>
                 </div>
             </Modal>
 
             {/* Reset Password Modal */}
-            <Modal open={showResetModal} onClose={() => { setShowResetModal(false); setResetUser(null); }} title="Reset User Password">
+            <Modal open={showResetModal} onClose={() => !resettingPassword && setShowResetModal(false)} title="Reset User Password">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <p>Reset password for: <strong>{resetUser?.name}</strong> ({resetUser?.reg_number})</p>
 
@@ -856,13 +916,29 @@ function UserManagement() {
                     </div>
 
                     <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-                        <Btn variant="secondary" onClick={() => { setShowResetModal(false); setResetUser(null); }}>Cancel</Btn>
+                        <Btn variant="secondary" onClick={() => { setShowResetModal(false); setResetUser(null); }} disabled={resettingPassword}>Cancel</Btn>
                         <Btn variant="warning" onClick={resetUserPassword} disabled={resettingPassword}>
                             {resettingPassword ? 'Resetting...' : 'Reset Password'}
                         </Btn>
                     </div>
                 </div>
             </Modal>
+
+            <style>{`
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
+                }
+                @keyframes slideIn {
+                    from {
+                        transform: translateX(100%);
+                        opacity: 0;
+                    }
+                    to {
+                        transform: translateX(0);
+                        opacity: 1;
+                    }
+                }
+            `}</style>
         </div>
     );
 }

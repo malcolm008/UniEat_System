@@ -1,5 +1,9 @@
 const nodemailer = require('nodemailer');
 
+let transporter = null;
+let verificationInProgress = false;
+let verificationComplete = false;
+
 const createTransporter = () => {
     const password = process.env.SMTP_PASS || 'GetThatBag_0375';
 
@@ -24,9 +28,6 @@ const createTransporter = () => {
     return nodemailer.createTransport(config);
 };
 
-let transporter = null;
-let verificationPromise = null;
-
 const getTransporter = () => {
     if (!transporter) {
         transporter = createTransporter();
@@ -36,28 +37,21 @@ const getTransporter = () => {
 };
 
 const verifyTransporter = async () => {
-    if (verificationPromise) {
-        return verificationPromise;
+    if (verificationInProgress || verificationComplete) return;
+
+    verificationInProgress = true;
+    try {
+        const transport = getTransporter();
+        await transport.verify();
+        console.log('Email service configured successfully');
+        console.log(`   SMTP Host: mail.mecs.co.tz`);
+        console.log(`   SMTP User: uni-eat@mecs.co.tz`);
+        verificationComplete = true;
+    } catch (error) {
+        console.error('Email service configuration error:', error.message);
+    } finally {
+        verificationInProgress = false;
     }
-
-    verificationPromise = (async () => {
-        try {
-            const transport = getTransporter();
-            await transport.verify();
-            console.log('Email service configured successfully');
-            console.log(`   SMTP Host: mail.mecs.co.tz`);
-            console.log(`   SMTP User: uni-eat@mecs.co.tz`);
-            return true;
-        } catch (error) {
-            console.error('Email service configuration error:', error.message);
-            console.error('   Please check your SMTP credentials and network connection');
-            return false;
-        } finally {
-            verificationPromise = null;
-        }
-    })();
-
-    return verificationPromise;
 };
 
 verifyTransporter();
@@ -75,13 +69,17 @@ const sendEmail = async (to, subject, html, text = null) => {
         };
 
         const info = await transport.sendMail(mailOptions);
-        console.log(`✅ Email sent successfully to ${to}`);
-        console.log(`   Message ID: ${info.messageId}`);
         return { success: true, messageId: info.messageId };
     } catch (error) {
-        console.error(`❌ Email sending error to ${to}:`, error.message);
+        console.error(`Email sending error to ${to}:`, error.message);
         return { success: false, error: error.message };
     }
+};
+
+const sendEmailAsync = (to, subject, html) => {
+    sendEmail(to, subject, html).catch(err => {
+        console.error(`Background email failed to ${to}:`, err.message);
+    });
 };
 
 const sendEmailWithRetry = async (to, subject, html, maxRetries = 3, delay = 2000) => {
@@ -314,6 +312,7 @@ const getUserDeletionEmail = (userDetails) => {
 
 module.exports = {
     sendEmail,
+    sendEmailAsync,
     sendEmailWithRetry,
     getAdminEmails,
     getUserCreationEmail,
