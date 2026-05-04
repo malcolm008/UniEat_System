@@ -1082,7 +1082,6 @@ function SubscriptionManagement() {
     );
 }
 
-// Subscription Expired Warning Component
 function SubscriptionWarning({ onLogout }) {
     const [dismissed, setDismissed] = useState(false);
 
@@ -1135,7 +1134,6 @@ function SubscriptionWarning({ onLogout }) {
     );
 }
 
-// ========== SETTINGS ==========
 function Settings() {
     const [settings, setSettings] = useState({
         systemName: 'UniEat',
@@ -1450,7 +1448,6 @@ function Settings() {
     );
 }
 
-// ========== MAIN APP ==========
 function App() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [admin, setAdmin] = useState(null);

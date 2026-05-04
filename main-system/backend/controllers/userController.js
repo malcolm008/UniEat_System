@@ -1,14 +1,23 @@
 const { query } = require('../../../shared/db/db');
 const bcrypt = require('bcryptjs');
 const { success, notFound, error, paginate, created } = require('../../../shared/utils/response');
+const { sendEmail, getAdminEmails, getUserCreationEmail, getAdminNotificationEmail, getPasswordResetEmail, getUserDeletionEmail } = require('../../../shared/services/emailService');
 
-// Helper to get user's university ID from token
 const getUserUniversity = async (userId) => {
     const { rows } = await query('SELECT university_id FROM users WHERE id = $1', [userId]);
     return rows[0]?.university_id;
 };
 
-// Get users - filtered by university (only users from same university)
+const getUniversityName = async (universityId) => {
+    const { rows } = await query('SELECT name FROM universities WHERE id = $1', [universityId]);
+    return rows[0]?.name;
+};
+
+getCreatorInfo = async (userId) => {
+    const { rows } = await query(' SELECT name, email FROM users WHERE id = $1', [userId]);
+    return rows[0];
+};
+
 const getUsers = async (req, res, next) => {
   try {
     const { page = 1, limit = 30, role, search } = req.query;
@@ -39,7 +48,6 @@ const getUsers = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// Get single user - must be from same university
 const getUser = async (req, res, next) => {
   try {
     const universityId = await getUserUniversity(req.user.id);
@@ -56,50 +64,62 @@ const getUser = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// Create user - automatically assigns to admin's university
 const createUser = async (req, res, next) => {
-  try {
-    const { name, email, reg_number, password, role = 'staff' } = req.body;
+    try {
+        const { name, email, reg_number, password, role = 'staff' } = req.body;
 
-    // Get the admin's university ID
-    const universityId = await getUserUniversity(req.user.id);
-    if (!universityId) {
-      return error(res, 'No university associated with your account', 400);
+        const universityId = await getUserUniversity(req.user.id);
+        if (!universityId) {
+            return error(res, 'No university associated with your account', 400);
+        }
+
+        const existing = await query(
+            'SELECT id FROM users WHERE (reg_number = $1 OR email = $2) AND university_id = $3',
+            [reg_number, email, universityId]
+        );
+
+        if (existing.rows.length > 0) {
+            return error(res, 'User with this registration number or email already exists in your university', 400);
+        }
+
+        const hash = await bcrypt.hash(password, 12);
+
+        const { rows } = await query(
+            `INSERT INTO users (name, email, reg_number, password, role, is_active, display_name, university_id, created_at)
+             VALUES ($1, $2, $3, $4, $5, true, $1, $6, NOW())
+             RETURNING id, name, email, reg_number, role, display_name, university_id, created_at`,
+            [name, email || null, reg_number, hash, role, universityId]
+        );
+
+        const newUser = rows[0];
+
+        const universityName = await getUniversityName(universityId);
+        const creatorInfo = await getCreatorInfo(req.user.id);
+
+        const userEmailTemplate = getUserCreationEmail(newUser, password);
+        sendEmail(newUser.email, userEmailTemplate.subject, userEmailTemplate.html);
+
+        const adminEmails = await getAdminEmails(universityId, query);
+        const adminNotificationTemplate = getAdminNotificationEmail(newUser, password, 'created', creatorInfo?.name || 'Administrator');
+
+        for (const admin of adminEmails) {
+            sendEmail(admin.email, adminNotificationTemplate.subject, adminNotificationTemplate.html);
+        }
+
+        console.log(`User ${newUser.name} created. Email notifications sent to user and ${adminEmails.length} admins.`);
+
+        return created(res, newUser, 'User created successfully');
+    } catch (err) {
+        console.error('Create user error:', err);
+        next(err);
     }
-
-    // Check if user already exists in the same university
-    const existing = await query(
-      'SELECT id FROM users WHERE (reg_number = $1 OR email = $2) AND university_id = $3',
-      [reg_number, email, universityId]
-    );
-
-    if (existing.rows.length > 0) {
-      return error(res, 'User with this registration number or email already exists in your university', 400);
-    }
-
-    const hash = await bcrypt.hash(password, 12);
-
-    const { rows } = await query(
-      `INSERT INTO users (name, email, reg_number, password, role, is_active, display_name, university_id)
-       VALUES ($1, $2, $3, $4, $5, true, $1, $6)
-       RETURNING id, name, email, reg_number, role, display_name, university_id, created_at`,
-      [name, email || null, reg_number, hash, role, universityId]
-    );
-
-    return created(res, rows[0], 'User created successfully');
-  } catch (err) {
-    console.error('Create user error:', err);
-    next(err);
-  }
 };
 
-// Update user - must be from same university
 const updateUser = async (req, res, next) => {
   try {
     const { name, email, reg_number, role, is_active, display_name } = req.body;
     const userId = req.params.id;
 
-    // Get admin's university
     const universityId = await getUserUniversity(req.user.id);
     if (!universityId) {
       return error(res, 'No university associated with your account', 400);
@@ -170,55 +190,98 @@ const updateUser = async (req, res, next) => {
   }
 };
 
-// Delete user - must be from same university and not admin
 const deleteUser = async (req, res, next) => {
-  try {
-    const universityId = await getUserUniversity(req.user.id);
-    if (!universityId) {
-      return error(res, 'No university associated with your account', 400);
+    try {
+        const universityId = await getUserUniversity(req.user.id);
+        if (!universityId) {
+            return error(res, 'No university associated with your account', 400);
+        }
+
+        const userResult = await query(
+            'SELECT id, name, email, reg_number, role FROM users WHERE id = $1 AND university_id = $2',
+            [req.params.id, universityId]
+        );
+
+        if (!userResult.rows[0]) return notFound(res, 'User not found');
+
+        const user = userResult.rows[0];
+
+        if (user.role === 'admin') {
+            return error(res, 'Cannot delete admin users', 403);
+        }
+
+        const { rows } = await query(
+            'DELETE FROM users WHERE id = $1 AND university_id = $2 RETURNING id',
+            [req.params.id, universityId]
+        );
+
+        if (!rows[0]) return notFound(res, 'User not found');
+
+        const deletionEmailTemplate = getUserDeletionEmail(user);
+        sendEmail(user.email, deletionEmailTemplate.subject, deletionEmailTemplate.html);
+
+        const adminEmails = await getAdminEmails(universityId, query);
+        const creatorInfo = await getCreatorInfo(req.user.id);
+        const adminNotificationTemplate = getAdminNotificationEmail(user, null, 'deleted', creatorInfo?.name || 'Administrator');
+
+        for (const admin of adminEmails) {
+            sendEmail(admin.email, adminNotificationTemplate.subject, adminNotificationTemplate.html);
+        }
+
+        console.log(`User ${user.name} deleted. Email notifications sent to user and ${adminEmails.length} admins.`);
+
+        return success(res, {}, 'User deleted successfully');
+    } catch (err) {
+        console.error('Delete user error:', err);
+        next(err);
     }
-
-    const checkUser = await query(
-      'SELECT id, role FROM users WHERE id = $1 AND university_id = $2',
-      [req.params.id, universityId]
-    );
-    if (!checkUser.rows[0]) return notFound(res, 'User not found');
-
-    if (checkUser.rows[0].role === 'admin') {
-      return error(res, 'Cannot delete admin users', 403);
-    }
-
-    const { rows } = await query(
-      'DELETE FROM users WHERE id = $1 AND university_id = $2 RETURNING id',
-      [req.params.id, universityId]
-    );
-    if (!rows[0]) return notFound(res, 'User not found');
-    return success(res, {}, 'User deleted successfully');
-  } catch (err) { next(err); }
 };
 
-// Reset password - must be from same university
 const resetPassword = async (req, res, next) => {
-  try {
-    const { newPassword } = req.body;
-    if (!newPassword || newPassword.length < 6) return error(res, 'Password must be at least 6 characters');
+    try {
+        const { newPassword } = req.body;
+        if (!newPassword || newPassword.length < 6) return error(res, 'Password must be at least 6 characters');
 
-    const universityId = await getUserUniversity(req.user.id);
-    if (!universityId) {
-      return error(res, 'No university associated with your account', 400);
+        const universityId = await getUserUniversity(req.user.id);
+        if (!universityId) {
+            return error(res, 'No university associated with your account', 400);
+        }
+
+        const userResult = await query(
+            'SELECT id, name, email, reg_number, role FROM users WHERE id = $1 AND university_id = $2',
+            [req.params.id, universityId]
+        );
+
+        if (!userResult.rows[0]) return notFound(res, 'User not found');
+
+        const user = userResult.rows[0];
+        const hash = await bcrypt.hash(newPassword, 12);
+
+        await query(
+            'UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2 AND university_id = $3',
+            [hash, req.params.id, universityId]
+        );
+
+        const resetEmailTemplate = getPasswordResetEmail(user, newPassword);
+        sendEmail(user.email, resetEmailTemplate.subject, resetEmailTemplate.html);
+
+        const adminEmails = await getAdminEmails(universityId, query);
+        const creatorInfo = await getCreatorInfo(req.user.id);
+        const adminNotificationTemplate = getAdminNotificationEmail(user, newPassword, 'password_reset', creatorInfo?.name || 'Administrator');
+
+        for (const admin of adminEmails) {
+            sendEmail(admin.email, adminNotificationTemplate.subject, adminNotificationTemplate.html);
+        }
+
+        console.log(`Password reset for user ${user.name}. Email notifications sent.`);
+
+        return success(res, {}, 'Password reset successfully');
+    } catch (err) {
+        console.error('Reset password error:', err);
+        next(err);
     }
-
-    const hash = await bcrypt.hash(newPassword, 12);
-    const { rows } = await query(
-      'UPDATE users SET password = $1 WHERE id = $2 AND university_id = $3 RETURNING id',
-      [hash, req.params.id, universityId]
-    );
-    if (!rows[0]) return notFound(res, 'User not found');
-    return success(res, {}, 'Password reset successfully');
-  } catch (err) { next(err); }
 };
 
-// Change password - user can change their own password (no university check needed since it's their own)
 const changePassword = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -262,7 +325,6 @@ const changePassword = async (req, res, next) => {
   }
 };
 
-// Toggle user status - must be from same university
 const toggleUserStatus = async (req, res, next) => {
   try {
     const { is_active } = req.body;

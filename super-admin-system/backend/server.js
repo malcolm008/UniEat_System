@@ -538,11 +538,9 @@ app.get('/api/super-admin/users', verifyToken, checkSubscriptionStatus, async (r
 });
 
 // ========== CREATE NEW USER ==========
-// super_admin can only create users for their university and cannot create admins
 app.post('/api/super-admin/users', verifyToken, checkSubscriptionStatus, async (req, res) => {
     const { name, email, reg_number, password, role, university_id } = req.body;
 
-    // For super_admin, force restrictions
     let targetUniversityId = university_id;
     let targetRole = role;
 
@@ -579,6 +577,23 @@ app.post('/api/super-admin/users', verifyToken, checkSubscriptionStatus, async (
              RETURNING id, name, email, reg_number, role, university_id`,
             [name, email, reg_number, hashedPassword, targetRole, targetUniversityId]
         );
+
+        const newUser = result.rows[0];
+
+        const universityResult = await pool.query('SELECT name FROM universities WHERE id = $1', [university_id]);
+        const universityName = universityResult.rows[0]?.name;
+
+        const userEmailTemplate = getUserCreationEmail(newUser, password);
+        sendEmail(newUser.email, userEmailTemplate.subject, userEmailTemplate.html);
+
+        const adminEmails = await getAdminEmails(university_id, pool);
+        const adminNotificationTemplate = getAdminNotificationEmail(newUser, password, 'created', req.admin?.name || 'Super Admin');
+
+        for (const admin of adminEmails) {
+            sendEmail(admin.email, adminNotificationTemplate.subject, adminNotificationTemplate.html);
+        }
+
+        console.log(`User ${newUser.name} created via Super Admin. Email notifications sent.`);
 
         res.json({ success: true, user: result.rows[0] });
     } catch (error) {
