@@ -106,7 +106,202 @@ const forgotPassword = async (req, res, next) => {
     }
 };
 
+const verifyOTP = async (req, res, next) => {
+    try {
+        const { reg_number, otp } = req.body;
+        const storedData = otpStore.get(reg_number);
 
+        if (!storedData) {
+            return res.status(400).json({
+                success: false,
+                message: 'No OTP request found. Please request a new OTP.'
+            });
+        }
+
+        if (Date.now() > storedData.expiresAt) {
+            otpStore.delete(reg_number);
+            return res.status(400).json({
+                success: false,
+                message: 'OTP has expired. Please request a new one.'
+            });
+        }
+
+        if (storedData.otp !== otp) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid OTP. Please try again.'
+            });
+        }
+
+        const resetToken = crypto.randomBytes(32).toString('hex');
+
+        otpStore.set(`reset_${resetToken}`, {
+            userId: storedData.userId,
+            reg_number: reg_number,
+            expiresAt: Date.now() + 15 * 60 * 1000
+        });
+
+        res.json({
+            success: true,
+            message: 'OTP verified successfully',
+            data: {
+                reset_token: resetToken
+            }
+        });
+    } catch (error) {
+        console.error('OTP verification error:', error);
+        next(error);
+    }
+};
+
+const resendOTP = async (req, res, next) => {
+    try {
+        const { reg_number } = await req.body;
+
+        const userResult = await query(
+            `SELECT id, reg_number, name, email FROM users WHERE reg_number = $1 AND is_active = true`,
+            [reg_number]
+        );
+
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No account found with this registration number'
+            });
+        }
+
+        const user = userResult.rows[0];
+
+        const otp = generateOTP();
+        const expiresAt = Date.now() + 10 * 60 * 1000;
+
+        otpStore.set(reg_number, {
+            otp,
+            expiresAt,
+            email: user.email,
+            userId: user.id,
+            name: user.name
+        });
+
+        const maskedEmail = user.email.replace(/(.{2})(.*)(?=@)/, (match, p1, p2) => {
+            return p1 + '*'.repeat(Math.min(p2.length, 4));
+        });
+
+        const emailTemplate = {
+            subject: 'UniEat - New Password Reset OTP',
+            html: `
+                <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px; background: #ffffff;">
+                    <div style="text-align: center; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 2px solid #C4522A;">
+                        <h1 style="color: #C4522A; margin: 0;">🔄 New OTP Request</h1>
+                    </div>
+
+                    <p style="color: #333; font-size: 14px; line-height: 1.5;">Dear <strong>${user.name}</strong>,</p>
+                    <p style="color: #333; font-size: 14px; line-height: 1.5;">You requested a new OTP. Here is your new One-Time Password:</p>
+
+                    <div style="background: #f8f8f8; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center; border-left: 4px solid #C4522A;">
+                        <div style="font-size: 36px; font-weight: 800; color: #C4522A; letter-spacing: 8px; font-family: monospace;">${otp}</div>
+                        <div style="font-size: 11px; color: #666; margin-top: 8px;">Valid for 10 minutes</div>
+                    </div>
+
+                    <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center; color: #999; font-size: 12px;">
+                        <p>© ${new Date().getFullYear()} UniEat. All rights reserved.</p>
+                    </div>
+                </div>
+            `
+        };
+
+        sendEmailAsync(user.email, emailTemplate.subject, emailTemplate.html);
+
+        res.json({
+            success: true,
+            message: 'New OTP sent to your email',
+            data: {
+                masked_email: maskedEmail
+            }
+        });
+    } catch (error) {
+        console.error('Resend OTP error:', error);
+        next(error);
+    }
+};
+
+const resetPassword = async (req, res, next) => {
+    try {
+        const { token, new_password } = req.body;
+
+        const resetData = otpStore.get(`reset_${token}`);
+
+        if (!resetData) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid or expired reset token. Please request a new OTP.'
+            });
+        }
+
+        if (Date.now() > resetData.expiresAt) {
+            otpStore.delete(`reset_${token}`);
+            return res.status(400).json({
+                success: false,
+                message: 'Reset token has expired. Please request a new OTP.'
+            });
+        }
+
+        const hashedPassword = await bcrypt.hash(new_password, 12);
+
+        await query(
+            `UPDATE users
+             SET password = $1, updated_at = NOW()
+             WHERE id = $2`,
+            [hashedPassword, resetData.userId]
+        );
+
+        otpStore.delete(resetData.reg_number);
+        otpStore.delete(`reset_${token}`);
+
+        const userResult = await query(
+            `SELECT name, email, reg_number FROM users WHERE id = $1`,
+            [resetData.userId]
+        );
+
+        if (userResult.rows.length > 0) {
+            const user = userResult.rows[0];
+            const emailTemplate = {
+                subject: 'UniEat - Password Changed Successfully',
+                html: `
+                    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px; background: #ffffff;">
+                        <div style="text-align: center; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 2px solid #4A6741;">
+                            <h1 style="color: #4A6741; margin: 0;">✅ Password Changed</h1>
+                        </div>
+
+                        <p style="color: #333; font-size: 14px; line-height: 1.5;">Dear <strong>${user.name}</strong>,</p>
+                        <p style="color: #333; font-size: 14px; line-height: 1.5;">Your password has been successfully changed.</p>
+
+                        <div style="background: #f8f8f8; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                            <p style="margin: 5px 0;"><strong>Registration Number:</strong> ${user.reg_number}</p>
+                            <p style="margin: 5px 0;"><strong>Email:</strong> ${user.email}</p>
+                        </div>
+
+                        <p style="color: #333; font-size: 14px; line-height: 1.5;">If you did not make this change, please contact support immediately.</p>
+
+                        <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center; color: #999; font-size: 12px;">
+                            <p>© ${new Date().getFullYear()} UniEat. All rights reserved.</p>
+                        </div>
+                    </div>
+                `
+            };
+
+            sendEmailAsync(user.email, emailTemplate.subject, emailTemplate.html);
+        }
+
+        res.json({
+            success: true,
+            message: 'Password reset successfully. You can now login with your new password.'
+        });
+    } catch (error) {
+        console.error('Password reset error:', error);
+        next(error);
+    }
+};
 
 const signTokens = (userId) => {
   const access = jwt.sign({ userId }, process.env.JWT_SECRET, {
