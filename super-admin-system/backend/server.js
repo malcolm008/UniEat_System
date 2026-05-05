@@ -451,6 +451,24 @@ app.post('/api/super-admin/universities/:id/activate-subscription', verifyToken,
                 isExtension: subscriptionStart !== startDate
             }
         });
+
+        setImmediate(async () => {
+            const uniResult = await pool.query('SELECT * FROM universities WHERE id = $1', [id]);
+            const university = uniResult.rows[0];
+            const emailTemplate = getUniversityActivationEmail(
+                university,
+                duration,
+                amount,
+                subscriptionStart,
+                endDate,
+                subscriptionStart !== startDate
+            );
+            await emailQueue.add({
+                to: university.email,
+                subject: emailTemplate.subject,
+                html: emailTemplate.html
+            });
+        });
     } catch (error) {
         console.error('Error activating subscription:', error);
         res.status(500).json({ success: false, message: error.message });
