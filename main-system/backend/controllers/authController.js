@@ -225,7 +225,7 @@ const resendOTP = async (req, res, next) => {
     }
 };
 
-const resetPassword = async (req, res, next) => {
+const resetForgotPassword = async (req, res, next) => {
     try {
         const { token, new_password } = req.body;
 
@@ -408,4 +408,4 @@ const register = async (req, res, next) => {
   }
 };
 
-module.exports = { login, refresh, me, register, forgotPassword, verifyOTP, resendOTP, resetPassword };
+module.exports = { login, refresh, me, register, forgotPassword, verifyOTP, resendOTP, resetForgotPassword };

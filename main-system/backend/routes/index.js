@@ -1,6 +1,6 @@
 // ── AUTH ROUTES ────────────────────────────────────────────────
 const authRouter = require('express').Router();
-const { login, refresh, me, register } = require('../controllers/authController');
+const { login, refresh, me, register, forgotPassword, verifyOTP, resendOTP, resetForgotPassword } = require('../controllers/authController');
 const { authenticate, requireAdmin } = require('../../../shared/middleware/auth');
 const { body, validationResult } = require('express-validator');
 const { query } = require('../../../shared/db/db');
@@ -18,13 +18,41 @@ authRouter.post('/login',
   validate, login
 );
 authRouter.post('/refresh', body('refresh_token').notEmpty(), validate, refresh);
+
 authRouter.get('/me', authenticate, me);
+
 authRouter.post('/register', authenticate, requireAdmin,
   body('name').notEmpty().trim(),
   body('reg_number').notEmpty().trim(),
   body('password').isLength({ min: 6 }),
   body('role').isIn(['student','staff','admin']),
   validate, register
+);
+
+authRouter.post('/forgot-password',
+  body('reg_number').notEmpty().trim(),
+  validate,
+  forgotPassword
+);
+
+authRouter.post('/verify-otp',
+  body('reg_number').notEmpty().trim(),
+  body('otp').isLength({ min: 6, max: 6 }).isNumeric(),
+  validate,
+  verifyOTP
+);
+
+authRouter.post('/resend-otp',
+  body('reg_number').notEmpty().trim(),
+  validate,
+  resendOTP
+);
+
+authRouter.post('/reset-password',
+  body('token').notEmpty(),
+  body('new_password').isLength({ min: 6 }),
+  validate,
+  resetForgotPassword
 );
 
 
