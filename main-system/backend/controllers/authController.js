@@ -3,6 +3,110 @@ const jwt = require('jsonwebtoken');
 const { query } = require('../../../shared/db/db');
 const { success, error, unauthorized, created } = require('../../../shared/utils/response');
 const { logger } = require('../../../shared/utils/logger');
+const crypto = require('crypto');
+const otpStore = new Map();
+const { sendEmailAsync } = require('../../../shared/services/emailService')
+
+const generateOTP = () => {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, value] of otpStore.entries()) {
+        if (value.expiresAt < now) {
+            otpStore.delete(key);
+        }
+    }
+}, 60000);
+
+const forgotPassword = async (req, res, next) => {
+    try {
+        const { reg_number } = req.body;
+
+        const userResult = await query(
+            `SELECT id, reg_number, name, email, role, university_id
+             FROM users
+             WHERE reg_number = $1 AND is_active = true`,
+            [reg_number]
+        );
+
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'No account found with this registration number'
+            });
+        }
+
+        const user = userResult.rows[0];
+
+        if (!user.email) {
+            return res.status(400).json({
+                success: false,
+                message: 'No email address associated with this account. Please contact your administrator.'
+            });
+        }
+
+        const otp = generateOTP();
+        const expiresAt = Date.now() + 10 * 60 * 1000;
+
+        otpStore.set(reg_number, {
+            otp,
+            expiresAt,
+            email: user.email,
+            userId: user.id,
+            name: user.name
+        });
+
+        const maskedEmail = user.email.replace(/(.{2})(.*)(?=@)/, (match, p1, p2) => {
+            return p1 + '*'.repeat(Math.min(p2.length, 4));
+        });
+
+        const emailTemplate = {
+            subject: 'UniEat - Password Reset OTP',
+            html: `
+                <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px; background: #ffffff;">
+                    <div style="text-align: center; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 2px solid #C4522A;">
+                        <h1 style="color: #C4522A; margin: 0;">🔐 Password Reset</h1>
+                    </div>
+
+                    <p style="color: #333; font-size: 14px; line-height: 1.5;">Dear <strong>${user.name}</strong>,</p>
+                    <p style="color: #333; font-size: 14px; line-height: 1.5;">You requested to reset your password. Use the following One-Time Password (OTP) to verify your identity:</p>
+
+                    <div style="background: #f8f8f8; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center; border-left: 4px solid #C4522A;">
+                        <div style="font-size: 11px; color: #666; letter-spacing: 2px; margin-bottom: 8px;">YOUR OTP CODE</div>
+                        <div style="font-size: 36px; font-weight: 800; color: #C4522A; letter-spacing: 8px; font-family: monospace;">${otp}</div>
+                        <div style="font-size: 11px; color: #666; margin-top: 8px;">Valid for 10 minutes</div>
+                    </div>
+
+                    <p style="color: #333; font-size: 14px; line-height: 1.5;">If you didn't request this password reset, please ignore this email or contact support.</p>
+
+                    <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center; color: #999; font-size: 12px;">
+                        <p>Need help? Contact support at support@unieat.com</p>
+                        <p>© ${new Date().getFullYear()} UniEat. All rights reserved.</p>
+                    </div>
+                </div>
+            `
+        };
+
+        sendEmailAsync(user.email, emailTemplate.subject, emailTemplate.html);
+
+        res.json({
+            success: true,
+            message: 'OTP sent to your registered email address',
+            data: {
+                masked_email: maskedEmail,
+                reg_number: reg_number
+            }
+        });
+
+    } catch (error) {
+        console.error('Forgot password error:', error);
+        next(error);
+    }
+};
+
+
 
 const signTokens = (userId) => {
   const access = jwt.sign({ userId }, process.env.JWT_SECRET, {
@@ -109,4 +213,4 @@ const register = async (req, res, next) => {
   }
 };
 
-module.exports = { login, refresh, me, register };
+module.exports = { login, refresh, me, register, forgotPassword, verifyOTP, resendOTP, resetPassword };
