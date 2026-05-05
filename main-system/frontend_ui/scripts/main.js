@@ -4775,10 +4775,12 @@
         const [loading, setLoading] = useState(false);
         const [err, setErr] = useState('');
 
+        // Forgot password states
         const [showForgotPassword, setShowForgotPassword] = useState(false);
-        const [forgotEmail, setForgotEmail] = useState('');
+        const [forgotRegNumber, setForgotRegNumber] = useState('');
+        const [userEmail, setUserEmail] = useState('');
         const [otpCode, setOtpCode] = useState('');
-        const [newPassword, setNewPassword] =  useState('');
+        const [newPassword, setNewPassword] = useState('');
         const [confirmPassword, setConfirmPassword] = useState('');
         const [otpSent, setOtpSent] = useState(false);
         const [otpVerified, setOtpVerified] = useState(false);
@@ -4799,7 +4801,7 @@
         }, []);
 
         const startCountdown = (seconds) => {
-            setCoundown(seconds);
+            setCountdown(seconds);
             setResendDisabled(true);
             countdownInterval = setInterval(() => {
                 setCountdown((prev) => {
@@ -4808,7 +4810,7 @@
                         setResendDisabled(false);
                         return 0;
                     }
-                    return prev -1 ;
+                    return prev - 1;
                 });
             }, 1000);
         };
@@ -4819,9 +4821,10 @@
             admin: { id: 'ADMIN001', pass: 'admin123', name: 'Dr. Osei', initials: 'DO' }
         };
 
+        // Request OTP for password reset using registration number
         const requestPasswordReset = async () => {
-            if (!forgotEmail) {
-                setForgotErr('Please enter your email address');
+            if (!forgotRegNumber) {
+                setForgotErr('Please enter your Registration Number');
                 return;
             }
 
@@ -4832,19 +4835,20 @@
             try {
                 const response = await fetch('http://localhost:5000/api/auth/forgot-password', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json'},
-                    body: JSON.stringify({ email: forgotEmail })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reg_number: forgotRegNumber })
                 });
 
                 const data = await response.json();
 
                 if (data.success) {
+                    setUserEmail(data.data.email);
                     setOtpSent(true);
-                    setForgotSuccess(`An OTP has been sent to ${forgotEmail}. Please check your inbox.`);
+                    setForgotSuccess(`📧 An OTP has been sent to ${data.data.masked_email || data.data.email}. Please check your inbox.`);
                     startCountdown(60);
                     setForgotErr('');
                 } else {
-                    setForgotErr(data.message || 'Failed to send OTP. Please try again.');
+                    setForgotErr(data.message || 'Failed to send OTP. Registration number not found or no email associated.');
                 }
             } catch (error) {
                 console.error('Forgot password error:', error);
@@ -4854,9 +4858,10 @@
             }
         };
 
-        const verifyOtp = async () => {
+        // Verify OTP
+        const verifyOTP = async () => {
             if (!otpCode || otpCode.length !== 6) {
-                setForgotErr('Please enter the OTP');
+                setForgotErr('Please enter the 6-digit OTP');
                 return;
             }
 
@@ -4867,7 +4872,7 @@
                 const response = await fetch('http://localhost:5000/api/auth/verify-otp', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: forgotEmail, otp: otpCode })
+                    body: JSON.stringify({ reg_number: forgotRegNumber, otp: otpCode })
                 });
 
                 const data = await response.json();
@@ -4875,19 +4880,50 @@
                 if (data.success) {
                     setOtpVerified(true);
                     setResetToken(data.data.reset_token);
-                    setForgotSuccess('OTP verified! Please enter your new password.');
+                    setForgotSuccess('✅ OTP verified! Please enter your new password.');
                     setForgotErr('');
                 } else {
                     setForgotErr(data.message || 'Invalid OTP. Please try again.');
                 }
             } catch (error) {
-                console.error('OTP Verification error:', error);
+                console.error('OTP verification error:', error);
                 setForgotErr('Network error. Please try again.');
             } finally {
                 setForgotLoading(false);
             }
         };
 
+        // Resend OTP
+        const resendOTP = async () => {
+            if (resendDisabled) return;
+
+            setForgotLoading(true);
+            setForgotErr('');
+
+            try {
+                const response = await fetch('http://localhost:5000/api/auth/resend-otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reg_number: forgotRegNumber })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    setForgotSuccess(`📧 A new OTP has been sent to ${data.data.masked_email || userEmail}.`);
+                    startCountdown(60);
+                } else {
+                    setForgotErr(data.message || 'Failed to resend OTP');
+                }
+            } catch (error) {
+                console.error('Resend OTP error:', error);
+                setForgotErr('Network error. Please try again.');
+            } finally {
+                setForgotLoading(false);
+            }
+        };
+
+        // Reset password
         const resetPassword = async () => {
             if (!newPassword || newPassword.length < 6) {
                 setForgotErr('Password must be at least 6 characters');
@@ -4905,7 +4941,7 @@
             try {
                 const response = await fetch('http://localhost:5000/api/auth/reset-password', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         token: resetToken,
                         new_password: newPassword
@@ -4915,18 +4951,9 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    setForgotSuccess('Password reset successfully! You can now login with your new password.');
+                    setForgotSuccess('✅ Password reset successfully! You can now login with your new password.');
                     setTimeout(() => {
-                        setShowForgotPassword(false);
-                        setForgotEmail('');
-                        setOtpCode('');
-                        setNewPassword('');
-                        setConfirmPassword('');
-                        setOtpSent(false);
-                        setOtpVerified(false);
-                        setResetToken('');
-                        setForgotErr('');
-                        setForgotSuccess('');
+                        closeForgotPassword();
                     }, 3000);
                 } else {
                     setForgotErr(data.message || 'Failed to reset password. Please try again.');
@@ -4939,33 +4966,23 @@
             }
         };
 
-        const resendOtp = async () => {
-            if (resendDisabled) return;
-
-            setForgotLoading(true);
+        const closeForgotPassword = () => {
+            setShowForgotPassword(false);
+            setForgotRegNumber('');
+            setUserEmail('');
+            setOtpCode('');
+            setNewPassword('');
+            setConfirmPassword('');
+            setOtpSent(false);
+            setOtpVerified(false);
+            setResetToken('');
             setForgotErr('');
-
-            try {
-                const response = await fetch('http://localhost:5000/api/auth/resend-otp', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: forgotEmail })
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    setForgotSuccess(`A new OTP has been sent to ${forgotEmail}.`);
-                    startCountdown(60);
-                } else {
-                    setForgotErr(data.message || 'Failed to resend OTP');
-                }
-            } catch (error) {
-                console.error('Resend OTP error:', error);
-                setForgotErr('Network error. Please try again.');
-            } finally {
-                setForgotLoading(false);
-            }
+            setForgotSuccess('');
+            setForgotLoading(false);
+            setResetLoading(false);
+            if (countdownInterval) clearInterval(countdownInterval);
+            setCountdown(0);
+            setResendDisabled(false);
         };
 
         const handleLogin = async () => {
@@ -5060,24 +5077,6 @@
                 setLoading(false);
             }
         };
-
-        const closeForgotPassword = () => {
-            setShowForgotPassword(false);
-            setForgotEmail('');
-            setOtpCode('');
-            setNewPassword('');
-            setConfirmPassword('');
-            setOtpSent(false);
-            setOtpVerified(false);
-            setResetToken('');
-            setForgotErr('');
-            setForgotSuccess('');
-            setForgotLoading(false);
-            setResetLoading(false);
-            if (countdownInterval) clearInterval(countdownInterval);
-            setCountdown(0);
-            setResendDisabled(false);
-        }
 
         return (
             <div style={{ minHeight: '100vh', background: '#1C1A17', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
@@ -5177,7 +5176,7 @@
                                 <div>
                                     <div style={{ fontSize: 24, fontWeight: 700 }}>Reset Password</div>
                                     <div style={{ fontSize: 12, color: '#6A6050', marginTop: 4 }}>
-                                        {!otpSent ? 'Enter your email to receive OTP' :
+                                        {!otpSent ? 'Enter your registration number' :
                                          !otpVerified ? 'Enter the 6-digit OTP sent to your email' :
                                          'Create your new password'}
                                     </div>
@@ -5188,16 +5187,16 @@
                                 }}>✕</button>
                             </div>
 
-                            {/* Step 1: Enter Email */}
+                            {/* Step 1: Enter Registration Number */}
                             {!otpSent && !otpVerified && (
                                 <div>
                                     <div style={{ marginBottom: 20 }}>
-                                        <div style={{ fontSize: 12, color: '#6A6050', marginBottom: 8 }}>Email Address</div>
+                                        <div style={{ fontSize: 12, color: '#6A6050', marginBottom: 8 }}>Registration Number</div>
                                         <input
-                                            type="email"
-                                            value={forgotEmail}
-                                            onChange={e => setForgotEmail(e.target.value)}
-                                            placeholder="Enter your registered email"
+                                            type="text"
+                                            value={forgotRegNumber}
+                                            onChange={e => setForgotRegNumber(e.target.value.toUpperCase())}
+                                            placeholder="Enter your registration number"
                                             style={{
                                                 width: '100%', padding: '12px 14px', background: '#1C1A17',
                                                 border: '1.5px solid #3A3530', borderRadius: 10, color: '#F5F0E8'
@@ -5245,7 +5244,7 @@
                                             }}
                                         />
                                         <div style={{ fontSize: 11, color: '#6A6050', marginTop: 8 }}>
-                                            We sent a 6-digit code to {forgotEmail}
+                                            We sent a 6-digit code to your registered email address
                                         </div>
                                     </div>
 
