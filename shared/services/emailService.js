@@ -310,6 +310,114 @@ const getUserDeletionEmail = (userDetails) => {
     };
 };
 
+const getUniversityActivationEmail = (university, duration, amount, startDate, endDate, isExtension) => {
+    const action = isExtension ? 'extended' : 'activated';
+
+    return {
+        subject: `UniEat - Your Subscription Has Been ${action.toUpperCase()}`,
+        html: `
+            <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px; background: #ffffff;">
+                <div style="text-align: center; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 2px solid #4A6741;">
+                    <h1 style="color: #4A6741; margin: 0;">🏛️ UniEat</h1>
+                    <p style="color: #666; margin: 5px 0 0;">University Subscription</p>
+                </div>
+
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 48px; margin-bottom: 10px;">✅</div>
+                    <h2 style="color: #333; margin: 0;">Subscription ${action === 'extended' ? 'Extended' : 'Activated'}!</h2>
+                </div>
+
+                <p style="color: #333; font-size: 14px; line-height: 1.5;">Dear <strong>${university.name}</strong> Administrator,</p>
+                <p style="color: #333; font-size: 14px; line-height: 1.5;">Your UniEat subscription has been successfully ${action}.</p>
+
+                <div style="background: #f8f8f8; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #4A6741;">
+                    <p style="margin: 8px 0; font-size: 14px;"><strong>📋 University:</strong> ${university.name}</p>
+                    <p style="margin: 8px 0; font-size: 14px;"><strong>💰 Amount Paid:</strong> $${amount}</p>
+                    <p style="margin: 8px 0; font-size: 14px;"><strong>📅 Billing Cycle:</strong> ${duration === 365 ? 'Annual' : 'Monthly'}</p>
+                    <p style="margin: 8px 0; font-size: 14px;"><strong>📆 Valid From:</strong> ${new Date(startDate).toLocaleDateString()}</p>
+                    <p style="margin: 8px 0; font-size: 14px;"><strong>📆 Valid Until:</strong> ${new Date(endDate).toLocaleDateString()}</p>
+                </div>
+
+                <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center; color: #999; font-size: 12px;">
+                    <p>Need assistance? Contact support at support@unieat.com</p>
+                    <p>© ${new Date().getFullYear()} UniEat. All rights reserved.</p>
+                </div>
+            </div>
+        `
+    };
+};
+
+const getUniversitySuspensionEmail = (university) => {
+    return {
+        subject: `UniEat - Your Subscription Has Been SUSPENDED`,
+        html: `
+            <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px; background: #ffffff;">
+                <div style="text-align: center; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 2px solid #dc2626;">
+                    <h1 style="color: #dc2626; margin: 0;">⚠️ Subscription Suspended</h1>
+                </div>
+
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 48px; margin-bottom: 10px;">🚫</div>
+                    <h2 style="color: #333; margin: 0;">Your subscription has been suspended</h2>
+                </div>
+
+                <p style="color: #333; font-size: 14px; line-height: 1.5;">Dear <strong>${university.name}</strong> Administrator,</p>
+                <p style="color: #333; font-size: 14px; line-height: 1.5;">Your UniEat subscription has been <strong style="color: #dc2626;">suspended</strong>.</p>
+
+                <div style="background: #f8f8f8; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #dc2626;">
+                    <p style="margin: 8px 0; font-size: 14px;"><strong>📋 University:</strong> ${university.name}</p>
+                    <p style="margin: 8px 0; font-size: 14px;"><strong>📧 Contact Email:</strong> ${university.email}</p>
+                </div>
+
+                <div style="background: #fef3c7; padding: 12px; border-radius: 8px; margin: 20px 0;">
+                    <p style="color: #92400e; font-size: 13px; margin: 0;"><strong>⚠️ What this means:</strong></p>
+                    <ul style="color: #92400e; font-size: 12px; margin: 8px 0 0 20px;">
+                        <li>All users from your university are blocked from accessing the system</li>
+                        <li>New orders cannot be placed</li>
+                        <li>Active orders will be paused</li>
+                    </ul>
+                </div>
+
+                <p style="color: #333; font-size: 14px; line-height: 1.5;">To reactivate your subscription, please contact the system administrator.</p>
+
+                <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center; color: #999; font-size: 12px;">
+                    <p>Need assistance? Contact support at support@unieat.com</p>
+                    <p>© ${new Date().getFullYear()} UniEat. All rights reserved.</p>
+                </div>
+            </div>
+        `
+    };
+};
+
+const getUniversityCreationEmail = (university) => {
+    return {
+        subject: `UniEat - Your University Has Been Registered`,
+        html: `
+            <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px; background: #ffffff;">
+                <div style="text-align: center; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 2px solid #C4522A;">
+                    <h1 style="color: #C4522A; margin: 0;">🎉 Welcome to UniEat!</h1>
+                </div>
+
+                <p style="color: #333; font-size: 14px; line-height: 1.5;">Dear Administrator,</p>
+                <p style="color: #333; font-size: 14px; line-height: 1.5;">Your university <strong>${university.name}</strong> has been successfully registered on the UniEat platform.</p>
+
+                <div style="background: #f8f8f8; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #C4522A;">
+                    <p style="margin: 8px 0; font-size: 14px;"><strong>📋 University:</strong> ${university.name}</p>
+                    <p style="margin: 8px 0; font-size: 14px;"><strong>📧 Contact Email:</strong> ${university.email}</p>
+                    <p style="margin: 8px 0; font-size: 14px;"><strong>📞 Phone:</strong> ${university.phone || 'Not provided'}</p>
+                </div>
+
+                <p style="color: #333; font-size: 14px; line-height: 1.5;">To start using UniEat, you need to activate your subscription. A system administrator will contact you to complete the payment process.</p>
+
+                <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center; color: #999; font-size: 12px;">
+                    <p>Need help? Contact us at support@unieat.com</p>
+                    <p>© ${new Date().getFullYear()} UniEat. All rights reserved.</p>
+                </div>
+            </div>
+        `
+    };
+};
+
 module.exports = {
     sendEmail,
     sendEmailAsync,
@@ -319,6 +427,9 @@ module.exports = {
     getAdminNotificationEmail,
     getPasswordResetEmail,
     getUserDeletionEmail,
+    getUniversityActivationEmail,
+    getUniversityCreationEmail,
+    getUniversitySuspensionEmail,
     verifyTransporter,
     testConnection
 };

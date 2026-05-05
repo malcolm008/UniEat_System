@@ -5,7 +5,7 @@ const { pool } = require('../../shared/db/db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { emailQueue } = require('../../shared/services/emailQueue');
-const { sendEmail, sendEmailAsync, sendEmailWithRetry, getAdminEmails, getUserCreationEmail, getAdminNotificationEmail, getPasswordResetEmail, getUserDeletionEmail } = require('../../shared/services/emailService');
+const { sendEmail, sendEmailAsync, sendEmailWithRetry, getAdminEmails, getUserCreationEmail, getUniversityCreationEmail, getUniversitySuspensionEmail, getUniversityActivationEmail, getAdminNotificationEmail, getPasswordResetEmail, getUserDeletionEmail } = require('../../shared/services/emailService');
 const app = express();
 const PORT = process.env.PORT || 5001;
 
@@ -364,6 +364,15 @@ app.post('/api/super-admin/universities', verifyToken, checkSubscriptionStatus, 
             [name, email, phone || null, address || null, city || null, country || 'Tanzania', 'pending', 'inactive']
         );
         res.json({ success: true, university: result.rows[0] });
+
+        setImmediate(async () => {
+            const emailTemplate = getUniversityCreationEmail(result.rows[0]);
+            await emailQueue.add({
+                to: result.rows[0].email,
+                subject: emailTemplate.subject,
+                html: emailTemplate.html
+            });
+        });
     } catch (error) {
         console.error('Error adding university:', error);
         res.status(500).json({ success: false, message: error.message });
@@ -487,6 +496,17 @@ app.post('/api/super-admin/universities/:id/suspend', verifyToken, checkSubscrip
             university: result.rows[0]
         });
 
+        setImmediate(async () => {
+            const uniResult = await pool.query('SELECT * FROM universities WHERE id = $1', [id]);
+            const university = uniResult.rows[0];
+            const emailTemplate = getUniversitySuspensionEmail(university);
+            await emailQueue.add({
+                to: university.email,
+                subject: emailTemplate.subject,
+                html: emailTemplate.html
+            });
+        });
+
     } catch (error) {
         console.error('Error suspending university:', error);
         res.status(500).json({
@@ -579,7 +599,7 @@ app.post('/api/super-admin/users', verifyToken, checkSubscriptionStatus, async (
         setImmediate(async () => {
             try {
                 const userEmailTemplate = getUserCreationEmail(newUser, password);
-                await emailOptions.add({
+                await emailQueue.add({
                     to: newUser.email,
                     subject: userEmailTemplate.subject,
                     html: userEmailTemplate.html
@@ -640,26 +660,40 @@ app.post('/api/super-admin/users/:id/reset-password', verifyToken, checkSubscrip
 
         await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [hashedPassword, id]);
 
-        // === SEND EMAIL NOTIFICATIONS ===
-        // 1. Send email to the user with new password
-        const resetEmailTemplate = getPasswordResetEmail(user, newPassword);
-        await sendEmail(user.email, resetEmailTemplate.subject, resetEmailTemplate.html);
-
-        // 2. Notify admins about password reset
-        const adminEmails = await getAdminEmails(user.university_id, pool);
-        const adminName = req.admin?.name || 'Super Admin';
-        const adminNotificationTemplate = getAdminNotificationEmail(user, newPassword, 'password_reset', adminName);
-
-        for (const admin of adminEmails) {
-            await sendEmail(admin.email, adminNotificationTemplate.subject, adminNotificationTemplate.html);
-        }
-
-        console.log(`📧 Password reset for user ${user.name}. Emails sent.`);
-
         res.json({ success: true, message: 'Password reset successfully. Email sent to user.' });
+
+        setImmediate(async () => {
+            try {
+                const resetEmailTemplate = getPasswordResetEmail(user, newPassword);
+                await emailQueue.add({
+                    to: user.email,
+                    subject: resetEmailTemplate.subject,
+                    html: resetEmailTemplate.html
+                });
+
+                const adminEmails = await getAdminEmails(user.university_id, pool);
+                const adminName = req.admin?.name || 'Super Admin';
+                const adminNotificationTemplate = getAdminNotificationEmail(user, newPassword, 'password_reset', adminName);
+
+                for (const admin of adminEmails) {
+                    await emailQueue.add({
+                        to: admin.email,
+                        subject: adminNotificationTemplate.subject,
+                        html: adminNotificationTemplate.html
+                    });
+                }
+
+                console.log(`Queued password reset emails for user ${user.name}`);
+            } catch (queueError) {
+                console.error('Failed to queue password reset emails:', queueError);
+            }
+        });
+
     } catch (error) {
         console.error('Error resetting password:', error);
-        res.status(500).json({ success: false, message: error.message });
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: error.message });
+        }
     }
 });
 
@@ -731,7 +765,6 @@ app.delete('/api/super-admin/users/:id', verifyToken, checkSubscriptionStatus, a
         const user = userResult.rows[0];
         user.created_at = user.created_at || new Date();
 
-        // Check if user is admin and current user is super_admin
         if (user.role === 'admin' && req.admin.role === 'super_admin') {
             return res.status(403).json({
                 success: false,
@@ -741,23 +774,39 @@ app.delete('/api/super-admin/users/:id', verifyToken, checkSubscriptionStatus, a
 
         await pool.query('DELETE FROM users WHERE id = $1', [id]);
 
-        const deletionEmailTemplate = getUserDeletionEmail(user);
-        await sendEmail(user.email, deletionEmailTemplate.subject, deletionEmailTemplate.html);
-
-        const adminEmails = await getAdminEmails(user.university_id, pool);
-        const adminName = req.admin?.name || 'Super Admin';
-        const adminNotificationTemplate = getAdminNotificationEmail(user, null, 'deleted', adminName);
-
-        for (const admin of adminEmails) {
-            await sendEmail(admin.email, adminNotificationTemplate.subject, adminNotificationTemplate.html);
-        }
-
-        console.log(`📧 User ${user.name} deleted. Emails sent.`);
-
         res.json({ success: true, message: 'User deleted successfully' });
+
+        setImmediate(async () => {
+            try {
+                const deletionEmailTemplate = getUserDeletionEmail(user);
+                await emailQueue.add({
+                    to: user.email,
+                    subject: deletionEmailTemplate.subject,
+                    html: deletionEmailTemplate.html
+                });
+
+                const adminEmails = await getAdminEmails(user.university_id, pool);
+                const adminName = req.admin?.name || 'Super Admin';
+                const adminNotificationTemplate = getAdminNotificationEmail(user, null, 'deleted', adminName);
+
+                for (const admin of adminEmails) {
+                    await emailQueue.add({
+                        to: admin.email,
+                        subject: adminNotificationTemplate.subject,
+                        html: adminNotificationTemplate.html
+                    });
+                }
+
+                console.log(`Queued deletion emails for user ${user.name}`);
+            } catch (queueError) {
+                console.error('Failed to queue deletion emails:', queueError);
+            }
+        });
     } catch (error) {
         console.error('Error deleting user:', error);
-        res.status(500).json({ success: false, message: error.message });
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: error.message });
+        }
     }
 });
 
