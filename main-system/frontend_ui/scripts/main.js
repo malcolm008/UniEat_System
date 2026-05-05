@@ -4775,10 +4775,197 @@
         const [loading, setLoading] = useState(false);
         const [err, setErr] = useState('');
 
+        const [showForgotPassword, setShowForgotPassword] = useState(false);
+        const [forgotEmail, setForgotEmail] = useState('');
+        const [otpCode, setOtpCode] = useState('');
+        const [newPassword, setNewPassword] =  useState('');
+        const [confirmPassword, setConfirmPassword] = useState('');
+        const [otpSent, setOtpSent] = useState(false);
+        const [otpVerified, setOtpVerified] = useState(false);
+        const [resetToken, setResetToken] = useState('');
+        const [forgotLoading, setForgotLoading] = useState(false);
+        const [resetLoading, setResetLoading] = useState(false);
+        const [forgotErr, setForgotErr] = useState('');
+        const [forgotSuccess, setForgotSuccess] = useState('');
+        const [countdown, setCountdown] = useState(0);
+        const [resendDisabled, setResendDisabled] = useState(false);
+
+        let countdownInterval = null;
+
+        useEffect(() => {
+            return () => {
+                if (countdownInterval) clearInterval(countdownInterval);
+            };
+        }, []);
+
+        const startCountdown = (seconds) => {
+            setCoundown(seconds);
+            setResendDisabled(true);
+            countdownInterval = setInterval(() => {
+                setCountdown((prev) => {
+                    if (prev <= 1) {
+                        clearInterval(countdownInterval);
+                        setResendDisabled(false);
+                        return 0;
+                    }
+                    return prev -1 ;
+                });
+            }, 1000);
+        };
+
         const demoCreds = {
             student: { id: 'CS/2022/042', pass: 'student123', name: 'John M.', initials: 'JM' },
             staff: { id: 'STAFF001', pass: 'staff123', name: 'Mary K.', initials: 'MK' },
             admin: { id: 'ADMIN001', pass: 'admin123', name: 'Dr. Osei', initials: 'DO' }
+        };
+
+        const requestPasswordReset = async () => {
+            if (!forgotEmail) {
+                setForgotErr('Please enter your email address');
+                return;
+            }
+
+            setForgotLoading(true);
+            setForgotErr('');
+            setForgotSuccess('');
+
+            try {
+                const response = await fetch('http://localhost:5000/api/auth/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json'},
+                    body: JSON.stringify({ email: forgotEmail })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    setOtpSent(true);
+                    setForgotSuccess(`An OTP has been sent to ${forgotEmail}. Please check your inbox.`);
+                    startCountdown(60);
+                    setForgotErr('');
+                } else {
+                    setForgotErr(data.message || 'Failed to send OTP. Please try again.');
+                }
+            } catch (error) {
+                console.error('Forgot password error:', error);
+                setForgotErr('Network error. Please try again.');
+            } finally {
+                setForgotLoading(false);
+            }
+        };
+
+        const verifyOtp = async () => {
+            if (!otpCode || otpCode.length !== 6) {
+                setForgotErr('Please enter the OTP');
+                return;
+            }
+
+            setForgotLoading(true);
+            setForgotErr('');
+
+            try {
+                const response = await fetch('http://localhost:5000/api/auth/verify-otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: forgotEmail, otp: otpCode })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    setOtpVerified(true);
+                    setResetToken(data.data.reset_token);
+                    setForgotSuccess('OTP verified! Please enter your new password.');
+                    setForgotErr('');
+                } else {
+                    setForgotErr(data.message || 'Invalid OTP. Please try again.');
+                }
+            } catch (error) {
+                console.error('OTP Verification error:', error);
+                setForgotErr('Network error. Please try again.');
+            } finally {
+                setForgotLoading(false);
+            }
+        };
+
+        const resetPassword = async () => {
+            if (!newPassword || newPassword.length < 6) {
+                setForgotErr('Password must be at least 6 characters');
+                return;
+            }
+
+            if (newPassword !== confirmPassword) {
+                setForgotErr('Passwords do not match');
+                return;
+            }
+
+            setResetLoading(true);
+            setForgotErr('');
+
+            try {
+                const response = await fetch('http://localhost:5000/api/auth/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        token: resetToken,
+                        new_password: newPassword
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    setForgotSuccess('Password reset successfully! You can now login with your new password.');
+                    setTimeout(() => {
+                        setShowForgotPassword(false);
+                        setForgotEmail('');
+                        setOtpCode('');
+                        setNewPassword('');
+                        setConfirmPassword('');
+                        setOtpSent(false);
+                        setOtpVerified(false);
+                        setResetToken('');
+                        setForgotErr('');
+                        setForgotSuccess('');
+                    }, 3000);
+                } else {
+                    setForgotErr(data.message || 'Failed to reset password. Please try again.');
+                }
+            } catch (error) {
+                console.error('Password reset error:', error);
+                setForgotErr('Network error. Please try again.');
+            } finally {
+                setResetLoading(false);
+            }
+        };
+
+        const resendOtp = async () => {
+            if (resendDisabled) return;
+
+            setForgotLoading(true);
+            setForgotErr('');
+
+            try {
+                const response = await fetch('http://localhost:5000/api/auth/resend-otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: forgotEmail })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    setForgotSuccess(`A new OTP has been sent to ${forgotEmail}.`);
+                    startCountdown(60);
+                } else {
+                    setForgotErr(data.message || 'Failed to resend OTP');
+                }
+            } catch (error) {
+                console.error('Resend OTP error:', error);
+                setForgotErr('Network error. Please try again.');
+            } finally {
+                setForgotLoading(false);
+            }
         };
 
         const handleLogin = async () => {
@@ -4828,7 +5015,6 @@
 
                     localStorage.setItem('user', JSON.stringify(userObject));
 
-                    // Check subscription status
                     try {
                         const testResponse = await fetch('http://localhost:5000/api/menu', {
                             headers: { 'Authorization': `Bearer ${accessToken}` }
@@ -4850,7 +5036,6 @@
 
                     onLogin(userObject);
                 } else {
-                    // Demo mode fallback
                     const c = demoCreds[role];
                     if (id === c.id && pass === c.pass) {
                         const demoToken = 'demo-token-' + Date.now();
@@ -4876,6 +5061,24 @@
             }
         };
 
+        const closeForgotPassword = () => {
+            setShowForgotPassword(false);
+            setForgotEmail('');
+            setOtpCode('');
+            setNewPassword('');
+            setConfirmPassword('');
+            setOtpSent(false);
+            setOtpVerified(false);
+            setResetToken('');
+            setForgotErr('');
+            setForgotSuccess('');
+            setForgotLoading(false);
+            setResetLoading(false);
+            if (countdownInterval) clearInterval(countdownInterval);
+            setCountdown(0);
+            setResendDisabled(false);
+        }
+
         return (
             <div style={{ minHeight: '100vh', background: '#1C1A17', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
                 <div style={{ width: '100%', maxWidth: 400 }}>
@@ -4890,7 +5093,7 @@
                             <button key={r} onClick={() => { setRole(r); setErr(''); }} style={{
                                 flex: 1, padding: '8px', borderRadius: 9,
                                 background: role === r ? '#C4522A' : 'transparent',
-                                color: role === r ? '#fff' : '#6A6050'
+                                color: role === r ? '#fff' : '#6A6050', cursor: 'pointer'
                             }}>
                                 {l}
                             </button>
@@ -4928,11 +5131,28 @@
                             />
                         </div>
 
+                        {/* Forgot Password Link */}
+                        <div style={{ textAlign: 'right', marginBottom: 16 }}>
+                            <button
+                                onClick={() => setShowForgotPassword(true)}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: '#6A6050',
+                                    fontSize: 11,
+                                    cursor: 'pointer',
+                                    textDecoration: 'underline'
+                                }}
+                            >
+                                Forgot Password?
+                            </button>
+                        </div>
+
                         {err && <div style={{ fontSize: 11, color: '#E8693D', marginBottom: 12 }}>{err}</div>}
 
                         <button onClick={handleLogin} disabled={loading} style={{
                             width: '100%', background: loading ? '#3A3530' : '#C4522A',
-                            color: '#fff', borderRadius: 10, padding: 14, fontWeight: 700
+                            color: '#fff', borderRadius: 10, padding: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer'
                         }}>
                             {loading ? 'Signing in...' : 'Sign in →'}
                         </button>
@@ -4942,6 +5162,178 @@
                         </div>
                     </div>
                 </div>
+
+                {/* Forgot Password Modal */}
+                {showForgotPassword && (
+                    <div onClick={(e) => e.target === e.currentTarget && closeForgotPassword()} style={{
+                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex',
+                        alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20
+                    }}>
+                        <div style={{
+                            background: '#2D2520', borderRadius: 20, padding: 28, width: '100%', maxWidth: 450,
+                            boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                                <div>
+                                    <div style={{ fontSize: 24, fontWeight: 700 }}>Reset Password</div>
+                                    <div style={{ fontSize: 12, color: '#6A6050', marginTop: 4 }}>
+                                        {!otpSent ? 'Enter your email to receive OTP' :
+                                         !otpVerified ? 'Enter the 6-digit OTP sent to your email' :
+                                         'Create your new password'}
+                                    </div>
+                                </div>
+                                <button onClick={closeForgotPassword} style={{
+                                    background: 'transparent', border: 'none', color: '#6A6050',
+                                    fontSize: 24, cursor: 'pointer'
+                                }}>✕</button>
+                            </div>
+
+                            {/* Step 1: Enter Email */}
+                            {!otpSent && !otpVerified && (
+                                <div>
+                                    <div style={{ marginBottom: 20 }}>
+                                        <div style={{ fontSize: 12, color: '#6A6050', marginBottom: 8 }}>Email Address</div>
+                                        <input
+                                            type="email"
+                                            value={forgotEmail}
+                                            onChange={e => setForgotEmail(e.target.value)}
+                                            placeholder="Enter your registered email"
+                                            style={{
+                                                width: '100%', padding: '12px 14px', background: '#1C1A17',
+                                                border: '1.5px solid #3A3530', borderRadius: 10, color: '#F5F0E8'
+                                            }}
+                                        />
+                                    </div>
+
+                                    {forgotErr && (
+                                        <div style={{ background: '#5a1a1a', padding: 10, borderRadius: 8, marginBottom: 16 }}>
+                                            <div style={{ fontSize: 12, color: '#ef5350' }}>{forgotErr}</div>
+                                        </div>
+                                    )}
+
+                                    {forgotSuccess && (
+                                        <div style={{ background: '#1a5a3a', padding: 10, borderRadius: 8, marginBottom: 16 }}>
+                                            <div style={{ fontSize: 12, color: '#8bc34a' }}>{forgotSuccess}</div>
+                                        </div>
+                                    )}
+
+                                    <button onClick={requestPasswordReset} disabled={forgotLoading} style={{
+                                        width: '100%', background: forgotLoading ? '#3A3530' : '#C4522A',
+                                        color: '#fff', borderRadius: 10, padding: 12, fontWeight: 600,
+                                        cursor: forgotLoading ? 'not-allowed' : 'pointer'
+                                    }}>
+                                        {forgotLoading ? 'Sending OTP...' : 'Send OTP →'}
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Step 2: Enter OTP */}
+                            {otpSent && !otpVerified && (
+                                <div>
+                                    <div style={{ marginBottom: 20 }}>
+                                        <div style={{ fontSize: 12, color: '#6A6050', marginBottom: 8 }}>Enter OTP</div>
+                                        <input
+                                            type="text"
+                                            value={otpCode}
+                                            onChange={e => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                            placeholder="6-digit code"
+                                            maxLength="6"
+                                            style={{
+                                                width: '100%', padding: '12px 14px', background: '#1C1A17',
+                                                border: '1.5px solid #3A3530', borderRadius: 10, color: '#F5F0E8',
+                                                textAlign: 'center', fontSize: 20, letterSpacing: 8
+                                            }}
+                                        />
+                                        <div style={{ fontSize: 11, color: '#6A6050', marginTop: 8 }}>
+                                            We sent a 6-digit code to {forgotEmail}
+                                        </div>
+                                    </div>
+
+                                    {forgotErr && (
+                                        <div style={{ background: '#5a1a1a', padding: 10, borderRadius: 8, marginBottom: 16 }}>
+                                            <div style={{ fontSize: 12, color: '#ef5350' }}>{forgotErr}</div>
+                                        </div>
+                                    )}
+
+                                    {forgotSuccess && (
+                                        <div style={{ background: '#1a5a3a', padding: 10, borderRadius: 8, marginBottom: 16 }}>
+                                            <div style={{ fontSize: 12, color: '#8bc34a' }}>{forgotSuccess}</div>
+                                        </div>
+                                    )}
+
+                                    <button onClick={verifyOTP} disabled={forgotLoading} style={{
+                                        width: '100%', background: forgotLoading ? '#3A3530' : '#C4522A',
+                                        color: '#fff', borderRadius: 10, padding: 12, fontWeight: 600,
+                                        cursor: forgotLoading ? 'not-allowed' : 'pointer', marginBottom: 12
+                                    }}>
+                                        {forgotLoading ? 'Verifying...' : 'Verify OTP →'}
+                                    </button>
+
+                                    <button onClick={resendOTP} disabled={resendDisabled} style={{
+                                        width: '100%', background: 'transparent', border: '1.5px solid #3A3530',
+                                        color: resendDisabled ? '#6A6050' : '#C4522A', borderRadius: 10, padding: 12,
+                                        cursor: resendDisabled ? 'not-allowed' : 'pointer'
+                                    }}>
+                                        {resendDisabled ? `Resend OTP in ${countdown}s` : 'Resend OTP'}
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Step 3: Reset Password */}
+                            {otpVerified && (
+                                <div>
+                                    <div style={{ marginBottom: 20 }}>
+                                        <div style={{ fontSize: 12, color: '#6A6050', marginBottom: 8 }}>New Password</div>
+                                        <input
+                                            type="password"
+                                            value={newPassword}
+                                            onChange={e => setNewPassword(e.target.value)}
+                                            placeholder="Minimum 6 characters"
+                                            style={{
+                                                width: '100%', padding: '12px 14px', background: '#1C1A17',
+                                                border: '1.5px solid #3A3530', borderRadius: 10, color: '#F5F0E8'
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div style={{ marginBottom: 20 }}>
+                                        <div style={{ fontSize: 12, color: '#6A6050', marginBottom: 8 }}>Confirm New Password</div>
+                                        <input
+                                            type="password"
+                                            value={confirmPassword}
+                                            onChange={e => setConfirmPassword(e.target.value)}
+                                            placeholder="Confirm your new password"
+                                            style={{
+                                                width: '100%', padding: '12px 14px', background: '#1C1A17',
+                                                border: '1.5px solid #3A3530', borderRadius: 10, color: '#F5F0E8'
+                                            }}
+                                        />
+                                    </div>
+
+                                    {forgotErr && (
+                                        <div style={{ background: '#5a1a1a', padding: 10, borderRadius: 8, marginBottom: 16 }}>
+                                            <div style={{ fontSize: 12, color: '#ef5350' }}>{forgotErr}</div>
+                                        </div>
+                                    )}
+
+                                    {forgotSuccess && (
+                                        <div style={{ background: '#1a5a3a', padding: 10, borderRadius: 8, marginBottom: 16 }}>
+                                            <div style={{ fontSize: 12, color: '#8bc34a' }}>{forgotSuccess}</div>
+                                        </div>
+                                    )}
+
+                                    <button onClick={resetPassword} disabled={resetLoading} style={{
+                                        width: '100%', background: resetLoading ? '#3A3530' : '#4A6741',
+                                        color: '#fff', borderRadius: 10, padding: 12, fontWeight: 600,
+                                        cursor: resetLoading ? 'not-allowed' : 'pointer'
+                                    }}>
+                                        {resetLoading ? 'Resetting...' : 'Reset Password →'}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
